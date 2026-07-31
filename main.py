@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import time
+import random
 import requests
 import textwrap
 import edge_tts
@@ -14,10 +15,38 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # 1. Initialize Gemini API Client
-client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY", ""))
+
+# Pre-written local backup scripts if Gemini API quota is fully exhausted
+FALLBACK_CONCEPTS = [
+    {
+        "game_chosen": "Brookhaven RP",
+        "title": "Secret Bunker Location in Brookhaven! 😱 #Shorts #Roblox",
+        "description": "How to find the secret agency bunker in Brookhaven RP! #Roblox #Gaming #Brookhaven",
+        "scenes": [
+            {"visual_prompt": "Roblox avatar standing outside Brookhaven hospital, mysterious mood, vertical 9:16", "narration": "Did you know there is a secret underground agency bunker in Brookhaven?"},
+            {"visual_prompt": "Roblox avatar walking through hospital wall into hidden corridor, vertical 9:16", "narration": "First go to the hospital and head straight up to the top floor corner."},
+            {"visual_prompt": "Roblox character grabbing secret blue keycard hidden behind cabinet, vertical 9:16", "narration": "Grab the secret blue keycard hidden behind the bookshelf."},
+            {"visual_prompt": "Futuristic underground glowing red room in Roblox, vertical 9:16", "narration": "Now head under the lake and use the card to unlock the secret lab!"},
+            {"visual_prompt": "Roblox character posing with shocked expression in glowing room, vertical 9:16", "narration": "Subscribe for more secret Roblox locations!"}
+        ]
+    },
+    {
+        "game_chosen": "Blox Fruits",
+        "title": "How to Find Mirage Island in Blox Fruits Fast! 🏝️ #Shorts #Roblox",
+        "description": "Quick guide to spawning Mirage Island in Roblox Blox Fruits! #Roblox #BloxFruits",
+        "scenes": [
+            {"visual_prompt": "Roblox boat driving through dark foggy ocean in Blox Fruits, vertical 9:16", "narration": "Struggling to find Mirage Island in Blox Fruits? Here is the fastest trick."},
+            {"visual_prompt": "Roblox characters sailing together in Third Sea ocean, vertical 9:16", "narration": "First make sure you are sailing in Danger Level 4 or higher in Third Sea."},
+            {"visual_prompt": "Full moon glowing over foggy ocean in Roblox game, vertical 9:16", "narration": "Wait until full moon night and have at least 3 players on the boat."},
+            {"visual_prompt": "Mysterious glowing island rising from dark water in Roblox, vertical 9:16", "narration": "The island will spawn directly ahead in the fog. Search the highest peak for the mirror fractal!"},
+            {"visual_prompt": "Roblox character holding rare glowing fruit victoriously, vertical 9:16", "narration": "Subscribe for more Blox Fruits tips!"}
+        ]
+    }
+]
 
 def generate_script_and_scenes():
-    """Uses Gemini to pick a top Roblox game and write a 5-scene story, with model fallbacks and retry handling for rate limits."""
+    """Uses Gemini to pick a top Roblox game and write a 5-scene story, falling back to local scripts if API quota is exhausted."""
     prompt = """
     Randomly select ONE popular game from this list of top Roblox games:
     - Brookhaven RP
@@ -44,12 +73,16 @@ def generate_script_and_scenes():
     }
     """
     
-    # Primary and fallback models
-    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash"]
+    models_to_try = [
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-8b"
+    ]
     
     for model_name in models_to_try:
         print(f"🤖 Attempting script generation with model: {model_name}...")
-        for attempt in range(3):
+        for attempt in range(2):
             try:
                 response = client.models.generate_content(
                     model=model_name,
@@ -58,16 +91,14 @@ def generate_script_and_scenes():
                 )
                 return json.loads(response.text)
             except Exception as e:
-                error_msg = str(e)
-                if ("429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg) and attempt < 2:
-                    wait_time = (attempt + 1) * 10
-                    print(f"⚠️ Rate limit on {model_name}. Pausing for {wait_time}s before retry {attempt + 2}/3...")
-                    time.sleep(wait_time)
-                else:
-                    print(f"⚠️ Switching from {model_name} to fallback model...")
-                    break
-                    
-    raise RuntimeError("Exhausted all Gemini models and retry limits. Please try re-running the workflow in a few minutes.")
+                error_str = str(e)
+                print(f"⚠️ Error on {model_name}: {error_str[:120]}...")
+                if any(k in error_str.upper() for k in ["429", "RESOURCE_EXHAUSTED", "QUOTA"]):
+                    time.sleep(5)
+                break
+
+    print("⚠️ Gemini API daily quota exhausted across all models. Switching to local backup script!")
+    return random.choice(FALLBACK_CONCEPTS)
 
 # 2. Audio Generator
 async def generate_voiceover(text, filename):
@@ -178,7 +209,7 @@ def upload_to_youtube(video_path, title, description):
     print(f"🎉 Posted successfully! Video ID: {response.get('id')}")
 
 if __name__ == "__main__":
-    print("🤖 Gemini is selecting a popular Roblox game and writing story scenes...")
+    print("🤖 Selecting Roblox game story concept...")
     concept = generate_script_and_scenes()
     print(f"📌 Game Selected: {concept.get('game_chosen')}")
     print(f"📌 Title: {concept['title']}")
