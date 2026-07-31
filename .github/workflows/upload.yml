@@ -2,9 +2,8 @@ name: Automated Roblox Shorts Pipeline
 
 on:
   schedule:
-    # Runs automatically at 14:00 UTC every Tuesday, Thursday, and Saturday
-    - cron: '0 14 * * 2,4,6'
-  workflow_dispatch: # Allows manual trigger anytime from the Actions tab
+    - cron: '0 14 * * 2,4,6'  # Runs Tue, Thu, Sat at 14:00 UTC
+  workflow_dispatch:           # Allows manual trigger button
 
 jobs:
   build-and-upload:
@@ -12,31 +11,27 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install System Dependencies for Video/Audio
+      - name: Install System FFmpeg & Fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg imagemagick
-
-      - name: Fix ImageMagick Policy for MoviePy Subtitles
-        run: |
-          sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
 
       - name: Install Python Dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Script & Post Short
+      - name: Run Pipeline
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          CLIENT_ID: ${{ secrets.CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-          REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+          CLIENT_ID: ${{ secrets.CLIENT_ID || secrets.YOUTUBE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET || secrets.YOUTUBE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN || secrets.YOUTUBE_REFRESH_TOKEN }}
         run: python main.py
