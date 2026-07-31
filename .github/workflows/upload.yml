@@ -1,0 +1,30 @@
+name: Auto Post Roblox Short
+
+on:
+  schedule:
+    # Runs automatically on Tue (2), Thu (4), Sat (6) at 12:00 UTC
+    - cron: '0 12 * * 2,4,6'
+  workflow_dispatch: # Allows manual trigger anytime from your phone
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install google-api-python-client google-auth-oauthlib edge-tts
+
+      - name: Run Script & Upload
+        env:
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+        run: python main.py
