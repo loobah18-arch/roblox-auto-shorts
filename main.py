@@ -57,7 +57,7 @@ def generate_script_and_scenes():
     """
     
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-2.0-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json"
@@ -108,7 +108,7 @@ def build_full_short(concept_data, output_filename="final_short.mp4"):
                 scene["narration"],
                 fontsize=40,
                 color='yellow',
-                font='Arial-Bold',
+                font='DejaVu-Sans-Bold',
                 method='caption',
                 size=(900, 300)
             ).set_position(('center', 'bottom')).set_duration(duration)
