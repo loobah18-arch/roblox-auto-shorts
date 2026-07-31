@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import time
 import requests
 import edge_tts
 from google import genai
@@ -14,7 +15,7 @@ from googleapiclient.http import MediaFileUpload
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 def generate_script_and_scenes():
-    """Uses Gemini as the Director to pick a top Roblox game and write a 5-scene story."""
+    """Uses Gemini as the Director to pick a top Roblox game and write a 5-scene story, with built-in rate-limit retries."""
     prompt = """
     Randomly select ONE popular game from this list of top Roblox games:
     - Brookhaven RP
@@ -56,14 +57,25 @@ def generate_script_and_scenes():
     }
     """
     
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json"
-        )
-    )
-    return json.loads(response.text)
+    # Retry loop to gracefully handle HTTP 429 Rate Limits
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            if "429" in str(e) and attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 15  # 15s, then 30s backoff
+                print(f"⚠️ Rate limit (429) hit. Pausing for {wait_time}s before retry {attempt + 2}/{max_retries}...")
+                time.sleep(wait_time)
+            else:
+                raise e
 
 # 2. Audio Generator
 async def generate_voiceover(text, filename):
@@ -74,7 +86,9 @@ async def generate_voiceover(text, filename):
 def download_ai_image(prompt, output_file):
     encoded_prompt = requests.utils.quote(f"{prompt}, 3d roblox gaming art style")
     url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1080&height=1920&nologo=true"
-    response = requests.get(url, timeout=30)
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    
+    response = requests.get(url, headers=headers, timeout=30)
     if response.status_code == 200:
         with open(output_file, "wb") as f:
             f.write(response.content)
@@ -91,18 +105,14 @@ def build_full_short(concept_data, output_filename="final_short.mp4"):
         
         print(f"🎬 Processing Scene {idx + 1}/5...")
         
-        # Generate voiceover & download scene visual
         asyncio.run(generate_voiceover(scene["narration"], audio_file))
         download_ai_image(scene["visual_prompt"], image_file)
         
-        # Audio length determines scene duration
         audio_clip = AudioFileClip(audio_file)
-        duration = audio_clip.duration + 0.3  # slight cushion
+        duration = audio_clip.duration + 0.3
         
-        # Visual clip
         img_clip = ImageClip(image_file).set_duration(duration)
         
-        # Subtitle overlay with fallback safety
         try:
             txt_clip = TextClip(
                 scene["narration"],
@@ -119,19 +129,23 @@ def build_full_short(concept_data, output_filename="final_short.mp4"):
             
         scene_clips.append(combined_scene)
     
-    # Stitch all 5 scenes into one ~50-60 second master video
     print("🎥 Concatenating all scenes into one full Short...")
     final_video = concatenate_videoclips(scene_clips, method="compose")
     final_video.write_videofile(output_filename, fps=24, codec="libx264", audio_codec="aac")
+    
+    # Close clips to free file locks and memory
+    final_video.close()
+    for clip in scene_clips:
+        clip.close()
 
 # 5. YouTube API Upload
 def upload_to_youtube(video_path, title, description):
     creds = Credentials(
         token=None,
-        refresh_token=os.environ["REFRESH_TOKEN"],
+        refresh_token=os.environ["YOUTUBE_REFRESH_TOKEN"],
         token_uri="https://oauth2.googleapis.com/token",
-        client_id=os.environ["CLIENT_ID"],
-        client_secret=os.environ["CLIENT_SECRET"]
+        client_id=os.environ["YOUTUBE_CLIENT_ID"],
+        client_secret=os.environ["YOUTUBE_CLIENT_SECRET"]
     )
     youtube = build("youtube", "v3", credentials=creds)
     
@@ -163,4 +177,3 @@ if __name__ == "__main__":
     
     print("🚀 Uploading 50-60 second Short to YouTube...")
     upload_to_youtube("final_short.mp4", concept["title"], concept["description"])
-    
