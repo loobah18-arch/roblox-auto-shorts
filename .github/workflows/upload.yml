@@ -1,16 +1,17 @@
-name: Auto Post Roblox Short
+name: Automated Roblox Shorts Pipeline
 
 on:
   schedule:
-    # Runs automatically on Tue (2), Thu (4), Sat (6) at 12:00 UTC
-    - cron: '0 12 * * 2,4,6'
-  workflow_dispatch: # Allows manual trigger anytime from your phone
+    # Runs automatically at 14:00 UTC every Tuesday, Thursday, and Saturday
+    - cron: '0 14 * * 2,4,6'
+  workflow_dispatch: # Allows manual trigger anytime from the Actions tab
 
 jobs:
-  run-pipeline:
+  build-and-upload:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -18,12 +19,23 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Dependencies
+      - name: Install System Dependencies for Video/Audio
         run: |
-          pip install google-api-python-client google-auth-oauthlib edge-tts
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg imagemagick
 
-      - name: Run Script & Upload
+      - name: Fix ImageMagick Policy for MoviePy Subtitles
+        run: |
+          sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
+
+      - name: Install Python Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Script & Post Short
         env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
