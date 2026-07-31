@@ -7,7 +7,8 @@ import requests
 import random
 from groq import Groq
 import edge_tts
-from moviepy.editor import ImageClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
+from moviepy.editor import ImageClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, CompositeAudioClip
+from moviepy.audio.fx.all import volumex, audio_loop
 
 # Google API Imports for YouTube Upload
 from google.oauth2.credentials import Credentials
@@ -32,13 +33,11 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 def generate_script():
     print("🤖 Requesting script from Groq API (Llama 3.3)...")
     
-    # 1. Randomly decide which game to feature today
     game_choice = random.choice(["Blox Fruits", "Brookhaven"])
     print(f"🎲 Selected Theme for Today: {game_choice}")
     
     if game_choice == "Blox Fruits":
-        # Read the story memory from yesterday
-        previous_story = "A young pirate just arrived in the first sea." # Default starting point
+        previous_story = "A young pirate just arrived in the first sea." 
         if os.path.exists("story_memory.txt"):
             with open("story_memory.txt", "r") as f:
                 content = f.read().strip()
@@ -64,7 +63,6 @@ def generate_script():
         }}
         """
     else:
-        # Brookhaven - Random Chaos
         prompt = """
         Write a 3-scene YouTube Short script about a completely random, hilarious, and chaotic scenario in Roblox Brookhaven.
         Make it a self-contained story.
@@ -90,11 +88,9 @@ def generate_script():
     script_data = json.loads(response.choices[0].message.content)
     print(f"📌 Title: {script_data['title']}")
     
-    # 2. Fix spelling errors in the text before rendering
     for scene in script_data["scenes"]:
         scene["narration"] = scene["narration"].replace("blocks fruits", "Blox Fruits").replace("Bloxs Fruits", "Blox Fruits")
     
-    # 3. Save the memory for tomorrow (if it was a Blox Fruits episode)
     if game_choice == "Blox Fruits" and "summary" in script_data:
         print(f"💾 Saving Story Memory for Tomorrow: {script_data['summary']}")
         with open("story_memory.txt", "w") as f:
@@ -106,43 +102,73 @@ def generate_script():
 # 3. AI IMAGE DOWNLOADER
 # ==========================================
 def download_ai_image(prompt, output_file):
-    # Added vertical aspect ratio directly to the Pollinations URL
     encoded_prompt = urllib.parse.quote(f"{prompt}, 3d roblox gaming art style, high quality")
     url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1080&height=1920&nologo=true"
     
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-
+    headers = {"User-Agent": "Mozilla/5.0"}
     attempt = 1
     while True:
         try:
             print(f"   ↳ Fetching image... (Attempt {attempt})")
             response = requests.get(url, headers=headers, timeout=30)
             response.raise_for_status() 
-            
             with open(output_file, "wb") as f:
                 f.write(response.content)
-            
-            print("   ✅ Image downloaded successfully! Proceeding...")
+            print("   ✅ Image downloaded successfully!")
             break  
-            
         except Exception as e:
-            print(f"   ⚠️ Connection error: {e}")
-            print("   ⏳ Task incomplete. Waiting 10 seconds before retrying...")
+            print(f"   ⚠️ Connection error: {e}, retrying...")
             time.sleep(10)
             attempt += 1
 
 # ==========================================
-# 4. AUDIO GENERATION
+# 4. AUDIO GENERATION & BACKGROUND MUSIC
 # ==========================================
 async def generate_audio(text, output_file):
-    print(f"   ↳ Generating voiceover...")
     communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural", rate="+10%")
     await communicate.save(output_file)
 
+def add_background_music(voiceover_path, output_audio_path):
+    print("🎵 Adding random background music...")
+    
+    # List of royalty-free, copyright-safe gaming background tracks (direct URLs)
+    background_tracks = [
+        "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf756.mp3?filename=cyberpunk-2099-107016.mp3",
+        "https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=action-sport-rock-trailer-straight-to-the-top-10486.mp3",
+        "https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c2a737f8.mp3?filename=gaming-funk-10469.mp3"
+    ]
+    
+    selected_track_url = random.choice(background_tracks)
+    music_file = "temp_music.mp3"
+    
+    try:
+        # Download the random music track
+        res = requests.get(selected_track_url, timeout=20)
+        with open(music_file, "wb") as f:
+            f.write(res.content)
+            
+        # Load audio clips
+        tts_clip = AudioFileClip(voiceover_path)
+        music_clip = AudioFileClip(music_file).fx(volumex, 0.1) # 10% volume so voice is clear
+        
+        # Loop music to match video length and trim
+        music_clip = audio_loop(music_clip, duration=tts_clip.duration)
+        
+        # Mix background music and voiceover together
+        final_audio = CompositeAudioClip([music_clip, tts_clip])
+        final_audio.write_audiofile(output_audio_path, fps=44100, logger=None)
+        
+        tts_clip.close()
+        music_clip.close()
+        print("✅ Background music successfully mixed!")
+        
+    except Exception as e:
+        print(f"⚠️ Failed to add background music ({e}), using voiceover only.")
+        # Fallback to just the voiceover if download fails
+        os.rename(voiceover_path, output_audio_path)
+
 # ==========================================
-# 5. VIDEO ASSEMBLY (WITH 9:16 CROP FIX)
+# 5. VIDEO ASSEMBLY
 # ==========================================
 def assemble_video(script_data, output_filename="final_short.mp4"):
     print("🎬 Assembling video scenes...")
@@ -152,15 +178,17 @@ def assemble_video(script_data, output_filename="final_short.mp4"):
         print(f"🎥 Processing Scene {i+1}/{len(script_data['scenes'])}...")
         
         image_file = f"scene_{i}.jpg"
-        audio_file = f"scene_{i}.mp3"
+        raw_audio_file = f"raw_audio_{i}.mp3"
+        final_audio_file = f"scene_{i}.mp3"
         
         download_ai_image(scene["image_prompt"], image_file)
-        asyncio.run(generate_audio(scene["narration"], audio_file))
+        asyncio.run(generate_audio(scene["narration"], raw_audio_file))
         
-        audio_clip = AudioFileClip(audio_file)
+        # Add background music to this scene's voiceover
+        add_background_music(raw_audio_file, final_audio_file)
         
-        # EXACT 9:16 CROP FIX
-        # Resize height to 1920, then crop width to 1080 from the exact center
+        audio_clip = AudioFileClip(final_audio_file)
+        
         image_clip = (ImageClip(image_file)
                       .resize(height=1920)
                       .crop(x_center=1080/2, width=1080)
@@ -192,7 +220,7 @@ def upload_to_youtube(video_path, title, game_choice):
     print(f"🚀 Authenticating YouTube API...")
     
     if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN]):
-        raise ValueError("Missing YouTube OAuth secrets in GitHub Environment! Cannot upload.")
+        raise ValueError("Missing YouTube OAuth secrets!")
 
     try:
         creds = Credentials(
@@ -204,14 +232,13 @@ def upload_to_youtube(video_path, title, game_choice):
         )
         youtube = build("youtube", "v3", credentials=creds)
 
-        # Dynamic Tags based on the game
         tags = ["Roblox", "Shorts", "Gaming", "RobloxEdit"]
         if game_choice == "Blox Fruits":
             tags.extend(["BloxFruits", "BloxFruitsStory"])
         else:
             tags.extend(["Brookhaven", "BrookhavenRP"])
 
-        description = f"{title}\n\nWhat do you think of this? Let me know in the comments!\n\n#{tags[4]} #Roblox #RobloxShorts #Gaming"
+        description = f"{title}\n\nWhat do you think? Let me know in the comments!\n\n#Roblox #RobloxShorts #Gaming"
         safe_title = f"{title} #Shorts"[:100]
 
         body = {
@@ -230,19 +257,12 @@ def upload_to_youtube(video_path, title, game_choice):
         print(f"📡 Uploading '{safe_title}' to YouTube...")
         media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype="video/mp4")
         
-        request = youtube.videos().insert(
-            part="snippet,status",
-            body=body,
-            media_body=media
-        )
-        
+        request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
         response = request.execute()
-        print(f"🎉 Upload successful! Video ID: {response.get('id')}")
-        print(f"🔗 Link: https://youtube.com/shorts/{response.get('id')}")
+        print(f"🎉 Upload successful! Link: https://youtube.com/shorts/{response.get('id')}")
 
     except HttpError as e:
         print(f"❌ YouTube API Error: {e.resp.status}")
-        print(e.content.decode('utf-8'))
         raise e  
     except Exception as e:
         print(f"❌ Upload Failed: {e}")
@@ -253,15 +273,9 @@ def upload_to_youtube(video_path, title, game_choice):
 # ==========================================
 if __name__ == "__main__":
     try:
-        # Step A: Generate Script & Determine Game
         script, game_choice = generate_script()
-        
-        # Step B: Render Video
         assemble_video(script, output_filename="roblox_short.mp4")
-        
-        # Step C: Upload to YouTube
         upload_to_youtube("roblox_short.mp4", script["title"], game_choice)
-        
     except Exception as e:
         print(f"❌ Pipeline failed: {e}")
         exit(1)
