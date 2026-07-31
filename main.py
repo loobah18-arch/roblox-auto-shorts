@@ -17,6 +17,7 @@ from googleapiclient.http import MediaFileUpload
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 def generate_script_and_scenes():
+    """Uses Gemini to pick a top Roblox game and write a 5-scene story, with model fallbacks and retry handling for rate limits."""
     prompt = """
     Randomly select ONE popular game from this list of top Roblox games:
     - Brookhaven RP
@@ -42,22 +43,31 @@ def generate_script_and_scenes():
       ]
     }
     """
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(response_mime_type="application/json")
-            )
-            return json.loads(response.text)
-        except Exception as e:
-            if "429" in str(e) and attempt < max_retries - 1:
-                wait_time = (attempt + 1) * 15
-                print(f"⚠️ Rate limit hit. Pausing for {wait_time}s...")
-                time.sleep(wait_time)
-            else:
-                raise e
+    
+    # Primary and fallback models
+    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash"]
+    
+    for model_name in models_to_try:
+        print(f"🤖 Attempting script generation with model: {model_name}...")
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(response_mime_type="application/json")
+                )
+                return json.loads(response.text)
+            except Exception as e:
+                error_msg = str(e)
+                if ("429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg) and attempt < 2:
+                    wait_time = (attempt + 1) * 10
+                    print(f"⚠️ Rate limit on {model_name}. Pausing for {wait_time}s before retry {attempt + 2}/3...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"⚠️ Switching from {model_name} to fallback model...")
+                    break
+                    
+    raise RuntimeError("Exhausted all Gemini models and retry limits. Please try re-running the workflow in a few minutes.")
 
 # 2. Audio Generator
 async def generate_voiceover(text, filename):
@@ -76,12 +86,13 @@ def download_ai_image(prompt, output_file):
     else:
         raise Exception(f"Failed image fetch with status: {response.status_code}")
 
-# 4. Burn Subtitles onto Image (Pillow-based, crash-proof)
+# 4. Burn Subtitles onto Image (Pillow-based, crash-proof on GitHub Actions)
 def add_subtitles_to_image(image_path, text, output_path):
     img = Image.open(image_path).convert("RGB")
     draw = ImageDraw.Draw(img)
     width, height = img.size
 
+    # Try loading Linux system DejaVu font, fallback to standard
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 50)
     except IOError:
@@ -95,12 +106,13 @@ def add_subtitles_to_image(image_path, text, output_path):
     x = (width - text_w) // 2
     y = height - text_h - 280
 
-    # Draw outline for readability
+    # Draw black outline/shadow for readability
     stroke = 4
     for adj_x in range(-stroke, stroke + 1):
         for adj_y in range(-stroke, stroke + 1):
             draw.multiline_text((x + adj_x, y + adj_y), wrapped_text, font=font, fill="black", align="center")
 
+    # Draw main yellow text
     draw.multiline_text((x, y), wrapped_text, font=font, fill="yellow", align="center")
     img.save(output_path)
 
@@ -124,15 +136,16 @@ def build_full_short(concept_data, output_filename="final_short.mp4"):
         img_clip = ImageClip(sub_image_file).set_duration(duration).set_audio(audio_clip)
         scene_clips.append(img_clip)
     
-    print("🎥 Assembling final video...")
+    print("🎥 Assembling final video clip...")
     final_video = concatenate_videoclips(scene_clips, method="compose")
     final_video.write_videofile(output_filename, fps=24, codec="libx264", audio_codec="aac")
     
+    # Cleanup memory
     final_video.close()
     for clip in scene_clips:
         clip.close()
 
-# 6. YouTube Upload
+# 6. YouTube API Upload
 def upload_to_youtube(video_path, title, description):
     client_id = os.environ.get("YOUTUBE_CLIENT_ID") or os.environ.get("CLIENT_ID")
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET") or os.environ.get("CLIENT_SECRET")
@@ -165,7 +178,7 @@ def upload_to_youtube(video_path, title, description):
     print(f"🎉 Posted successfully! Video ID: {response.get('id')}")
 
 if __name__ == "__main__":
-    print("🤖 Gemini is writing script scenes...")
+    print("🤖 Gemini is selecting a popular Roblox game and writing story scenes...")
     concept = generate_script_and_scenes()
     print(f"📌 Game Selected: {concept.get('game_chosen')}")
     print(f"📌 Title: {concept['title']}")
