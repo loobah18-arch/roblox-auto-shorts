@@ -8,6 +8,12 @@ from groq import Groq
 import edge_tts
 from moviepy.editor import ImageClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
 
+# Google API Imports for YouTube Upload
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from googleapiclient.errors import HttpError
+
 # ==========================================
 # 1. ENVIRONMENT & CONFIGURATION
 # ==========================================
@@ -97,15 +103,12 @@ def assemble_video(script_data, output_filename="final_short.mp4"):
         image_file = f"scene_{i}.jpg"
         audio_file = f"scene_{i}.mp3"
         
-        # 1. Download Media (Blocks until success)
         download_ai_image(scene["image_prompt"], image_file)
         asyncio.run(generate_audio(scene["narration"], audio_file))
         
-        # 2. Load into MoviePy
         audio_clip = AudioFileClip(audio_file)
         image_clip = ImageClip(image_file).set_duration(audio_clip.duration)
         
-        # 3. Add Subtitles (TextOverlay)
         txt_clip = TextClip(
             scene["narration"], 
             fontsize=70, 
@@ -117,7 +120,6 @@ def assemble_video(script_data, output_filename="final_short.mp4"):
             size=(900, None)
         ).set_position('center').set_duration(audio_clip.duration)
         
-        # 4. Combine Video & Audio
         video_clip = CompositeVideoClip([image_clip, txt_clip]).set_audio(audio_clip)
         clips.append(video_clip)
         
@@ -127,13 +129,65 @@ def assemble_video(script_data, output_filename="final_short.mp4"):
     print("✅ Video rendered successfully!")
 
 # ==========================================
-# 6. YOUTUBE UPLOAD (PLACEHOLDER)
+# 6. YOUTUBE UPLOAD
 # ==========================================
-def upload_to_youtube(video_file, title):
-    print(f"🚀 Initiating YouTube upload for: {title}")
-    # Add your google-api-python-client logic here using CLIENT_ID, CLIENT_SECRET, and REFRESH_TOKEN
-    # Since OAuth is configured via GitHub Secrets, you will use google.oauth2.credentials to authenticate headless.
-    print("✅ Upload script completed.")
+def upload_to_youtube(video_path, title):
+    print(f"🚀 Authenticating YouTube API...")
+    
+    # Check if we have the necessary secrets
+    if not all([CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN]):
+        raise ValueError("Missing YouTube OAuth secrets in GitHub Environment! Cannot upload.")
+
+    try:
+        # 1. Authenticate using the refresh token stored in GitHub Secrets
+        creds = Credentials(
+            token=None,
+            refresh_token=REFRESH_TOKEN,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET
+        )
+        youtube = build("youtube", "v3", credentials=creds)
+
+        # 2. Prepare the video metadata for YouTube Shorts
+        description = f"{title}\n\nWhat do you think of this Roblox trick? Let me know in the comments!\n\n#Roblox #RobloxShorts #Gaming #BloxFruits #Brookhaven"
+        # Truncate title to YouTube's 100 character limit just in case
+        safe_title = f"{title} #Shorts"[:100]
+
+        body = {
+            "snippet": {
+                "title": safe_title,
+                "description": description,
+                "tags": ["Roblox", "Shorts", "Gaming", "Blox Fruits", "Brookhaven"],
+                "categoryId": "20" # 20 is the Gaming category ID
+            },
+            "status": {
+                "privacyStatus": "public", # Change to "private" if you want to review before going live
+                "selfDeclaredMadeForKids": False
+            }
+        }
+
+        print(f"📡 Uploading '{safe_title}' to YouTube...")
+        media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype="video/mp4")
+        
+        request = youtube.videos().insert(
+            part="snippet,status",
+            body=body,
+            media_body=media
+        )
+        
+        # Execute the upload request
+        response = request.execute()
+        print(f"🎉 Upload successful! Video ID: {response.get('id')}")
+        print(f"🔗 Link: https://youtube.com/shorts/{response.get('id')}")
+
+    except HttpError as e:
+        print(f"❌ YouTube API Error: {e.resp.status}")
+        print(e.content.decode('utf-8'))
+        raise e  # Force the pipeline to crash so GitHub shows a red X
+    except Exception as e:
+        print(f"❌ Upload Failed: {e}")
+        raise e
 
 # ==========================================
 # MAIN EXECUTION
