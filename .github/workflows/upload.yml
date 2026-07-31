@@ -9,6 +9,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
+    # Required to allow GitHub Actions to push the story_memory.txt file back to the repo
+    permissions:
+      contents: write 
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -41,3 +45,16 @@ jobs:
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
         run: |
           python main.py
+
+      - name: Save Story Memory
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # We check if the file exists to prevent errors if Brookhaven was chosen (since no file is created)
+          if [ -f story_memory.txt ]; then
+            git add story_memory.txt
+            git commit -m "Update Blox Fruits story memory" || echo "No changes to commit"
+            git push
+          else
+            echo "No story_memory.txt found. Skipping commit."
+          fi
