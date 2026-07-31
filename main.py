@@ -5,18 +5,13 @@ import time
 import urllib.parse
 import requests
 import edge_tts
-from google import genai
-from google.genai import types
 from moviepy.editor import ImageClip, CompositeVideoClip, AudioFileClip, TextClip, concatenate_videoclips
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# 1. Initialize Gemini API Client
-client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-
 def get_backup_script():
-    """Fallback script to guarantee video generation even if AI quotas are exhausted."""
+    """Fallback script to guarantee video generation even if AI services are down."""
     return {
         "game_chosen": "Brookhaven RP",
         "title": "Secret Bunker Location in Brookhaven! 😱 #Shorts #Roblox",
@@ -46,8 +41,7 @@ def get_backup_script():
     }
 
 def generate_script_and_scenes():
-    """Uses Gemini as the Director to pick a top Roblox game and write a 5-scene story,
-    with active model fallbacks and built-in rate-limit retries."""
+    """Uses Groq API (or keyless Pollinations AI as fallback) to pick a Roblox game and generate a script."""
     prompt = """
     Randomly select ONE popular game from this list of top Roblox games:
     - Brookhaven RP
@@ -88,38 +82,49 @@ def generate_script_and_scenes():
       ]
     }
     """
-    
-    # Active supported model endpoints
-    models_to_try = [
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-3.5-flash-lite"
-    ]
-    
-    for model_name in models_to_try:
-        max_retries = 2
-        for attempt in range(max_retries):
-            try:
-                print(f"🤖 Requesting script from {model_name}...")
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json"
-                    )
-                )
-                return json.loads(response.text)
-            except Exception as e:
-                err_str = str(e)
-                if ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str) and attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 15
-                    print(f"⚠️ Quota hit on {model_name}. Retrying in {wait_time}s...")
-                    time.sleep(wait_time)
-                else:
-                    print(f"⚠️ Error on {model_name}: {e}")
-                    break  # Fall back to next model
 
-    print("⚠️ Gemini API daily quota exhausted across all models. Switching to local backup script!")
+    # 1. Primary Attempt: Groq API (Free, high quota, ultra-fast)
+    groq_api_key = os.environ.get("GROQ_API_KEY")
+    if groq_api_key:
+        print("🤖 Requesting script from Groq API (Llama 3.3)...")
+        groq_url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {groq_api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"}
+        }
+        
+        try:
+            res = requests.post(groq_url, headers=headers, json=payload, timeout=20)
+            if res.status_code == 200:
+                content = res.json()["choices"][0]["message"]["content"]
+                return json.loads(content)
+            else:
+                print(f"⚠️ Groq API Error ({res.status_code}): {res.text}")
+        except Exception as e:
+            print(f"⚠️ Groq API request failed: {e}")
+
+    # 2. Secondary Fallback: Pollinations Text AI (100% Free, NO API KEY required)
+    print("🤖 Attempting keyless generation via Pollinations Text AI...")
+    try:
+        pollination_url = "https://text.pollinations.ai/"
+        payload = {
+            "messages": [{"role": "user", "content": prompt}],
+            "jsonMode": True,
+            "seed": int(time.time())
+        }
+        res = requests.post(pollination_url, json=payload, timeout=30)
+        if res.status_code == 200:
+            return json.loads(res.text)
+    except Exception as e:
+        print(f"⚠️ Pollinations Text AI failed: {e}")
+
+    # 3. Final Fallback: Local Script
+    print("⚠️ All AI endpoints failed or unconfigured. Using local backup script!")
     return get_backup_script()
 
 # 2. Audio Generator
@@ -205,7 +210,7 @@ def upload_to_youtube(video_path, title, description):
     print(f"🎉 Successfully posted! Video ID: {response.get('id')}")
 
 if __name__ == "__main__":
-    print("🤖 Gemini is selecting a popular Roblox game and writing story scenes...")
+    print("🤖 Selecting a Roblox game and writing story scenes...")
     concept = generate_script_and_scenes()
     print(f"📌 Game Selected: {concept.get('game_chosen', 'Popular Roblox Game')}")
     print(f"📌 Title: {concept['title']}")
