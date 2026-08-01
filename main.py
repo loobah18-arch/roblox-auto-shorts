@@ -8,6 +8,9 @@ import edge_tts
 from rembg import remove
 from moviepy.editor import ImageClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip
 
+# Groq API Import
+from groq import Groq
+
 # Google API Imports for YouTube Upload
 import google.auth.transport.requests
 import google.oauth2.credentials
@@ -17,6 +20,33 @@ from googleapiclient.http import MediaFileUpload
 # ==========================================
 # 1. API & GENERATION FUNCTIONS
 # ==========================================
+
+def generate_script_with_groq():
+    """Generates a dynamic, engaging script for a Roblox Short using Groq's 70B model."""
+    print("Generating fresh script using Groq Llama 3.3 70B...")
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise Exception("Missing GROQ_API_KEY environment variable!")
+        
+    client = Groq(api_key=api_key)
+    
+    prompt = (
+        "Write a short, high-energy YouTube Short script about Roblox Blox Fruits, "
+        "focusing on a cool tip, trick, or overpowered fruit setup. "
+        "Keep it under 60 words, punchy, engaging, and ready for a voiceover. "
+        "Do not include any speaker labels, sound effects, or camera directions, just the pure spoken text."
+    )
+    
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=150,
+        temperature=0.8
+    )
+    
+    script = response.choices[0].message.content.strip()
+    print(f"Generated Script: {script}")
+    return script
 
 def generate_image(prompt, filename, retries=3):
     """Fetches an image from Pollinations.ai with a retry loop to prevent API timeouts."""
@@ -37,7 +67,7 @@ def generate_image(prompt, filename, retries=3):
         except Exception as e:
             print(f"Attempt {attempt + 1} failed with error: {e}")
         
-        time.sleep(10) # Wait 10 seconds before retrying
+        time.sleep(10)
         
     raise Exception(f"Fatal Error: Failed to generate {filename} after {retries} attempts.")
 
@@ -84,7 +114,7 @@ def assemble_video():
     print(f"Selected background music: {random_track}")
     
     bg_music = AudioFileClip(bgm_path)
-    bg_music = bg_music.subclip(0, video_duration).volumex(0.1) # Duck volume to 10%
+    bg_music = bg_music.subclip(0, video_duration).volumex(0.1)
     
     final_audio = CompositeAudioClip([voice_clip, bg_music])
 
@@ -124,10 +154,9 @@ def assemble_video():
 def upload_to_youtube():
     print("--- Uploading to YouTube as a Short ---")
     
-    # Read credentials from GitHub environment secrets
-    client_id = os.getenv("YT_CLIENT_ID")
-    client_secret = os.getenv("YT_CLIENT_SECRET")
-    refresh_token = os.getenv("YT_REFRESH_TOKEN")
+    client_id = os.getenv("CLIENT_ID")
+    client_secret = os.getenv("CLIENT_SECRET")
+    refresh_token = os.getenv("REFRESH_TOKEN")
     
     if not client_id or not client_secret or not refresh_token:
         print("Warning: YouTube API secrets not fully configured. Skipping upload step.")
@@ -145,13 +174,13 @@ def upload_to_youtube():
     
     body = {
         "snippet": {
-            "title": "Overpowered Spirit Fruit Setup in Blox Fruits! #Shorts",
-            "description": "Watch this insane Roblox Blox Fruits setup! #Shorts #Roblox #BloxFruits",
+            "title": "Insane Blox Fruits Setup You Need to Try! #Shorts",
+            "description": "Check out this amazing Roblox Blox Fruits setup generated automatically! #Shorts #Roblox #BloxFruits",
             "tags": ["Roblox", "BloxFruits", "Shorts"],
-            "categoryId": "20" # Gaming Category
+            "categoryId": "20"
         },
         "status": {
-            "privacyStatus": "public", # Change to "private" or "unlisted" if you want to test first
+            "privacyStatus": "public",
             "selfDeclaredMadeForKids": False
         }
     }
@@ -176,25 +205,20 @@ def upload_to_youtube():
 # ==========================================
 
 def main():
-    script = "What is up guys? Today we are looking at the absolute best spirit fruit in Blox Fruits. You won't believe how overpowered this setup is."
+    script = generate_script_with_groq()
     
-    # Generate Voiceover
     asyncio.run(generate_voiceover(script, "voiceover.mp3"))
 
-    # Generate Visuals
     bg_prompt = "A cinematic Blox Fruits ocean landscape, vibrant colors, 8k resolution, vertical anime style"
     generate_image(bg_prompt, "background.jpg")
     
-    char_prompt = "Roblox noob character using best spirit fruit power, standing on a solid pure white background, 3d render"
+    char_prompt = "Roblox noob character using best fruit power, standing on a solid pure white background, 3d render"
     generate_image(char_prompt, "raw_character.jpg")
     
-    # Process Sprite
     create_transparent_sprite("raw_character.jpg", "character_sprite.png")
     
-    # Assemble final video
     assemble_video()
     
-    # Upload to YouTube automatically
     upload_to_youtube()
     
     print("Pipeline complete!")
