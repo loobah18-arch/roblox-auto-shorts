@@ -7,7 +7,7 @@ import asyncio
 import edge_tts
 import glob
 import urllib.request
-import shutil
+import re
 
 # Fix MoviePy ImageMagick path detection on GitHub Actions Ubuntu runners
 os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
@@ -20,13 +20,22 @@ import google.oauth2.credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
+def clean_env(val):
+    """Sanitizes environment variables to remove accidental markdown wrappers or brackets."""
+    if not val:
+        return ""
+    val = val.strip()
+    if val.startswith("[") and "]" in val:
+        val = val.split("]")[0].lstrip("[")
+    return val.strip("'\"")
+
 # ==========================================
 # 1. GROQ SCRIPT & DYNAMIC QUERY GENERATOR
 # ==========================================
 def generate_script_and_queries():
     """Generates the story script and custom search queries via Groq."""
     print("--- [Step 1/5] Groq Directing Script & Visual Queries ---")
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = clean_env(os.getenv("GROQ_API_KEY"))
     if not api_key:
         raise Exception("Missing GROQ_API_KEY environment variable!")
         
@@ -112,7 +121,7 @@ def fetch_dynamic_clips(queries):
             pass
             
     downloaded_clips = []
-    pexels_api_key = os.getenv("PEXELS_API_KEY")
+    pexels_api_key = clean_env(os.getenv("PEXELS_API_KEY"))
 
     for i, query in enumerate(queries):
         clip_filename = f"clip_{i+1}.mp4"
@@ -208,135 +217,4 @@ def assemble_video(script, clip_paths):
     clip_index = 0
     for i, sentence in enumerate(sentences):
         sentence_words = len(sentence.split())
-        dur = max((sentence_words / total_words) * target_duration, 1.5)
         
-        current_clip_path = clip_paths[clip_index % len(clip_paths)]
-        clip_index += 1
-        
-        try:
-            sub_clip = VideoFileClip(current_clip_path)
-            max_start = max(0, sub_clip.duration - dur)
-            start_t = random.uniform(0, max_start) if max_start > 0 else 0
-            end_t = min(start_t + dur, sub_clip.duration)
-            snippet = sub_clip.subclip(start_t, end_t).resize(height=1920)
-            if snippet.w > 1080:
-                x_center = snippet.w / 2
-                snippet = snippet.crop(x1=x_center - 540, x2=x_center + 540, y1=0, y2=1920)
-            
-            c_dur = snippet.duration
-            if i % 2 == 0:
-                snippet = snippet.resize(lambda t, d=c_dur: 1.0 + 0.12 * (t / d))
-            else:
-                snippet = snippet.resize(lambda t, d=c_dur: 1.12 - 0.12 * (t / d))
-                
-            video_segments.append(snippet)
-        except Exception:
-            fallback_bg = ColorClip(size=(1080, 1920), color=(15, 18, 30), duration=dur)
-            video_segments.append(fallback_bg)
-        
-        try:
-            txt_clip = TextClip(
-                sentence, fontsize=60, color='yellow', 
-                stroke_color='black', stroke_width=4, size=(950, None), method='caption'
-            )
-            txt_clip = txt_clip.set_start(current_time).set_duration(dur).set_position(('center', 1400))
-            caption_clips.append(txt_clip)
-        except Exception:
-            pass
-            
-        current_time += dur
-
-    final_base_video = concatenate_videoclips(video_segments)
-    
-    if final_base_video.duration > target_duration:
-        final_base_video = final_base_video.subclip(0, target_duration)
-    
-    bgm_folder = "bgm"
-    if not os.path.exists(bgm_folder):
-        os.makedirs(bgm_folder, exist_ok=True)
-    mp3_files = [f for f in os.listdir(bgm_folder) if f.endswith('.mp3')]
-    
-    if mp3_files:
-        bg_music = AudioFileClip(os.path.join(bgm_folder, random.choice(mp3_files)))
-        if bg_music.duration < target_duration:
-            bg_music = vfx.loop(bg_music, duration=target_duration)
-        else:
-            bg_music = bg_music.subclip(0, target_duration)
-        bg_music = bg_music.volumex(0.12)
-        final_audio = CompositeAudioClip([voice_clip, bg_music])
-    else:
-        final_audio = voice_clip
-        
-    final_base_video = final_base_video.set_audio(final_audio)
-    final_video = CompositeVideoClip([final_base_video] + caption_clips)
-    
-    print("Rendering final dynamic story MP4...")
-    final_video.write_videofile(
-        "final_short.mp4", fps=24, codec="libx264", 
-        audio_codec="aac", threads=2, preset="ultrafast", logger=None
-    )
-    print("Video assembly complete: final_short.mp4 created.\n")
-
-# ==========================================
-# 4. YOUTUBE UPLOAD FUNCTION
-# ==========================================
-def upload_to_youtube(script_snippet):
-    print("--- [Step 5/5] Uploading to YouTube Channel as Short ---")
-    
-    client_id = os.getenv("CLIENT_ID")
-    client_secret = os.getenv("CLIENT_SECRET")
-    refresh_token = os.getenv("REFRESH_TOKEN")
-    
-    if not client_id or not client_secret or not refresh_token:
-        print("Warning: YouTube API secrets missing. Skipping upload step.")
-        return
-
-    credentials = google.oauth2.credentials.Credentials(
-        None, refresh_token=refresh_token, token_uri="[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)",
-        client_id=client_id, client_secret=client_secret
-    )
-    
-    youtube = build("youtube", "v3", credentials=credentials)
-    title_words = script_snippet.split()[:7]
-    dynamic_title = " ".join(title_words) if title_words else "Blox Fruits Madness!"
-    
-    body = {
-        "snippet": {
-            "title": f"{dynamic_title}... #Shorts",
-            "description": f"{script_snippet}\n\n#Shorts #Roblox #BloxFruits #Gaming",
-            "tags": ["Roblox", "BloxFruits", "Shorts", "Gaming", "Gameplay"],
-            "categoryId": "20"
-        },
-        "status": {
-            "privacyStatus": "public",
-            "selfDeclaredMadeForKids": False
-        }
-    }
-    
-    media = MediaFileUpload("final_short.mp4", chunksize=-1, resumable=True)
-    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
-    
-    response = None
-    while response is None:
-        status, response = request.next_chunk()
-        if status:
-            print(f"Uploading file: {int(status.progress() * 100)}%")
-            
-    print(f"Upload Successful! Video ID: {response.get('id')}\nURL: [https://youtube.com/shorts/](https://youtube.com/shorts/){response.get('id')}")
-
-# ==========================================
-# 5. MAIN EXECUTION
-# ==========================================
-def main():
-    print("=== Starting Dual-Engine Director Pipeline ===\n")
-    
-    script, queries = generate_script_and_queries()
-    asyncio.run(generate_voiceover(script, "voiceover.mp3"))
-    clip_paths = fetch_dynamic_clips(queries)
-    assemble_video(script, clip_paths)
-    upload_to_youtube(script)
-    
-    print("=== Pipeline Complete! Short is Live. ===")
-
-if __name__ == "__main__":
-    main()
