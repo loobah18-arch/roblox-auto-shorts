@@ -26,14 +26,6 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
-      - name: Cache Rembg u2net Model
-        uses: actions/cache@v4
-        with:
-          path: ~/.u2net
-          key: u2net-model-v1
-          restore-keys: |
-            u2net-model-
-
       - name: Install System Dependencies (ImageMagick)
         run: |
           sudo apt-get update
@@ -51,6 +43,7 @@ jobs:
       - name: Run Pipeline
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
