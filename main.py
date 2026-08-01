@@ -309,7 +309,8 @@ def upload_to_youtube(script_snippet):
         # FIXED: Removed Markdown link brackets from Google OAuth token_uri
         credentials = google.oauth2.credentials.Credentials(
             None, refresh_token=refresh_token, token_uri="https://oauth2.googleapis.com/token",
-            client_id=client_id, client_secret=client_secre
+            client_id=client_id, client_secret=client_secret
+            
         )
         
         youtube = build("youtube", "v3", credentials=credentials)
