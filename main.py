@@ -116,18 +116,18 @@ def trigger_viggle_render():
     chosen_template = os.path.join(motion_dir, random.choice(templates))
     print(f"Selected Motion Template: {chosen_template}")
     
-    # AUTO-COMPRESS CHARACTER IMAGE TO PREVENT 413 ERRORS
+    # AUTO-COMPRESS CHARACTER IMAGE
     compressed_char_path = "temp_character.png"
     img = Image.open(char_path)
     img.thumbnail((720, 720))
     img.save(compressed_char_path, "PNG")
     
-    # AUTO-COMPRESS & RESIZE MOTION TEMPLATE VIDEO TO PREVENT 413 ERRORS
+    # AUTO-COMPRESS & RESIZE MOTION TEMPLATE VIDEO
     compressed_template_path = "temp_motion.mp4"
     print("Compressing motion template for API payload limits...")
     vid_clip = VideoFileClip(chosen_template)
     if vid_clip.duration > 12:
-        vid_clip = vid_clip.subclip(0, 12)  # Trim to max 12 seconds
+        vid_clip = vid_clip.subclip(0, 12)
     vid_resized = vid_clip.resize(height=720)
     vid_resized.write_videofile(
         compressed_template_path, fps=24, codec="libx264", audio_codec="aac", 
@@ -148,15 +148,22 @@ def trigger_viggle_render():
         try:
             print(f"Attempting request with RapidAPI Key slot #{idx + 1}...")
             with open(compressed_char_path, 'rb') as img_file, open(compressed_template_path, 'rb') as vid_file:
+                files = {
+                    'image_file': ('character.png', img_file, 'image/png'),
+                    'video_file': ('motion.mp4', vid_file, 'video/mp4')
+                }
                 response = requests.post(
                     MIX_ENDPOINT, 
                     headers=headers, 
-                    files={'image_file': img_file, 'video_file': vid_file}
+                    files=files
                 )
                 
                 if response.status_code == 429:
                     print(f"Key slot #{idx + 1} quota exhausted (429). Falling back to next key...")
                     continue
+                
+                if response.status_code != 200:
+                    print(f"API Error Response: {response.text}")
                     
                 response.raise_for_status()
                 data = response.json()
@@ -188,6 +195,8 @@ def trigger_viggle_render():
     print("Polling for render completion...")
     while True:
         res = requests.post(RESULT_ENDPOINT, headers=headers, json={"job_id": job_id})
+        if res.status_code != 200:
+            print(f"Polling Error Response: {res.text}")
         res.raise_for_status()
         data = res.json()
         
