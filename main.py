@@ -141,20 +141,23 @@ def trigger_viggle_render():
     working_key = None
     
     for idx, key in enumerate(available_keys):
+        # Fixed: RapidAPI requires exact uppercase header casing
         headers = {
-            "x-rapidapi-key": key,
-            "x-rapidapi-host": RAPIDAPI_HOST
+            "X-RapidAPI-Key": key,
+            "X-RapidAPI-Host": RAPIDAPI_HOST
         }
         try:
             print(f"Attempting request with RapidAPI Key slot #{idx + 1}...")
             with open(compressed_char_path, 'rb') as img_file, open(compressed_template_path, 'rb') as vid_file:
+                # Fixed: Pass file handles directly without custom tuple formatting to prevent 400 Bad Request
                 files = {
-                    'image_file': ('character.png', img_file, 'image/png'),
-                    'video_file': ('motion.mp4', vid_file, 'video/mp4')
+                    'image_file': img_file,
+                    'video_file': vid_file
                 }
                 response = requests.post(
                     MIX_ENDPOINT, 
                     headers=headers, 
+                    data={}, 
                     files=files
                 )
                 
@@ -188,8 +191,9 @@ def trigger_viggle_render():
         raise Exception("Fatal: All RapidAPI keys have exceeded their quotas or failed!")
         
     headers = {
-        "x-rapidapi-key": working_key,
-        "x-rapidapi-host": RAPIDAPI_HOST
+        "X-RapidAPI-Key": working_key,
+        "X-RapidAPI-Host": RAPIDAPI_HOST,
+        "content-type": "application/json"
     }
     
     print("Polling for render completion...")
