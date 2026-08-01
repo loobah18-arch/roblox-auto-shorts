@@ -1,176 +1,134 @@
 import os
-import re
-import asyncio
+import time
+import requests
 import urllib.parse
-import urllib.request
+import asyncio
 import edge_tts
-from groq import Groq
+from rembg import remove
 from moviepy.editor import ImageClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip
-from moviepy.audio.fx.all import volumex
 
 # ==========================================
-# 1. NARRATIVE GENERATION (Llama 3.3 70B)
+# 1. API & GENERATION FUNCTIONS
 # ==========================================
-def generate_script_and_prompt(api_key, memory_path="story_memory.txt"):
-    client = Groq(api_key=api_key)
-    
-    memory = ""
-    if os.path.exists(memory_path):
-        with open(memory_path, "r") as f:
-            memory = f.read().strip()
 
-    system_prompt = (
-        "You are a fast-paced Roblox Shorts storyteller. "
-        "Create an engaging 50-second script for a Roblox story (Blox Fruits/Brookhaven). "
-        "Output strictly in this format without additional text:\n"
-        "SCRIPT: [Your high-energy voiceover text]\n"
-        "IMAGE_PROMPT: [Visual description for AI image generator, Unreal Engine 5, cinematic lighting, 8k resolution]\n"
-        "NEW_MEMORY: [1-2 sentences summarizing this episode to remember for tomorrow]"
-    )
-    
-    user_prompt = "Write the next daily Roblox short."
-    if memory:
-        user_prompt += f" Previous episode context: {memory}"
-
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        temperature=0.7
-    )
-    
-    response_text = completion.choices[0].message.content
-    
-    script_match = re.search(r"SCRIPT:\s*(.*?)(?=\nIMAGE_PROMPT:|\nNEW_MEMORY:|$)", response_text, re.DOTALL | re.IGNORECASE)
-    prompt_match = re.search(r"IMAGE_PROMPT:\s*(.*?)(?=\nNEW_MEMORY:|$)", response_text, re.DOTALL | re.IGNORECASE)
-    memory_match = re.search(r"NEW_MEMORY:\s*(.*?)$", response_text, re.DOTALL | re.IGNORECASE)
-    
-    script_text = script_match.group(1).strip() if script_match else "Welcome back to another crazy Roblox story!"
-    image_prompt = prompt_match.group(1).strip() if prompt_match else "Roblox character in a cinematic landscape, Unreal Engine 5, 8k resolution"
-    new_memory = memory_match.group(1).strip() if memory_match else memory
-    
-    with open(memory_path, "w") as f:
-        f.write(new_memory)
-        
-    return script_text, image_prompt
-
-# ==========================================
-# 2. IMAGE GENERATION (Pollinations.ai)
-# ==========================================
-def download_image(prompt, output_file="generated_image.png"):
+def generate_image(prompt, filename, retries=3):
+    """Fetches an image from Pollinations.ai with a retry loop to prevent API timeouts."""
+    print(f"Generating: {filename}...")
     encoded_prompt = urllib.parse.quote(prompt)
     url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1080&height=1920&nologo=true"
     
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    req = urllib.request.Request(url, headers=headers)
-    
-    try:
-        with urllib.request.urlopen(req) as response, open(output_file, 'wb') as out_file:
-            out_file.write(response.read())
-        print(f"Image successfully generated and saved to {output_file}")
-    except Exception as e:
-        print(f"Error fetching image from Pollinations.ai: {e}")
-        raise e
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, timeout=30)
+            if response.status_code == 200:
+                with open(filename, 'wb') as f:
+                    f.write(response.content)
+                print(f"Success: Saved {filename}")
+                return
+            else:
+                print(f"Attempt {attempt + 1} failed. Server returned {response.status_code}.")
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed with error: {e}")
+        
+        time.sleep(10) # Wait 10 seconds before retrying
+        
+    raise Exception(f"Fatal Error: Failed to generate {filename} after {retries} attempts.")
 
-# ==========================================
-# 3. AUDIO & VOICEOVER (Edge-TTS)
-# ==========================================
-async def generate_voiceover(text, output_file="voiceover.mp3"):
+async def generate_voiceover(text, output_filename):
+    """Generates an Edge-TTS voiceover file."""
+    print("Generating voiceover...")
+    # Using ChristopherNeural (+10% speed) as requested in your stack
     communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural", rate="+10%")
-    await communicate.save(output_file)
+    await communicate.save(output_filename)
+    print("Voiceover saved successfully.")
+
+def create_transparent_sprite(input_filename, output_filename):
+    """Uses local CPU rembg to strip the background from the character."""
+    print("Stripping background from character sprite...")
+    with open(input_filename, "rb") as input_file:
+        transparent_data = remove(input_file.read())
+        
+    with open(output_filename, "wb") as out_file:
+        out_file.write(transparent_data)
+    print("Transparent sprite created.")
 
 # ==========================================
-# 4. BACKGROUND MUSIC (Auto-Fetch)
+# 2. VIDEO ASSEMBLY FUNCTION
 # ==========================================
-def fetch_background_music(output_file="background_music.mp3"):
-    """Downloads a royalty-free track automatically if missing."""
-    if os.path.exists(output_file):
-        print(f"'{output_file}' already exists. Skipping download.")
-        return
 
-    print("Fetching royalty-free background music...")
-    # Direct raw URL to a copyright-free electronic track ("Dawn" by Skylike)
-    bgm_url = "https://raw.githubusercontent.com/himalayasingh/music-player-1/master/music/2.mp3"
+def assemble_video():
+    """Builds the 2D puppetry, voiceover, and background music."""
+    print("--- Assembling 2D Puppetry Video ---")
     
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    req = urllib.request.Request(bgm_url, headers=headers)
+    # 1. Load Audio
+    voice_clip = AudioFileClip("voiceover.mp3")
+    video_duration = voice_clip.duration
     
-    try:
-        with urllib.request.urlopen(req) as response, open(output_file, 'wb') as out_file:
-            out_file.write(response.read())
-        print("Background music successfully downloaded!")
-    except Exception as e:
-        print(f"Error fetching background music: {e}")
+    # Load background music and loop/trim it to match voiceover length
+    if not os.path.exists("background_music.mp3"):
+        raise Exception("Missing 'background_music.mp3' in your repository root!")
+        
+    bg_music = AudioFileClip("background_music.mp3")
+    # If the music is shorter than the video, it needs looping. 
+    # For a simple setup, just subclip it assuming the music file is longer than the Short.
+    bg_music = bg_music.subclip(0, video_duration).volumex(0.1) # Duck volume to 10%
+    
+    final_audio = CompositeAudioClip([voice_clip, bg_music])
 
-# ==========================================
-# 5. VIDEO ASSEMBLY (Ken Burns + Ducking)
-# ==========================================
-def assemble_video(image_path, voice_path, bgm_path, output_path="final_short.mp4"):
-    voice_clip = AudioFileClip(voice_path)
+    # 2. Load Visuals
+    background = ImageClip("background.jpg").set_duration(video_duration)
+    background = background.resize(width=1080, height=1920) 
     
-    # Match background music to voiceover duration
-    bgm_clip = AudioFileClip(bgm_path).subclip(0, voice_clip.duration)
+    character = ImageClip("character_sprite.png").set_duration(video_duration)
+    character = character.resize(width=700) 
     
-    # Duck background music volume down to 10%
-    ducked_bgm = bgm_clip.fx(volumex, 0.1)
+    # 3. Animation Logic: Character slides right and bounces up slightly
+    def animate_character(t):
+        x_position = 100 + (t * 30)       
+        y_position = 1000 - (t * 20)      
+        return (x_position, y_position)
+        
+    animated_character = character.set_position(animate_character)
+
+    # 4. Composite and Render
+    final_video = CompositeVideoClip([background, animated_character])
+    final_video = final_video.set_audio(final_audio)
     
-    # Composite voiceover and ducked background audio
-    final_audio = CompositeAudioClip([ducked_bgm, voice_clip])
-    duration = voice_clip.duration
-    
-    base_clip = ImageClip(image_path).resize(width=1080)
-    
-    # Zoom expands by 2% per second
-    moving_clip = (
-        base_clip
-        .resize(lambda t: 1 + 0.02 * t)
-        .set_position(('center', 'center'))
-        .set_duration(duration)
-    )
-    
-    final_video = CompositeVideoClip(
-        [moving_clip], 
-        size=(1080, 1920)
-    ).set_audio(final_audio)
-    
+    print("Rendering final MP4 on CPU...")
+    # Safe rendering settings for GitHub Actions
     final_video.write_videofile(
-        output_path, 
+        "final_short.mp4", 
         fps=24, 
         codec="libx264", 
         audio_codec="aac",
-        preset="ultrafast",
-        threads=4
+        threads=2, 
+        preset="ultrafast" 
     )
 
 # ==========================================
-# 6. MAIN PIPELINE EXECUTION
+# 3. MAIN EXECUTION
 # ==========================================
+
 def main():
-    GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-    if not GROQ_API_KEY:
-        print("Error: GROQ_API_KEY environment variable is not set.")
-        return
-        
-    print("--- STEP 1: Generating Script & Prompts (Llama 3.3 70B) ---")
-    script, image_prompt = generate_script_and_prompt(GROQ_API_KEY)
+    # Example script (Replace with Groq generation in the future)
+    script = "What is up guys? Today we are looking at the absolute best spirit fruit in Blox Fruits. You won't believe how overpowered this setup is."
     
-    print("--- STEP 2: Generating Voiceover (Edge-TTS) ---")
+    # Generate Voiceover
     asyncio.run(generate_voiceover(script, "voiceover.mp3"))
+
+    # Generate Visuals
+    bg_prompt = "A cinematic Blox Fruits ocean landscape, vibrant colors, 8k resolution, vertical anime style"
+    generate_image(bg_prompt, "background.jpg")
     
-    print("--- STEP 3: Downloading Visuals (Pollinations.ai) ---")
-    download_image(image_prompt, "generated_image.png")
+    char_prompt = "Roblox noob character using best spirit fruit power, standing on a solid pure white background, 3d render"
+    generate_image(char_prompt, "raw_character.jpg")
     
-    print("--- STEP 4: Fetching Audio (Royalty-Free BGM) ---")
-    fetch_background_music("background_music.mp3")
+    # Process Sprite
+    create_transparent_sprite("raw_character.jpg", "character_sprite.png")
     
-    print("--- STEP 5: Assembling Final Video (MoviePy Engine) ---")
-    if os.path.exists("background_music.mp3"):
-        assemble_video("generated_image.png", "voiceover.mp3", "background_music.mp3", "final_short.mp4")
-        print("Pipeline Complete! 'final_short.mp4' is ready for upload.")
-    else:
-        print("Warning: 'background_music.mp3' not found and download failed. Assembly skipped.")
+    # Assemble final video
+    assemble_video()
+    print("Pipeline complete! Video saved as final_short.mp4")
 
 if __name__ == "__main__":
     main()
