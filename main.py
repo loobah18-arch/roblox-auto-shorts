@@ -14,7 +14,6 @@ from moviepy.audio.fx.all import volumex
 def generate_script_and_prompt(api_key, memory_path="story_memory.txt"):
     client = Groq(api_key=api_key)
     
-    # Load previous episode memory for narrative continuity
     memory = ""
     if os.path.exists(memory_path):
         with open(memory_path, "r") as f:
@@ -44,7 +43,6 @@ def generate_script_and_prompt(api_key, memory_path="story_memory.txt"):
     
     response_text = completion.choices[0].message.content
     
-    # Regex parsing to extract structural elements cleanly
     script_match = re.search(r"SCRIPT:\s*(.*?)(?=\nIMAGE_PROMPT:|\nNEW_MEMORY:|$)", response_text, re.DOTALL | re.IGNORECASE)
     prompt_match = re.search(r"IMAGE_PROMPT:\s*(.*?)(?=\nNEW_MEMORY:|$)", response_text, re.DOTALL | re.IGNORECASE)
     memory_match = re.search(r"NEW_MEMORY:\s*(.*?)$", response_text, re.DOTALL | re.IGNORECASE)
@@ -53,7 +51,6 @@ def generate_script_and_prompt(api_key, memory_path="story_memory.txt"):
     image_prompt = prompt_match.group(1).strip() if prompt_match else "Roblox character in a cinematic landscape, Unreal Engine 5, 8k resolution"
     new_memory = memory_match.group(1).strip() if memory_match else memory
     
-    # Save updated memory for the next workflow run
     with open(memory_path, "w") as f:
         f.write(new_memory)
         
@@ -78,15 +75,37 @@ def download_image(prompt, output_file="generated_image.png"):
         raise e
 
 # ==========================================
-# 3. AUDIO & VOICEOVER (Edge-TTS Masking)
+# 3. AUDIO & VOICEOVER (Edge-TTS)
 # ==========================================
 async def generate_voiceover(text, output_file="voiceover.mp3"):
-    # rate="+10%" increases speed for high-energy commentator masking
     communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural", rate="+10%")
     await communicate.save(output_file)
 
 # ==========================================
-# 4. VIDEO ASSEMBLY (Ken Burns + Ducking)
+# 4. BACKGROUND MUSIC (Auto-Fetch)
+# ==========================================
+def fetch_background_music(output_file="background_music.mp3"):
+    """Downloads a royalty-free track automatically if missing."""
+    if os.path.exists(output_file):
+        print(f"'{output_file}' already exists. Skipping download.")
+        return
+
+    print("Fetching royalty-free background music...")
+    # Direct raw URL to a copyright-free electronic track ("Dawn" by Skylike)
+    bgm_url = "https://raw.githubusercontent.com/himalayasingh/music-player-1/master/music/2.mp3"
+    
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    req = urllib.request.Request(bgm_url, headers=headers)
+    
+    try:
+        with urllib.request.urlopen(req) as response, open(output_file, 'wb') as out_file:
+            out_file.write(response.read())
+        print("Background music successfully downloaded!")
+    except Exception as e:
+        print(f"Error fetching background music: {e}")
+
+# ==========================================
+# 5. VIDEO ASSEMBLY (Ken Burns + Ducking)
 # ==========================================
 def assemble_video(image_path, voice_path, bgm_path, output_path="final_short.mp4"):
     voice_clip = AudioFileClip(voice_path)
@@ -101,10 +120,9 @@ def assemble_video(image_path, voice_path, bgm_path, output_path="final_short.mp
     final_audio = CompositeAudioClip([ducked_bgm, voice_clip])
     duration = voice_clip.duration
     
-    # Load base image and fit to 1080 width
     base_clip = ImageClip(image_path).resize(width=1080)
     
-    # Dynamic Ken Burns zoom: expands by 2% per second
+    # Zoom expands by 2% per second
     moving_clip = (
         base_clip
         .resize(lambda t: 1 + 0.02 * t)
@@ -112,7 +130,6 @@ def assemble_video(image_path, voice_path, bgm_path, output_path="final_short.mp
         .set_duration(duration)
     )
     
-    # Render in strict 1080x1920 vertical Shorts aspect ratio
     final_video = CompositeVideoClip(
         [moving_clip], 
         size=(1080, 1920)
@@ -128,7 +145,7 @@ def assemble_video(image_path, voice_path, bgm_path, output_path="final_short.mp
     )
 
 # ==========================================
-# 5. MAIN PIPELINE EXECUTION
+# 6. MAIN PIPELINE EXECUTION
 # ==========================================
 def main():
     GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
@@ -138,8 +155,6 @@ def main():
         
     print("--- STEP 1: Generating Script & Prompts (Llama 3.3 70B) ---")
     script, image_prompt = generate_script_and_prompt(GROQ_API_KEY)
-    print(f"Generated Script:\n{script}\n")
-    print(f"Generated Image Prompt:\n{image_prompt}\n")
     
     print("--- STEP 2: Generating Voiceover (Edge-TTS) ---")
     asyncio.run(generate_voiceover(script, "voiceover.mp3"))
@@ -147,13 +162,15 @@ def main():
     print("--- STEP 3: Downloading Visuals (Pollinations.ai) ---")
     download_image(image_prompt, "generated_image.png")
     
-    print("--- STEP 4: Assembling Final Video (MoviePy Engine) ---")
-    # Ensure 'background_music.mp3' is placed in your repository root directory
+    print("--- STEP 4: Fetching Audio (Royalty-Free BGM) ---")
+    fetch_background_music("background_music.mp3")
+    
+    print("--- STEP 5: Assembling Final Video (MoviePy Engine) ---")
     if os.path.exists("background_music.mp3"):
         assemble_video("generated_image.png", "voiceover.mp3", "background_music.mp3", "final_short.mp4")
         print("Pipeline Complete! 'final_short.mp4' is ready for upload.")
     else:
-        print("Warning: 'background_music.mp3' not found in repo root. Assembly skipped.")
+        print("Warning: 'background_music.mp3' not found and download failed. Assembly skipped.")
 
 if __name__ == "__main__":
     main()
