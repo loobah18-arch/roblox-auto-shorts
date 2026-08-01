@@ -29,25 +29,45 @@ def clean_env(val):
         val = val.split("]")[0].lstrip("[")
     return val.strip("'\"")
 
+def get_safe_url(service_type):
+    """Builds URLs safely at runtime using character lists to bypass parser injection."""
+    if service_type == "pexels":
+        return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'a', 'p', 'i', '.', 'p', 'e', 'x', 'e', 'l', 's', '.', 'c', 'o', 'm', '/', 'v', 'i', 'd', 'e', 'o', 's', '/', 's', 'e', 'a', 'r', 'c', 'h', '?', 'q', 'u', 'e', 'r', 'y', '='])
+    elif service_type == "google_token":
+        return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'o', 'u', 't', 'h', '2', '.', 'g', 'o', 'o', 'g', 'l', 'e', 'a', 'p', 'i', 's', '.', 'c', 'o', 'm', '/', 't', 'o', 'k', 'e', 'n'])
+    elif service_type == "youtube_short":
+        return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'y', 'o', 'u', 't', 'u', 'b', 'e', '.', 'c', 'o', 'm', '/', 's', 'h', 'o', 'r', 't', 's', '/'])
+    return ""
+
 # ==========================================
-# 1. GROQ SCRIPT & DYNAMIC QUERY GENERATOR
+# 1. GROQ SCRIPT, QUERIES & CHARACTER MEMORY
 # ==========================================
 def generate_script_and_queries():
-    """Generates the story script and custom search queries via Groq."""
-    print("--- [Step 1/5] Groq Directing Script & Visual Queries ---")
+    """Generates the story script, search queries, and maintains character continuity via Groq."""
+    print("--- [Step 1/5] Groq Directing Script, Queries, and Character Memory ---")
     api_key = clean_env(os.getenv("GROQ_API_KEY"))
     if not api_key:
         raise Exception("Missing GROQ_API_KEY environment variable!")
         
     client = Groq(api_key=api_key)
-    history_file = "story_memory.txt"
-    previous_context = "This is Episode 1 of the saga. Start with a massive, mind-breaking hook about Roblox Blox Fruits."
     
+    history_file = "story_memory.txt"
+    bible_file = "character_bible.json"
+    
+    previous_context = "This is Episode 1 of the saga. Start with a massive, mind-breaking hook about Roblox Blox Fruits."
+    character_context = "{}"
+
     if os.path.exists(history_file):
         with open(history_file, "r") as f:
             content = f.read().strip()
             if content:
                 previous_context = content
+                
+    if os.path.exists(bible_file):
+        with open(bible_file, "r") as f:
+            bible_content = f.read().strip()
+            if bible_content:
+                character_context = bible_content
 
     prompt = f"""
     You are an unhinged, viral AI director creating an infinite, serialized epic saga about Roblox Blox Fruits for YouTube Shorts.
@@ -55,27 +75,34 @@ def generate_script_and_queries():
     PREVIOUS EPISODE CONTEXT:
     {previous_context}
     
+    CURRENT CHARACTER BIBLE (Features, Clothes, Personality):
+    {character_context}
+    
     YOUR TASK:
-    1. Write the NEXT immediate part of this story (between 130 and 150 words). Absurd, catchy, meme energy, ending on a cliffhanger.
-    2. Generate exactly 5 distinct, high-energy search queries to find vertical gameplay clips that visually match the action happening in this specific story segment.
+    1. Write the NEXT immediate part of this story (between 130 and 150 words). Absurd, catchy, meme energy, ending on a cliffhanger. Use the Character Bible to keep descriptions consistent!
+    2. Generate exactly 5 distinct, high-energy search queries to find vertical gameplay or aesthetic motion clips that visually match the action.
+    3. UPDATE THE CHARACTER BIBLE! If a character changes clothes, gets a scar, etc., update their traits. Otherwise, carry current traits forward.
     
     You MUST output your response strictly as a JSON object with this exact structure, with no markdown formatting around it (no ```json):
     {{
       "script": "The full story text here...",
       "queries": [
-        "query 1 matching early part of story",
-        "query 2 matching middle part",
-        "query 3 matching climax",
-        "query 4 matching twist",
-        "query 5 matching ending cliffhanger"
-      ]
+        "query 1", "query 2", "query 3", "query 4", "query 5"
+      ],
+      "character_bible": {{
+        "CharacterName1": {{
+          "facial_features": "Description of face...",
+          "clothes": "Current outfit...",
+          "personality": "Core traits..."
+        }}
+      }}
     }}
     """
     
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=500,
+        max_tokens=800,
         temperature=0.9
     )
     
@@ -90,12 +117,18 @@ def generate_script_and_queries():
     data = json.loads(raw_response)
     script = data["script"]
     queries = data["queries"]
+    updated_bible = data.get("character_bible", {})
     
     with open(history_file, "w") as f:
         f.write(script)
         
+    with open(bible_file, "w") as f:
+        json.dump(updated_bible, f, indent=4)
+        
     print(f"Generated Script:\n{script}\n")
     print(f"Generated Dynamic Queries: {queries}\n")
+    print(f"Updated Character Bible: {json.dumps(updated_bible, indent=2)}\n")
+    
     return script, queries
 
 async def generate_voiceover(text, output_filename):
@@ -133,7 +166,7 @@ def fetch_dynamic_clips(queries):
         cmd = [
             "yt-dlp",
             f"ytsearch1:{query} roblox shorts",
-            "--extractor-args", "youtube:player_client=android",
+            "--extractor-args", "youtube:player_client=ios,web,android",
             "-f", "best[ext=mp4]/best",
             "-o", output_path,
             "--max-downloads", "1",
@@ -153,31 +186,36 @@ def fetch_dynamic_clips(queries):
             
         # --- Engine 2: Pexels API Fallback ---
         if not success and pexels_api_key:
-            print(f"yt-dlp blocked. Falling back to Pexels API for query: {query}")
+            print(f"yt-dlp blocked. Falling back to Pexels API for clip {i+1}...")
             try:
                 headers = {"Authorization": pexels_api_key}
                 clean_query = "gaming action motion background" if "roblox" in query.lower() or "blox" in query.lower() else query
                 
-                # 100% Parser-Proof URL Construction
-                url_scheme = "https"
-                url_domain = "api.pexels.com"
-                pexels_url = f"{url_scheme}://{url_domain}/videos/search?query={requests.utils.quote(clean_query)}&per_page=1&orientation=portrait"
+                base_url = get_safe_url("pexels")
+                pexels_url = f"{base_url}{requests.utils.quote(clean_query)}&per_page=5&orientation=portrait"
                 
                 response = requests.get(pexels_url, headers=headers, timeout=15)
+                
+                if response.status_code == 401:
+                    print("🚨 PEXELS ERROR: Your PEXELS_API_KEY is invalid or not set in GitHub Secrets!")
+                
                 data = response.json()
                 videos = data.get("videos", [])
                 if videos:
-                    video_files = videos[0].get("video_files", [])
+                    selected_video = random.choice(videos)
+                    video_files = selected_video.get("video_files", [])
+                    
                     download_url = None
                     for vf in video_files:
                         if vf.get("file_type") == "video/mp4":
                             download_url = vf.get("link")
                             break
+                            
                     if download_url:
                         urllib.request.urlretrieve(download_url, output_path)
                         if os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
                             downloaded_clips.append(output_path)
-                            print(f"Pexels API successfully downloaded clip {i+1}")
+                            print(f"Pexels API successfully downloaded fallback clip {i+1}")
                             success = True
             except Exception as pex_err:
                 print(f"Pexels API fallback error: {pex_err}")
@@ -203,7 +241,7 @@ def assemble_video(script, clip_paths):
     voice_clip = AudioFileClip("voiceover.mp3")
     target_duration = voice_clip.duration
     
-    sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
+    sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").replace(",", ".").split(".") if s.strip() and len(s.strip()) > 1]
     total_words = sum(len(s.split()) for s in sentences) or 1
     
     if not clip_paths:
@@ -308,13 +346,10 @@ def upload_to_youtube(script_snippet):
         return
 
     try:
-        # 100% Parser-Proof URL Construction for Google Auth
-        url_scheme = "https"
-        url_domain = "oauth2.googleapis.com"
-        safe_token_uri = f"{url_scheme}://{url_domain}/token"
+        token_uri_str = get_safe_url("google_token")
         
         credentials = google.oauth2.credentials.Credentials(
-            None, refresh_token=refresh_token, token_uri=safe_token_uri,
+            None, refresh_token=refresh_token, token_uri=token_uri_str,
             client_id=client_id, client_secret=client_secret
         )
         
@@ -344,11 +379,9 @@ def upload_to_youtube(script_snippet):
             if status:
                 print(f"Uploading file: {int(status.progress() * 100)}%")
                 
-        # 100% Parser-Proof URL Construction for Output
-        yt_scheme = "https"
-        yt_domain = "youtube.com"
-        safe_youtube_url = f"{yt_scheme}://{yt_domain}/shorts/{response.get('id')}"
-        print(f"Upload Successful! Video ID: {response.get('id')}\nURL: {safe_youtube_url}")
+        base_short_url = get_safe_url("youtube_short")
+        final_video_url = f"{base_short_url}{response.get('id')}"
+        print(f"Upload Successful! Video ID: {response.get('id')}\nURL: {final_video_url}")
         
     except Exception as e:
         print(f"CRITICAL ERROR during YouTube Upload: {e}")
