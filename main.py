@@ -158,9 +158,10 @@ def fetch_dynamic_clips(queries):
                 headers = {"Authorization": pexels_api_key}
                 clean_query = "gaming action motion background" if "roblox" in query.lower() or "blox" in query.lower() else query
                 
-                # Trick the markdown parser by replacing "hxxps" with "https" at runtime
-                safe_pexels_url = f"hxxps://[api.pexels.com/videos/search?query=](https://api.pexels.com/videos/search?query=){requests.utils.quote(clean_query)}&per_page=1&orientation=portrait"
-                pexels_url = safe_pexels_url.replace("hxxps", "https")
+                # 100% Parser-Proof URL Construction
+                url_scheme = "https"
+                url_domain = "api.pexels.com"
+                pexels_url = f"{url_scheme}://{url_domain}/videos/search?query={requests.utils.quote(clean_query)}&per_page=1&orientation=portrait"
                 
                 response = requests.get(pexels_url, headers=headers, timeout=15)
                 data = response.json()
@@ -307,8 +308,10 @@ def upload_to_youtube(script_snippet):
         return
 
     try:
-        # Trick the markdown parser by replacing "hxxps" with "https" at runtime
-        safe_token_uri = "hxxps://[oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)".replace("hxxps", "https")
+        # 100% Parser-Proof URL Construction for Google Auth
+        url_scheme = "https"
+        url_domain = "oauth2.googleapis.com"
+        safe_token_uri = f"{url_scheme}://{url_domain}/token"
         
         credentials = google.oauth2.credentials.Credentials(
             None, refresh_token=refresh_token, token_uri=safe_token_uri,
@@ -341,8 +344,10 @@ def upload_to_youtube(script_snippet):
             if status:
                 print(f"Uploading file: {int(status.progress() * 100)}%")
                 
-        # Trick the markdown parser by replacing "hxxps" with "https" at runtime
-        safe_youtube_url = f"hxxps://[youtube.com/shorts/](https://youtube.com/shorts/){response.get('id')}".replace("hxxps", "https")
+        # 100% Parser-Proof URL Construction for Output
+        yt_scheme = "https"
+        yt_domain = "youtube.com"
+        safe_youtube_url = f"{yt_scheme}://{yt_domain}/shorts/{response.get('id')}"
         print(f"Upload Successful! Video ID: {response.get('id')}\nURL: {safe_youtube_url}")
         
     except Exception as e:
