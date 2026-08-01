@@ -6,6 +6,8 @@ import requests
 import asyncio
 import edge_tts
 import glob
+import urllib.request
+import shutil
 
 # Fix MoviePy ImageMagick path detection on GitHub Actions Ubuntu runners
 os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
@@ -22,7 +24,7 @@ from googleapiclient.http import MediaFileUpload
 # 1. GROQ SCRIPT & DYNAMIC QUERY GENERATOR
 # ==========================================
 def generate_script_and_queries():
-    """Generates the story script and custom yt-dlp search queries via Groq."""
+    """Generates the story script and custom search queries via Groq."""
     print("--- [Step 1/5] Groq Directing Script & Visual Queries ---")
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -46,7 +48,7 @@ def generate_script_and_queries():
     
     YOUR TASK:
     1. Write the NEXT immediate part of this story (between 130 and 150 words). Absurd, catchy, meme energy, ending on a cliffhanger.
-    2. Generate exactly 5 distinct, high-energy YouTube search queries for `yt-dlp` to find gameplay clips that visually match the action happening in this specific story segment.
+    2. Generate exactly 5 distinct, high-energy search queries to find vertical gameplay clips that visually match the action happening in this specific story segment.
     
     You MUST output your response strictly as a JSON object with this exact structure, with no markdown formatting around it (no ```json):
     {{
@@ -70,7 +72,6 @@ def generate_script_and_queries():
     
     raw_response = response.choices[0].message.content.strip()
     
-    # Clean potential markdown wrapping from response
     if raw_response.startswith("```"):
         raw_response = raw_response.split("```")[1]
         if raw_response.startswith("json"):
@@ -96,15 +97,14 @@ async def generate_voiceover(text, output_filename):
     print(f"Voiceover saved to {output_filename}\n")
 
 # ==========================================
-# 2. DYNAMIC YT-DLP CLIP FETCHING
+# 2. DUAL-ENGINE CLIP FETCHING (yt-dlp + Pexels API)
 # ==========================================
 def fetch_dynamic_clips(queries):
-    """Downloads 4-5 custom clips based on Groq's queries using yt-dlp."""
-    print("--- [Step 3/5] yt-dlp Fetching Custom Story Clips ---")
+    """Downloads clips using yt-dlp first, falling back to Pexels API if blocked."""
+    print("--- [Step 3/5] Dual-Engine Clip Fetching (yt-dlp + Pexels API) ---")
     templates_dir = "motion_templates"
     os.makedirs(templates_dir, exist_ok=True)
     
-    # Clear old clips
     for old_file in glob.glob(os.path.join(templates_dir, "*.mp4")):
         try:
             os.remove(old_file)
@@ -112,20 +112,15 @@ def fetch_dynamic_clips(queries):
             pass
             
     downloaded_clips = []
-    fallback_url = "[https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-and-numbers-31908-large.mp4](https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-and-numbers-31908-large.mp4)"
-    fallback_path = os.path.join(templates_dir, "fallback.mp4")
-    
-    try:
-        urllib.request.urlretrieve(fallback_url, fallback_path)
-    except Exception:
-        pass
+    pexels_api_key = os.getenv("PEXELS_API_KEY")
 
     for i, query in enumerate(queries):
         clip_filename = f"clip_{i+1}.mp4"
         output_path = os.path.join(templates_dir, clip_filename)
         success = False
         
-        print(f"Fetching clip {i+1} via yt-dlp -> Query: {query}")
+        # --- Engine 1: yt-dlp ---
+        print(f"Trying yt-dlp for clip {i+1} -> Query: {query}")
         cmd = [
             "yt-dlp",
             f"ytsearch1:{query} roblox shorts",
@@ -139,26 +134,54 @@ def fetch_dynamic_clips(queries):
         ]
         
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
             if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
                 downloaded_clips.append(output_path)
+                print(f"yt-dlp succeeded for clip {i+1}")
                 success = True
-                print(f"Successfully downloaded: {clip_filename}")
         except Exception as e:
-            print(f"yt-dlp notice for query '{query}': {e}")
+            print(f"yt-dlp notice: {e}")
             
-        if not success and os.path.exists(fallback_path):
-            import shutil
-            shutil.copy(fallback_path, output_path)
-            downloaded_clips.append(output_path)
-            print(f"Used motion fallback for clip {i+1}")
-            
-    if os.path.exists(fallback_path):
-        try:
-            os.remove(fallback_path)
-        except Exception:
-            pass
-            
+        # --- Engine 2: Pexels API Fallback (Bypasses YouTube Cloud Blocks) ---
+        if not success and pexels_api_key:
+            print(f"yt-dlp blocked. Falling back to Pexels API for query: {query}")
+            try:
+                headers = {"Authorization": pexels_api_key}
+                clean_query = "gaming action motion background" if "roblox" in query.lower() or "blox" in query.lower() else query
+                
+                response = requests.get(
+                    f"[https://api.pexels.com/videos/search?query=](https://api.pexels.com/videos/search?query=){requests.utils.quote(clean_query)}&per_page=1&orientation=portrait",
+                    headers=headers,
+                    timeout=15
+                )
+                data = response.json()
+                videos = data.get("videos", [])
+                if videos:
+                    video_files = videos[0].get("video_files", [])
+                    download_url = None
+                    for vf in video_files:
+                        if vf.get("file_type") == "video/mp4":
+                            download_url = vf.get("link")
+                            break
+                    if download_url:
+                        urllib.request.urlretrieve(download_url, output_path)
+                        if os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
+                            downloaded_clips.append(output_path)
+                            print(f"Pexels API successfully downloaded clip {i+1}")
+                            success = True
+            except Exception as pex_err:
+                print(f"Pexels API fallback error: {pex_err}")
+                
+        # --- Emergency Fallback ---
+        if not success:
+            print(f"Creating local motion background fallback for clip {i+1}")
+            try:
+                fb_clip = ColorClip(size=(1080, 1920), color=(15, 18, 30), duration=10)
+                fb_clip.write_videofile(output_path, fps=24, codec="libx264", audio=False, logger=None)
+                downloaded_clips.append(output_path)
+            except Exception:
+                pass
+                
     return downloaded_clips
 
 # ==========================================
@@ -173,6 +196,13 @@ def assemble_video(script, clip_paths):
     sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
     total_words = sum(len(s.split()) for s in sentences) or 1
     
+    if not clip_paths:
+        fallback_path = os.path.join("motion_templates", "emergency_fallback.mp4")
+        os.makedirs("motion_templates", exist_ok=True)
+        fb_clip = ColorClip(size=(1080, 1920), color=(15, 18, 30), duration=10)
+        fb_clip.write_videofile(fallback_path, fps=24, codec="libx264", audio=False, logger=None)
+        clip_paths = [fallback_path]
+
     video_segments = []
     caption_clips = []
     current_time = 0.0
@@ -182,7 +212,6 @@ def assemble_video(script, clip_paths):
         sentence_words = len(sentence.split())
         dur = max((sentence_words / total_words) * target_duration, 1.5)
         
-        # Cycle through the custom clips fetched by yt-dlp
         current_clip_path = clip_paths[clip_index % len(clip_paths)]
         clip_index += 1
         
@@ -196,7 +225,6 @@ def assemble_video(script, clip_paths):
                 x_center = snippet.w / 2
                 snippet = snippet.crop(x1=x_center - 540, x2=x_center + 540, y1=0, y2=1920)
             
-            # Ken Burns Dynamic Zoom Motion (kills the slideshow feel)
             c_dur = snippet.duration
             if i % 2 == 0:
                 snippet = snippet.resize(lambda t, d=c_dur: 1.0 + 0.12 * (t / d))
@@ -302,7 +330,7 @@ def upload_to_youtube(script_snippet):
 # 5. MAIN EXECUTION
 # ==========================================
 def main():
-    print("=== Starting Dynamic Director Pipeline ===\n")
+    print("=== Starting Dual-Engine Director Pipeline ===\n")
     
     script, queries = generate_script_and_queries()
     asyncio.run(generate_voiceover(script, "voiceover.mp3"))
