@@ -18,35 +18,59 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # ==========================================
-# 1. API & GENERATION FUNCTIONS
+# 1. INFINITE STORY & ASSET GENERATION
 # ==========================================
 
-def generate_script_with_groq():
-    """Generates a dynamic, engaging script for a Roblox Short using Groq's 70B model."""
-    print("Generating fresh script using Groq Llama 3.3 70B...")
+def generate_infinite_script():
+    """Generates an infinite, serialized, absurd, and catchy story script using Groq's 70B model."""
+    print("Generating next chapter of the infinite Blox Fruits saga...")
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise Exception("Missing GROQ_API_KEY environment variable!")
         
     client = Groq(api_key=api_key)
     
-    prompt = (
-        "Write a short, high-energy YouTube Short script about Roblox Blox Fruits, "
-        "focusing on a cool tip, trick, or overpowered fruit setup. "
-        "Keep it under 60 words, punchy, engaging, and ready for a voiceover. "
-        "Do not include any speaker labels, sound effects, or camera directions, just the pure spoken text."
-    )
+    # Read previous memory context if it exists
+    history_file = "story_memory.txt"
+    previous_context = "This is Episode 1 of the saga. Start with a massive, mind-blowing hook about Roblox Blox Fruits."
+    
+    if os.path.exists(history_file):
+        with open(history_file, "r") as f:
+            content = f.read().strip()
+            if content:
+                previous_context = content
+
+    prompt = f"""
+    You are an unhinged, viral AI director creating an infinite, serialized epic saga about Roblox Blox Fruits for YouTube Shorts.
+    
+    PREVIOUS EPISODE CONTEXT:
+    {previous_context}
+    
+    YOUR TASK:
+    Write the NEXT immediate part of this story. It must continue EXACTLY where the previous episode left off. 
+    
+    RULES FOR THE SCRIPT:
+    1. **Absurd & Catchy:** Include bizarre plot twists, ridiculous item/fruit combinations (e.g., fighting a Sea Beast while eating a kilo fruit underwater), and peak meme energy.
+    2. **Length & Pacing:** Keep it between 130 and 150 words so the voiceover runs for strictly over 50 seconds. Fast-paced, punchy, zero fluff.
+    3. **The Cliffhanger:** You MUST end the script on a jaw-dropping, completely absurd cliffhanger so viewers are desperate for tomorrow's part.
+    4. **Format:** Output ONLY the pure spoken text. No speaker labels, no scene directions, no sound effect tags.
+    """
     
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=150,
-        temperature=0.8
+        max_tokens=400,
+        temperature=0.9
     )
     
-    script = response.choices[0].message.content.strip()
-    print(f"Generated Script: {script}")
-    return script
+    new_script = response.choices[0].message.content.strip()
+    
+    # Save current script/context back to memory for tomorrow's run
+    with open(history_file, "w") as f:
+        f.write(new_script)
+        
+    print(f"Generated Script: {new_script}")
+    return new_script
 
 def generate_image(prompt, filename, retries=3):
     """Fetches an image from Pollinations.ai with a retry loop to prevent API timeouts."""
@@ -89,11 +113,11 @@ def create_transparent_sprite(input_filename, output_filename):
     print("Transparent sprite created.")
 
 # ==========================================
-# 2. VIDEO ASSEMBLY FUNCTION
+# 2. VIDEO ASSEMBLY FUNCTION (50+ SECONDS)
 # ==========================================
 
 def assemble_video():
-    """Builds the 2D puppetry, voiceover, and background music."""
+    """Builds the 2D puppetry, voiceover, and loops background music to match 50s+ duration."""
     print("--- Assembling 2D Puppetry Video ---")
     
     voice_clip = AudioFileClip("voiceover.mp3")
@@ -112,7 +136,14 @@ def assemble_video():
     print(f"Selected background music: {random_track}")
     
     bg_music = AudioFileClip(bgm_path)
-    bg_music = bg_music.subclip(0, video_duration).volumex(0.1)
+    
+    # Loop background music if it's shorter than the 50s+ voiceover
+    if bg_music.duration < video_duration:
+        bg_music = bg_music.loop(duration=video_duration)
+    else:
+        bg_music = bg_music.subclip(0, video_duration)
+        
+    bg_music = bg_music.volumex(0.1)
     
     final_audio = CompositeAudioClip([voice_clip, bg_music])
 
@@ -123,8 +154,8 @@ def assemble_video():
     character = character.resize(width=700) 
     
     def animate_character(t):
-        x_position = 100 + (t * 30)       
-        y_position = 1000 - (t * 20)      
+        x_position = 100 + (t * 15)       
+        y_position = 1000 - (t * 8)      
         return (x_position, y_position)
         
     animated_character = character.set_position(animate_character)
@@ -169,8 +200,8 @@ def upload_to_youtube():
     
     body = {
         "snippet": {
-            "title": "Insane Blox Fruits Setup You Need to Try! #Shorts",
-            "description": "Check out this amazing Roblox Blox Fruits setup generated automatically! #Shorts #Roblox #BloxFruits",
+            "title": "The Infinite Blox Fruits Saga! #Shorts",
+            "description": "Continuing the wild, unhinged Blox Fruits journey daily! #Shorts #Roblox #BloxFruits",
             "tags": ["Roblox", "BloxFruits", "Shorts"],
             "categoryId": "20"
         },
@@ -200,14 +231,14 @@ def upload_to_youtube():
 # ==========================================
 
 def main():
-    script = generate_script_with_groq()
+    script = generate_infinite_script()
     
     asyncio.run(generate_voiceover(script, "voiceover.mp3"))
 
-    bg_prompt = "A cinematic Blox Fruits ocean landscape, vibrant colors, 8k resolution, vertical anime style"
+    bg_prompt = "A cinematic chaotic Blox Fruits ocean landscape, vibrant colors, 8k resolution, vertical anime style"
     generate_image(bg_prompt, "background.jpg")
     
-    char_prompt = "Roblox noob character using best fruit power, standing on a solid pure white background, 3d render"
+    char_prompt = "A classic blocky Roblox noob character, low-poly 3D game model, yellow skin, blue shirt, standing on a solid pure white background"
     generate_image(char_prompt, "raw_character.jpg")
     
     create_transparent_sprite("raw_character.jpg", "character_sprite.png")
