@@ -1,5 +1,6 @@
 import os
 import time
+import random
 import requests
 import urllib.parse
 import asyncio
@@ -64,13 +65,20 @@ def assemble_video():
     voice_clip = AudioFileClip("voiceover.mp3")
     video_duration = voice_clip.duration
     
-    # Load background music and loop/trim it to match voiceover length
-    if not os.path.exists("background_music.mp3"):
-        raise Exception("Missing 'background_music.mp3' in your repository root!")
+    # Load background music randomly from your 'bgm' folder
+    bgm_folder = "bgm"
+    if not os.path.exists(bgm_folder):
+        raise Exception("Missing 'bgm' folder in your repository root!")
         
-    bg_music = AudioFileClip("background_music.mp3")
-    # If the music is shorter than the video, it needs looping. 
-    # For a simple setup, just subclip it assuming the music file is longer than the Short.
+    mp3_files = [f for f in os.listdir(bgm_folder) if f.endswith('.mp3')]
+    if not mp3_files:
+        raise Exception("No .mp3 files found inside the 'bgm' folder!")
+        
+    random_track = random.choice(mp3_files)
+    bgm_path = os.path.join(bgm_folder, random_track)
+    print(f"Selected background music: {random_track}")
+    
+    bg_music = AudioFileClip(bgm_path)
     bg_music = bg_music.subclip(0, video_duration).volumex(0.1) # Duck volume to 10%
     
     final_audio = CompositeAudioClip([voice_clip, bg_music])
