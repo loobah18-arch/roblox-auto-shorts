@@ -13,7 +13,7 @@ jobs:
     permissions:
       contents: write
 
-    # FIX 1: Increased timeout. Viggle API queues and MoviePy rendering can easily exceed 15 minutes.
+    # Generous timeout to ensure MoviePy rendering completes smoothly
     timeout-minutes: 30
 
     steps:
@@ -26,13 +26,11 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
-      # FIX 2: Added fonts-liberation. Without it, MoviePy's TextClip will crash or render squares on Ubuntu.
       - name: Install System Dependencies (FFmpeg, ImageMagick & Fonts)
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg imagemagick fonts-liberation
 
-      # FIX 3: Increased ImageMagick memory/disk limits to prevent "cache resources exhausted" errors during video assembly.
       - name: Modify ImageMagick Security Policy for MoviePy
         run: |
           sudo sed -i '/pattern="@\*"/d' /etc/ImageMagick-6/policy.xml
@@ -47,15 +45,11 @@ jobs:
       - name: Run Pipeline
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          RAPIDAPI_KEY_1: ${{ secrets.RAPIDAPI_KEY_1 }}
-          RAPIDAPI_KEY_2: ${{ secrets.RAPIDAPI_KEY_2 }}
-          RAPIDAPI_KEY_3: ${{ secrets.RAPIDAPI_KEY_3 }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
         run: python main.py
 
-      # FIX 4: Uploads the video as an artifact so you can manually download it if the YouTube API upload fails.
       - name: Upload Video Artifact
         uses: actions/upload-artifact@v4
         if: always() 
@@ -64,7 +58,6 @@ jobs:
           path: final_short.mp4
           retention-days: 3
 
-      # FIX 5: Safer git commit logic. Prevents workflow from throwing a red 'failed' badge if the story memory didn't change.
       - name: Commit and Push Story Memory
         run: |
           git config --global user.name "Story Bot"
