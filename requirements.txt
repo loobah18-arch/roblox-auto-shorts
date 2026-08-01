@@ -4,5 +4,8 @@ google-auth-oauthlib
 groq
 moviepy==1.0.3
 edge-tts
-Pillow==9.5.0
+Pillow<10.0.0
 gradio-client>=1.0.1
+requests==2.31.0
+rembg==2.0.53
+onnxruntime==1.17.1
