@@ -158,8 +158,9 @@ def fetch_dynamic_clips(queries):
                 headers = {"Authorization": pexels_api_key}
                 clean_query = "gaming action motion background" if "roblox" in query.lower() or "blox" in query.lower() else query
                 
-                # FIXED: Removed Markdown link brackets from Pexels URL
-                pexels_url = f"[https://api.pexels.com/videos/search?query=](https://api.pexels.com/videos/search?query=){requests.utils.quote(clean_query)}&per_page=1&orientation=portrait"
+                # Trick the markdown parser by replacing "hxxps" with "https" at runtime
+                safe_pexels_url = f"hxxps://[api.pexels.com/videos/search?query=](https://api.pexels.com/videos/search?query=){requests.utils.quote(clean_query)}&per_page=1&orientation=portrait"
+                pexels_url = safe_pexels_url.replace("hxxps", "https")
                 
                 response = requests.get(pexels_url, headers=headers, timeout=15)
                 data = response.json()
@@ -306,9 +307,11 @@ def upload_to_youtube(script_snippet):
         return
 
     try:
-        # FIXED: Removed Markdown link brackets from Google OAuth token_uri
+        # Trick the markdown parser by replacing "hxxps" with "https" at runtime
+        safe_token_uri = "hxxps://[oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)".replace("hxxps", "https")
+        
         credentials = google.oauth2.credentials.Credentials(
-            None, refresh_token=refresh_token, token_uri="[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)",
+            None, refresh_token=refresh_token, token_uri=safe_token_uri,
             client_id=client_id, client_secret=client_secret
         )
         
@@ -338,8 +341,10 @@ def upload_to_youtube(script_snippet):
             if status:
                 print(f"Uploading file: {int(status.progress() * 100)}%")
                 
-        # FIXED: Removed Markdown link brackets from the final print statement
-        print(f"Upload Successful! Video ID: {response.get('id')}\nURL: [https://youtube.com/shorts/](https://youtube.com/shorts/){response.get('id')}")
+        # Trick the markdown parser by replacing "hxxps" with "https" at runtime
+        safe_youtube_url = f"hxxps://[youtube.com/shorts/](https://youtube.com/shorts/){response.get('id')}".replace("hxxps", "https")
+        print(f"Upload Successful! Video ID: {response.get('id')}\nURL: {safe_youtube_url}")
+        
     except Exception as e:
         print(f"CRITICAL ERROR during YouTube Upload: {e}")
         raise e
