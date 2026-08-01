@@ -141,7 +141,6 @@ def trigger_viggle_render():
     working_key = None
     
     for idx, key in enumerate(available_keys):
-        # Fixed: RapidAPI requires exact uppercase header casing
         headers = {
             "X-RapidAPI-Key": key,
             "X-RapidAPI-Host": RAPIDAPI_HOST
@@ -149,15 +148,14 @@ def trigger_viggle_render():
         try:
             print(f"Attempting request with RapidAPI Key slot #{idx + 1}...")
             with open(compressed_char_path, 'rb') as img_file, open(compressed_template_path, 'rb') as vid_file:
-                # Fixed: Pass file handles directly without custom tuple formatting to prevent 400 Bad Request
                 files = {
-                    'image_file': img_file,
-                    'video_file': vid_file
+                    'video_file': vid_file,
+                    'image_file': img_file
                 }
+                # Fixed: Removed data={} to allow requests to handle multipart boundary formatting correctly
                 response = requests.post(
                     MIX_ENDPOINT, 
                     headers=headers, 
-                    data={}, 
                     files=files
                 )
                 
