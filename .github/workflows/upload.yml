@@ -3,7 +3,6 @@ name: Generate Automated Roblox Short
 on:
   workflow_dispatch:
   schedule:
-    # Runs automatically every day at 12:30 PM UTC
     - cron: '30 12 * * *'
 
 jobs:
@@ -13,7 +12,6 @@ jobs:
     permissions:
       contents: write
 
-    # Generous timeout to ensure MoviePy rendering completes smoothly
     timeout-minutes: 30
 
     steps:
@@ -49,14 +47,6 @@ jobs:
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
         run: python main.py
-
-      - name: Upload Video Artifact
-        uses: actions/upload-artifact@v4
-        if: always() 
-        with:
-          name: Final-Roblox-Short
-          path: final_short.mp4
-          retention-days: 3
 
       - name: Commit and Push Story Memory
         run: |
