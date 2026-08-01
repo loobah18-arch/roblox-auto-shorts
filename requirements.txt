@@ -5,4 +5,4 @@ groq
 moviepy==1.0.3
 edge-tts
 Pillow==9.5.0
-gradio-client==0.16.0
+gradio-client>=1.0.1
