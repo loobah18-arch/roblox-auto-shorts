@@ -117,7 +117,7 @@ def trigger_viggle_render():
     chosen_template = os.path.join(motion_dir, random.choice(templates))
     print(f"Selected Motion Template: {chosen_template}")
     
-    # AUTO-COMPRESS CHARACTER IMAGE (Fixed: Force RGB JPEG to strip Alpha Channel transparency)
+    # AUTO-COMPRESS CHARACTER IMAGE (Force RGB JPEG to strip Alpha Channel transparency)
     compressed_char_path = "temp_character.jpg"
     img = Image.open(char_path)
     img = img.convert('RGB')
@@ -146,11 +146,11 @@ def trigger_viggle_render():
         try:
             print(f"Attempting request with RapidAPI Key slot #{idx + 1}...")
             with open(compressed_template_path, 'rb') as vid_file, open(compressed_char_path, 'rb') as img_file:
-                # Correct field identifiers expected by the endpoint
+                # CRITICAL FIX: The API explicitly expects 'video_file' and 'image_file' keys
                 m = MultipartEncoder(
                     fields={
-                        'video': ('motion.mp4', vid_file, 'video/mp4'),
-                        'image': ('character.jpg', img_file, 'image/jpeg')
+                        'video_file': ('motion.mp4', vid_file, 'video/mp4'),
+                        'image_file': ('character.jpg', img_file, 'image/jpeg')
                     }
                 )
                 headers = {
