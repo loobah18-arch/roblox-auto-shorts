@@ -10,6 +10,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
+    # Grants permission for the workflow to write/push changes back to the repository
+    permissions:
+      contents: write
+
     timeout-minutes: 15
 
     steps:
@@ -51,3 +55,11 @@ jobs:
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
         run: python main.py
+
+      - name: Commit and Push Story Memory
+        run: |
+          git config --global user.name "Story Bot"
+          git config --global user.email "bot@users.noreply.github.com"
+          git add story_memory.txt
+          git commit -m "Auto-update infinite story memory for next episode" || exit 0
+          git push
