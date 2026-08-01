@@ -145,17 +145,18 @@ def trigger_viggle_render():
         try:
             print(f"Attempting request with RapidAPI Key slot #{idx + 1}...")
             with open(compressed_template_path, 'rb') as vid_file, open(compressed_char_path, 'rb') as img_file:
-                # Use MultipartEncoder to correctly format payload and boundary for RapidAPI gateway
+                # Correct field identifiers expected by the endpoint
                 m = MultipartEncoder(
                     fields={
-                        'video_file': ('motion.mp4', vid_file, 'video/mp4'),
-                        'image_file': ('character.png', img_file, 'image/png')
+                        'video': ('motion.mp4', vid_file, 'video/mp4'),
+                        'image': ('character.png', img_file, 'image/png')
                     }
                 )
                 headers = {
                     "X-RapidAPI-Key": key,
                     "X-RapidAPI-Host": RAPIDAPI_HOST,
-                    "Content-Type": m.content_type
+                    "Content-Type": m.content_type,
+                    "Content-Length": str(m.len)  # CRITICAL FIX: RapidAPI gateway requires explicit size to avoid chunking 400 errors
                 }
                 
                 response = requests.post(
