@@ -9,7 +9,7 @@ import edge_tts
 # Fix MoviePy ImageMagick path detection on GitHub Actions Ubuntu runners to prevent exit code 1 crashes
 os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
 
-from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip, TextClip
+from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip, CompositeAudioClip, TextClip
 import moviepy.video.fx.all as vfx
 from groq import Groq
 import google.auth.transport.requests
