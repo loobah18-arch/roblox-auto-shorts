@@ -5,6 +5,7 @@ import requests
 import asyncio
 import edge_tts
 from PIL import Image
+from requests_toolbelt.multipart.encoder import MultipartEncoder
 from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, TextClip
 import moviepy.video.fx.all as vfx
 from groq import Groq
@@ -93,10 +94,10 @@ async def generate_voiceover(text, output_filename):
     print(f"Voiceover saved to {output_filename}\n")
 
 # ==========================================
-# 2. VIGGLE AI 3D MOTION TRANSFER WITH COMPRESSION & AUTO-FALLBACK
+# 2. VIGGLE AI 3D MOTION TRANSFER WITH TOOLBELT & AUTO-FALLBACK
 # ==========================================
 def trigger_viggle_render():
-    """Compresses assets, selects a motion template, and maps the character using Viggle API with failover."""
+    """Compresses assets, selects a motion template, and maps the character using MultipartEncoder with failover."""
     print("--- [Step 3/5] Triggering Viggle AI 3D Motion Rendering ---")
     
     char_path = "assets/character.png"
@@ -141,22 +142,26 @@ def trigger_viggle_render():
     working_key = None
     
     for idx, key in enumerate(available_keys):
-        headers = {
-            "X-RapidAPI-Key": key,
-            "X-RapidAPI-Host": RAPIDAPI_HOST
-        }
         try:
             print(f"Attempting request with RapidAPI Key slot #{idx + 1}...")
-            with open(compressed_char_path, 'rb') as img_file, open(compressed_template_path, 'rb') as vid_file:
-                files = {
-                    'video_file': vid_file,
-                    'image_file': img_file
+            with open(compressed_template_path, 'rb') as vid_file, open(compressed_char_path, 'rb') as img_file:
+                # Use MultipartEncoder to correctly format payload and boundary for RapidAPI gateway
+                m = MultipartEncoder(
+                    fields={
+                        'video_file': ('motion.mp4', vid_file, 'video/mp4'),
+                        'image_file': ('character.png', img_file, 'image/png')
+                    }
+                )
+                headers = {
+                    "X-RapidAPI-Key": key,
+                    "X-RapidAPI-Host": RAPIDAPI_HOST,
+                    "Content-Type": m.content_type
                 }
-                # Fixed: Removed data={} to allow requests to handle multipart boundary formatting correctly
+                
                 response = requests.post(
                     MIX_ENDPOINT, 
                     headers=headers, 
-                    files=files
+                    data=m
                 )
                 
                 if response.status_code == 429:
@@ -191,7 +196,7 @@ def trigger_viggle_render():
     headers = {
         "X-RapidAPI-Key": working_key,
         "X-RapidAPI-Host": RAPIDAPI_HOST,
-        "content-type": "application/json"
+        "Content-Type": "application/json"
     }
     
     print("Polling for render completion...")
