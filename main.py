@@ -16,8 +16,8 @@ from googleapiclient.http import MediaFileUpload
 # MULTI-KEY ROTATION CONFIGURATION (3 KEYS)
 # ==========================================
 RAPIDAPI_HOST = "viggle-ai-api-unofficial.p.rapidapi.com"
-MIX_ENDPOINT = f"https://{RAPIDAPI_HOST}/mix"
-RESULT_ENDPOINT = f"https://{RAPIDAPI_HOST}/job-results"
+MIX_ENDPOINT = f"https://{RAPIDAPI_HOST}/v1/viggle/mix"
+RESULT_ENDPOINT = f"https://{RAPIDAPI_HOST}/v1/viggle/job-results"
 
 def get_all_api_keys():
     """Gathers all available RapidAPI keys (Key 1, 2, and 3) from environment variables."""
@@ -34,7 +34,6 @@ def get_all_api_keys():
     if not available_keys:
         raise Exception("Fatal: No RapidAPI keys found in environment variables!")
         
-    # Randomize order to distribute requests evenly across your 3 accounts
     random.shuffle(available_keys)
     return available_keys
 
@@ -117,7 +116,6 @@ def trigger_viggle_render():
     job_id = None
     working_key = None
     
-    # Loop through your 3 keys. If one hits a 429 quota error, automatically try the next one.
     for idx, key in enumerate(available_keys):
         headers = {
             "x-rapidapi-key": key,
@@ -150,7 +148,7 @@ def trigger_viggle_render():
             raise e
             
     if not job_id or not working_key:
-        raise Exception("Fatal: All 3 RapidAPI keys have exceeded their monthly quotas!")
+        raise Exception("Fatal: All RapidAPI keys have exceeded their quotas or failed!")
         
     headers = {
         "x-rapidapi-key": working_key,
@@ -159,15 +157,17 @@ def trigger_viggle_render():
     
     print("Polling for render completion...")
     while True:
-        res = requests.get(RESULT_ENDPOINT, headers=headers, params={"job_id": job_id})
+        # Fixed: job-results requires a POST request with JSON payload per RapidAPI specs
+        res = requests.post(RESULT_ENDPOINT, headers=headers, json={"job_id": job_id})
         res.raise_for_status()
         data = res.json()
         
         status = data.get("status")
-        if status == "completed":
-            video_url = data.get("video_url")
+        completed = data.get("completed", False)
+        video_url = data.get("video_url")
+        
+        if (status == "success" or completed) and video_url:
             print("Render complete! Downloading AI 3D video...")
-            
             vid_res = requests.get(video_url)
             vid_res.raise_for_status()
             
@@ -187,7 +187,6 @@ def trigger_viggle_render():
 # 3. VIDEO ASSEMBLY (CAPTIONS & LOOPING)
 # ==========================================
 def assemble_video(script, viggle_video_path):
-    """Loops the Viggle video to match audio length, mixes background music, and burns dynamic captions."""
     print("--- [Step 4/5] Assembling Final MP4 Video ---")
     
     voice_clip = AudioFileClip("voiceover.mp3")
@@ -224,8 +223,9 @@ def assemble_video(script, viggle_video_path):
         dur = max(end_t - start_t, 1.0)
         
         try:
+            # Fixed: Removed custom font to prevent missing font crashes on GitHub Actions Linux runners
             txt_clip = TextClip(
-                sentence, fontsize=60, color='yellow', font='Arial-Bold', 
+                sentence, fontsize=60, color='yellow', 
                 stroke_color='black', stroke_width=4, size=(950, None), method='caption'
             )
             txt_clip = txt_clip.set_start(start_t).set_duration(dur).set_position(('center', 1400))
@@ -245,7 +245,6 @@ def assemble_video(script, viggle_video_path):
 # 4. YOUTUBE UPLOAD FUNCTION
 # ==========================================
 def upload_to_youtube(script_snippet):
-    """Uploads the finalized video directly to YouTube as a Short."""
     print("--- [Step 5/5] Uploading to YouTube Channel as Short ---")
     
     client_id = os.getenv("CLIENT_ID")
