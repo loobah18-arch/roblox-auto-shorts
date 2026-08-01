@@ -96,11 +96,9 @@ def assemble_video():
     """Builds the 2D puppetry, voiceover, and background music."""
     print("--- Assembling 2D Puppetry Video ---")
     
-    # 1. Load Audio
     voice_clip = AudioFileClip("voiceover.mp3")
     video_duration = voice_clip.duration
     
-    # Load background music randomly from your 'bgm' folder
     bgm_folder = "bgm"
     if not os.path.exists(bgm_folder):
         raise Exception("Missing 'bgm' folder in your repository root!")
@@ -118,14 +116,12 @@ def assemble_video():
     
     final_audio = CompositeAudioClip([voice_clip, bg_music])
 
-    # 2. Load Visuals
     background = ImageClip("background.jpg").set_duration(video_duration)
     background = background.resize(width=1080, height=1920) 
     
     character = ImageClip("character_sprite.png").set_duration(video_duration)
     character = character.resize(width=700) 
     
-    # 3. Animation Logic: Character slides right and bounces up slightly
     def animate_character(t):
         x_position = 100 + (t * 30)       
         y_position = 1000 - (t * 20)      
@@ -133,7 +129,6 @@ def assemble_video():
         
     animated_character = character.set_position(animate_character)
 
-    # 4. Composite and Render
     final_video = CompositeVideoClip([background, animated_character])
     final_video = final_video.set_audio(final_audio)
     
