@@ -1,31 +1,42 @@
 import os
-import time
 import random
+import time
 import requests
 import asyncio
 import edge_tts
-from moviepy.editor import (
-    VideoFileClip, AudioFileClip, CompositeVideoClip, 
-    CompositeAudioClip, TextClip
-)
+from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, TextClip
 import moviepy.video.fx.all as vfx
-
-# Groq API Import
 from groq import Groq
-
-# Google API Imports for YouTube Upload
 import google.auth.transport.requests
 import google.oauth2.credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # ==========================================
-# CONFIGURATION & SECRETS
+# MULTI-KEY ROTATION CONFIGURATION (3 KEYS)
 # ==========================================
-RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
 RAPIDAPI_HOST = "viggle-ai-api-unofficial.p.rapidapi.com"
 MIX_ENDPOINT = f"https://{RAPIDAPI_HOST}/mix"
 RESULT_ENDPOINT = f"https://{RAPIDAPI_HOST}/job-results"
+
+def get_all_api_keys():
+    """Gathers all available RapidAPI keys (Key 1, 2, and 3) from environment variables."""
+    available_keys = []
+    for i in range(1, 4):  # Checks RAPIDAPI_KEY_1 through RAPIDAPI_KEY_3
+        key = os.getenv(f"RAPIDAPI_KEY_{i}")
+        if key:
+            available_keys.append(key)
+            
+    single_key = os.getenv("RAPIDAPI_KEY")
+    if single_key and not available_keys:
+        available_keys.append(single_key)
+        
+    if not available_keys:
+        raise Exception("Fatal: No RapidAPI keys found in environment variables!")
+        
+    # Randomize order to distribute requests evenly across your 3 accounts
+    random.shuffle(available_keys)
+    return available_keys
 
 # ==========================================
 # 1. INFINITE STORY GENERATION
@@ -68,7 +79,6 @@ def generate_infinite_script():
     
     script = response.choices[0].message.content.strip()
     
-    # Save script back to memory for tomorrow's run
     with open(history_file, "w") as f:
         f.write(script)
         
@@ -83,10 +93,10 @@ async def generate_voiceover(text, output_filename):
     print(f"Voiceover saved to {output_filename}\n")
 
 # ==========================================
-# 2. VIGGLE AI 3D MOTION TRANSFER
+# 2. VIGGLE AI 3D MOTION TRANSFER WITH AUTO-FALLBACK
 # ==========================================
 def trigger_viggle_render():
-    """Selects a random motion template and maps the static character onto it using Viggle AI."""
+    """Selects a motion template and maps the character using Viggle API with automatic key failover across 3 keys."""
     print("--- [Step 3/5] Triggering Viggle AI 3D Motion Rendering ---")
     
     char_path = "assets/character.png"
@@ -103,24 +113,51 @@ def trigger_viggle_render():
     chosen_template = os.path.join(motion_dir, random.choice(templates))
     print(f"Selected Motion Template: {chosen_template}")
     
+    available_keys = get_all_api_keys()
+    job_id = None
+    working_key = None
+    
+    # Loop through your 3 keys. If one hits a 429 quota error, automatically try the next one.
+    for idx, key in enumerate(available_keys):
+        headers = {
+            "x-rapidapi-key": key,
+            "x-rapidapi-host": RAPIDAPI_HOST
+        }
+        try:
+            print(f"Attempting request with RapidAPI Key slot #{idx + 1}...")
+            with open(char_path, 'rb') as img_file, open(chosen_template, 'rb') as vid_file:
+                response = requests.post(
+                    MIX_ENDPOINT, 
+                    headers=headers, 
+                    files={'image_file': img_file, 'video_file': vid_file}
+                )
+                
+                if response.status_code == 429:
+                    print(f"Key slot #{idx + 1} quota exhausted (429). Falling back to next key...")
+                    continue
+                    
+                response.raise_for_status()
+                data = response.json()
+                job_id = data.get("job_id")
+                working_key = key
+                print(f"Success with Key slot #{idx + 1}! Job ID: {job_id}")
+                break
+                
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 429:
+                print(f"Key slot #{idx + 1} quota exhausted (429). Falling back to next key...")
+                continue
+            raise e
+            
+    if not job_id or not working_key:
+        raise Exception("Fatal: All 3 RapidAPI keys have exceeded their monthly quotas!")
+        
     headers = {
-        "x-rapidapi-key": RAPIDAPI_KEY,
+        "x-rapidapi-key": working_key,
         "x-rapidapi-host": RAPIDAPI_HOST
     }
     
-    # Trigger the mix job
-    with open(char_path, 'rb') as img_file, open(chosen_template, 'rb') as vid_file:
-        response = requests.post(
-            MIX_ENDPOINT, 
-            headers=headers, 
-            files={'image_file': img_file, 'video_file': vid_file}
-        )
-        response.raise_for_status()
-        job_id = response.json().get("job_id")
-        
-    print(f"Viggle Job ID assigned: {job_id}. Polling for completion...")
-    
-    # Poll for completion
+    print("Polling for render completion...")
     while True:
         res = requests.get(RESULT_ENDPOINT, headers=headers, params={"job_id": job_id})
         res.raise_for_status()
@@ -150,31 +187,33 @@ def trigger_viggle_render():
 # 3. VIDEO ASSEMBLY (CAPTIONS & LOOPING)
 # ==========================================
 def assemble_video(script, viggle_video_path):
-    """Loops the Viggle video to match audio length, adds BGM, and burns dynamic captions."""
+    """Loops the Viggle video to match audio length, mixes background music, and burns dynamic captions."""
     print("--- [Step 4/5] Assembling Final MP4 Video ---")
     
     voice_clip = AudioFileClip("voiceover.mp3")
     target_duration = voice_clip.duration
     
-    # 1. Loop the Viggle AI Video to match the voiceover length
     base_video = VideoFileClip(viggle_video_path).resize((1080, 1920))
     looped_video = vfx.loop(base_video, duration=target_duration)
     
-    # 2. Background Music Mixing
     bgm_folder = "bgm"
+    if not os.path.exists(bgm_folder):
+        os.makedirs(bgm_folder, exist_ok=True)
     mp3_files = [f for f in os.listdir(bgm_folder) if f.endswith('.mp3')]
-    bg_music = AudioFileClip(os.path.join(bgm_folder, random.choice(mp3_files)))
     
-    if bg_music.duration < target_duration:
-        bg_music = vfx.loop(bg_music, duration=target_duration)
+    if mp3_files:
+        bg_music = AudioFileClip(os.path.join(bgm_folder, random.choice(mp3_files)))
+        if bg_music.duration < target_duration:
+            bg_music = vfx.loop(bg_music, duration=target_duration)
+        else:
+            bg_music = bg_music.subclip(0, target_duration)
+        bg_music = bg_music.volumex(0.12)
+        final_audio = CompositeAudioClip([voice_clip, bg_music])
     else:
-        bg_music = bg_music.subclip(0, target_duration)
+        final_audio = voice_clip
         
-    bg_music = bg_music.volumex(0.12)
-    final_audio = CompositeAudioClip([voice_clip, bg_music])
     looped_video = looped_video.set_audio(final_audio)
 
-    # 3. Dynamic Subtitles Generation
     sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
     chunk_duration = target_duration / max(len(sentences), 1)
     
@@ -191,10 +230,9 @@ def assemble_video(script, viggle_video_path):
             )
             txt_clip = txt_clip.set_start(start_t).set_duration(dur).set_position(('center', 1400))
             caption_clips.append(txt_clip)
-        except Exception as e:
+        except Exception:
             pass
 
-    # 4. Composite and Render
     final_video = CompositeVideoClip([looped_video] + caption_clips)
     print("Rendering final MP4...")
     final_video.write_videofile(
@@ -258,19 +296,10 @@ def upload_to_youtube(script_snippet):
 def main():
     print("=== Starting 3D YouTube Shorts Automation Pipeline ===\n")
     
-    # 1. Generate Script
     script = generate_infinite_script()
-    
-    # 2. Generate Voiceover
     asyncio.run(generate_voiceover(script, "voiceover.mp3"))
-
-    # 3. Generate 3D Motion Video using Viggle API
     viggle_output = trigger_viggle_render()
-    
-    # 4. Assemble Final Video (Looping 3D background + Voice + Text)
     assemble_video(script, viggle_output)
-    
-    # 5. Upload to YouTube
     upload_to_youtube(script)
     
     print("=== Pipeline Complete! 3D Short is Live. ===")
