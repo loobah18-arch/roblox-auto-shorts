@@ -8,6 +8,12 @@ import edge_tts
 from rembg import remove
 from moviepy.editor import ImageClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip
 
+# Google API Imports for YouTube Upload
+import google.auth.transport.requests
+import google.oauth2.credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+
 # ==========================================
 # 1. API & GENERATION FUNCTIONS
 # ==========================================
@@ -38,7 +44,6 @@ def generate_image(prompt, filename, retries=3):
 async def generate_voiceover(text, output_filename):
     """Generates an Edge-TTS voiceover file."""
     print("Generating voiceover...")
-    # Using ChristopherNeural (+10% speed) as requested in your stack
     communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural", rate="+10%")
     await communicate.save(output_filename)
     print("Voiceover saved successfully.")
@@ -103,7 +108,6 @@ def assemble_video():
     final_video = final_video.set_audio(final_audio)
     
     print("Rendering final MP4 on CPU...")
-    # Safe rendering settings for GitHub Actions
     final_video.write_videofile(
         "final_short.mp4", 
         fps=24, 
@@ -114,11 +118,64 @@ def assemble_video():
     )
 
 # ==========================================
-# 3. MAIN EXECUTION
+# 3. YOUTUBE UPLOAD FUNCTION
+# ==========================================
+
+def upload_to_youtube():
+    print("--- Uploading to YouTube as a Short ---")
+    
+    # Read credentials from GitHub environment secrets
+    client_id = os.getenv("YT_CLIENT_ID")
+    client_secret = os.getenv("YT_CLIENT_SECRET")
+    refresh_token = os.getenv("YT_REFRESH_TOKEN")
+    
+    if not client_id or not client_secret or not refresh_token:
+        print("Warning: YouTube API secrets not fully configured. Skipping upload step.")
+        return
+
+    credentials = google.oauth2.credentials.Credentials(
+        None,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=client_id,
+        client_secret=client_secret
+    )
+    
+    youtube = build("youtube", "v3", credentials=credentials)
+    
+    body = {
+        "snippet": {
+            "title": "Overpowered Spirit Fruit Setup in Blox Fruits! #Shorts",
+            "description": "Watch this insane Roblox Blox Fruits setup! #Shorts #Roblox #BloxFruits",
+            "tags": ["Roblox", "BloxFruits", "Shorts"],
+            "categoryId": "20" # Gaming Category
+        },
+        "status": {
+            "privacyStatus": "public", # Change to "private" or "unlisted" if you want to test first
+            "selfDeclaredMadeForKids": False
+        }
+    }
+    
+    media = MediaFileUpload("final_short.mp4", chunksize=-1, resumable=True)
+    request = youtube.videos().insert(
+        part="snippet,status",
+        body=body,
+        media_body=media
+    )
+    
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status:
+            print(f"Uploading file: {int(status.progress() * 100)}%")
+            
+    print(f"Upload Complete! Video ID: {response.get('id')}")
+
+# ==========================================
+# 4. MAIN EXECUTION
 # ==========================================
 
 def main():
-    # Example script (Replace with Groq generation in the future)
     script = "What is up guys? Today we are looking at the absolute best spirit fruit in Blox Fruits. You won't believe how overpowered this setup is."
     
     # Generate Voiceover
@@ -136,7 +193,11 @@ def main():
     
     # Assemble final video
     assemble_video()
-    print("Pipeline complete! Video saved as final_short.mp4")
+    
+    # Upload to YouTube automatically
+    upload_to_youtube()
+    
+    print("Pipeline complete!")
 
 if __name__ == "__main__":
     main()
