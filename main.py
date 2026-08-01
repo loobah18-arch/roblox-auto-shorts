@@ -142,18 +142,16 @@ def fetch_dynamic_clips(queries):
         except Exception as e:
             print(f"yt-dlp notice: {e}")
             
-        # --- Engine 2: Pexels API Fallback (Bypasses YouTube Cloud Blocks) ---
+        # --- Engine 2: Pexels API Fallback ---
         if not success and pexels_api_key:
             print(f"yt-dlp blocked. Falling back to Pexels API for query: {query}")
             try:
                 headers = {"Authorization": pexels_api_key}
                 clean_query = "gaming action motion background" if "roblox" in query.lower() or "blox" in query.lower() else query
                 
-                response = requests.get(
-                    f"[https://api.pexels.com/videos/search?query=](https://api.pexels.com/videos/search?query=){requests.utils.quote(clean_query)}&per_page=1&orientation=portrait",
-                    headers=headers,
-                    timeout=15
-                )
+                pexels_url = f"[https://api.pexels.com/videos/search?query=](https://api.pexels.com/videos/search?query=){requests.utils.quote(clean_query)}&per_page=1&orientation=portrait"
+                
+                response = requests.get(pexels_url, headers=headers, timeout=15)
                 data = response.json()
                 videos = data.get("videos", [])
                 if videos:
