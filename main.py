@@ -1,12 +1,11 @@
 import os
 import random
 import time
+import json
 import requests
 import asyncio
 import edge_tts
-from PIL import Image
-from requests_toolbelt.multipart.encoder import MultipartEncoder
-from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, TextClip
+from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip, TextClip
 import moviepy.video.fx.all as vfx
 from groq import Groq
 import google.auth.transport.requests
@@ -15,43 +14,18 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # ==========================================
-# MULTI-KEY ROTATION CONFIGURATION (3 KEYS)
-# ==========================================
-RAPIDAPI_HOST = "viggle-ai-api-unofficial.p.rapidapi.com"
-MIX_ENDPOINT = f"https://{RAPIDAPI_HOST}/v1/viggle/mix"
-RESULT_ENDPOINT = f"https://{RAPIDAPI_HOST}/v1/viggle/job-results"
-
-def get_all_api_keys():
-    """Gathers all available RapidAPI keys (Key 1, 2, and 3) from environment variables."""
-    available_keys = []
-    for i in range(1, 4):  # Checks RAPIDAPI_KEY_1 through RAPIDAPI_KEY_3
-        key = os.getenv(f"RAPIDAPI_KEY_{i}")
-        if key:
-            available_keys.append(key)
-            
-    single_key = os.getenv("RAPIDAPI_KEY")
-    if single_key and not available_keys:
-        available_keys.append(single_key)
-        
-    if not available_keys:
-        raise Exception("Fatal: No RapidAPI keys found in environment variables!")
-        
-    random.shuffle(available_keys)
-    return available_keys
-
-# ==========================================
-# 1. INFINITE STORY GENERATION
+# 1. INFINITE STORY GENERATION (GROQ)
 # ==========================================
 def generate_infinite_script():
     """Generates an infinite story script using Groq's 70B model."""
-    print("--- [Step 1/5] Generating Next Chapter via Groq Llama 3.3 70B ---")
+    print("--- [Step 1/4] Generating Next Chapter via Groq Llama 3.3 70B ---")
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise Exception("Missing GROQ_API_KEY environment variable!")
         
     client = Groq(api_key=api_key)
     history_file = "story_memory.txt"
-    previous_context = "This is Episode 1 of the saga. Start with a massive, mind-blowing hook about Roblox Blox Fruits."
+    previous_context = "This is Episode 1 of the saga. Start with a massive, mind-breaking hook about Roblox Blox Fruits."
     
     if os.path.exists(history_file):
         with open(history_file, "r") as f:
@@ -88,166 +62,56 @@ def generate_infinite_script():
 
 async def generate_voiceover(text, output_filename):
     """Generates an Edge-TTS voiceover file."""
-    print("--- [Step 2/5] Generating Voiceover Audio ---")
+    print("--- [Step 2/4] Generating Voiceover Audio ---")
     communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural", rate="+10%")
     await communicate.save(output_filename)
     print(f"Voiceover saved to {output_filename}\n")
 
 # ==========================================
-# 2. VIGGLE AI 3D MOTION TRANSFER WITH TOOLBELT & AUTO-FALLBACK
+# 2. LOCAL GAMEPLAY TEMPLATE SELECTION
 # ==========================================
-def trigger_viggle_render():
-    """Compresses assets, selects a motion template, and maps the character using MultipartEncoder with failover."""
-    print("--- [Step 3/5] Triggering Viggle AI 3D Motion Rendering ---")
+def select_gameplay_clip():
+    """Selects a random pre-recorded Roblox MP4 clip from the local motion_templates folder."""
+    print("--- [Step 3/4] Selecting Local Gameplay from motion_templates ---")
+    templates_dir = "motion_templates"
     
-    char_path = "assets/character.png"
-    motion_dir = "motion_templates"
-    
-    if not os.path.exists(char_path):
-        raise Exception("Missing 'assets/character.png' image file!")
+    if not os.path.exists(templates_dir):
+        os.makedirs(templates_dir, exist_ok=True)
+        raise Exception(f"Missing '{templates_dir}' folder. Add at least one Roblox MP4 clip!")
         
-    if not os.path.exists(motion_dir):
-        os.makedirs(motion_dir, exist_ok=True)
-        raise Exception(f"Missing '{motion_dir}' folder. Add at least one MP4 motion template!")
+    clips = [f for f in os.listdir(templates_dir) if f.endswith('.mp4')]
+    if not clips:
+        raise Exception(f"No MP4 files found in '{templates_dir}' folder!")
         
-    templates = [f for f in os.listdir(motion_dir) if f.endswith('.mp4')]
-    if not templates:
-        raise Exception(f"No MP4 templates found in '{motion_dir}'!")
-        
-    chosen_template = os.path.join(motion_dir, random.choice(templates))
-    print(f"Selected Motion Template: {chosen_template}")
-    
-    # AUTO-COMPRESS CHARACTER IMAGE (Force RGB JPEG to strip Alpha Channel transparency)
-    compressed_char_path = "temp_character.jpg"
-    img = Image.open(char_path)
-    img = img.convert('RGB')
-    img.thumbnail((720, 720))
-    img.save(compressed_char_path, "JPEG")
-    
-    # AUTO-COMPRESS & RESIZE MOTION TEMPLATE VIDEO
-    compressed_template_path = "temp_motion.mp4"
-    print("Compressing motion template for API payload limits...")
-    vid_clip = VideoFileClip(chosen_template)
-    if vid_clip.duration > 12:
-        vid_clip = vid_clip.subclip(0, 12)
-    vid_resized = vid_clip.resize(height=720)
-    vid_resized.write_videofile(
-        compressed_template_path, fps=24, codec="libx264", audio_codec="aac", 
-        preset="ultrafast", bitrate="800k", logger=None
-    )
-    vid_clip.close()
-    vid_resized.close()
-
-    available_keys = get_all_api_keys()
-    job_id = None
-    working_key = None
-    
-    for idx, key in enumerate(available_keys):
-        try:
-            print(f"Attempting request with RapidAPI Key slot #{idx + 1}...")
-            with open(compressed_template_path, 'rb') as vid_file, open(compressed_char_path, 'rb') as img_file:
-                # CRITICAL FIX: The API explicitly expects 'video_file' and 'image_file' keys
-                m = MultipartEncoder(
-                    fields={
-                        'video_file': ('motion.mp4', vid_file, 'video/mp4'),
-                        'image_file': ('character.jpg', img_file, 'image/jpeg')
-                    }
-                )
-                headers = {
-                    "X-RapidAPI-Key": key,
-                    "X-RapidAPI-Host": RAPIDAPI_HOST,
-                    "Content-Type": m.content_type,
-                    "Content-Length": str(m.len)
-                }
-                
-                response = requests.post(
-                    MIX_ENDPOINT, 
-                    headers=headers, 
-                    data=m
-                )
-                
-                # Debugging: Print exact raw response
-                print(f"Raw API Response (Status {response.status_code}): {response.text}")
-                
-                if response.status_code == 429:
-                    print(f"Key slot #{idx + 1} quota exhausted (429). Falling back to next key...")
-                    continue
-                    
-                response.raise_for_status()
-                data = response.json()
-                
-                # Failsafe: Try multiple known JSON structures for the job ID
-                job_id = data.get("job_id") or data.get("id") or data.get("data", {}).get("job_id")
-                
-                if not job_id:
-                    raise Exception(f"API returned 200 OK, but no Job ID was found! Payload: {data}")
-
-                working_key = key
-                print(f"Success with Key slot #{idx + 1}! Job ID: {job_id}")
-                break
-                
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 429:
-                print(f"Key slot #{idx + 1} quota exhausted (429). Falling back to next key...")
-                continue
-            raise e
-            
-    # Cleanup temporary compressed files
-    if os.path.exists(compressed_char_path):
-        os.remove(compressed_char_path)
-    if os.path.exists(compressed_template_path):
-        os.remove(compressed_template_path)
-        
-    if not job_id or not working_key:
-        raise Exception("Fatal: All RapidAPI keys have exceeded their quotas or failed!")
-        
-    headers = {
-        "X-RapidAPI-Key": working_key,
-        "X-RapidAPI-Host": RAPIDAPI_HOST,
-        "Content-Type": "application/json"
-    }
-    
-    print("Polling for render completion...")
-    while True:
-        res = requests.post(RESULT_ENDPOINT, headers=headers, json={"job_id": job_id})
-        if res.status_code != 200:
-            print(f"Polling Error Response: {res.text}")
-        res.raise_for_status()
-        data = res.json()
-        
-        status = data.get("status")
-        completed = data.get("completed", False)
-        video_url = data.get("video_url")
-        
-        if (status == "success" or completed) and video_url:
-            print("Render complete! Downloading AI 3D video...")
-            vid_res = requests.get(video_url)
-            vid_res.raise_for_status()
-            
-            output_path = "viggle_raw.mp4"
-            with open(output_path, 'wb') as f:
-                f.write(vid_res.content)
-            print("Successfully saved viggle_raw.mp4\n")
-            return output_path
-            
-        elif status in ["failed", "error"]:
-            raise Exception(f"Viggle processing failed: {data}")
-            
-        print("Status: Processing... Waiting 15 seconds.")
-        time.sleep(15)
+    chosen_clip = os.path.join(templates_dir, random.choice(clips))
+    print(f"Selected Gameplay Clip: {chosen_clip}\n")
+    return chosen_clip
 
 # ==========================================
-# 3. VIDEO ASSEMBLY (CAPTIONS & LOOPING)
+# 3. VIDEO ASSEMBLY (GAMEPLAY + AUDIO + CAPTIONS)
 # ==========================================
-def assemble_video(script, viggle_video_path):
-    print("--- [Step 4/5] Assembling Final MP4 Video ---")
+def assemble_video(script, gameplay_path):
+    print("--- [Step 4/4] Assembling Final MP4 Video ---")
     
     voice_clip = AudioFileClip("voiceover.mp3")
     target_duration = voice_clip.duration
     
-    base_video = VideoFileClip(viggle_video_path).resize((1080, 1920))
-    looped_video = vfx.loop(base_video, duration=target_duration)
+    # Load background video, crop/resize to vertical 9:16 shorts dimensions (1080x1920)
+    base_video = VideoFileClip(gameplay_path)
+    base_video = base_video.resize(height=1920)
     
+    # Loop or trim the video clip to match the exact length of the voiceover audio
+    if base_video.duration < target_duration:
+        looped_video = vfx.loop(base_video, duration=target_duration)
+    else:
+        looped_video = base_video.subclip(0, target_duration)
+        
+    # Center crop horizontally to fit 1080 width
+    if looped_video.w > 1080:
+        x_center = looped_video.w / 2
+        looped_video = looped_video.crop(x1=x_center - 540, x2=x_center + 540, y1=0, y2=1920)
+    
+    # Handle background music mixing
     bgm_folder = "bgm"
     if not os.path.exists(bgm_folder):
         os.makedirs(bgm_folder, exist_ok=True)
@@ -266,6 +130,7 @@ def assemble_video(script, viggle_video_path):
         
     looped_video = looped_video.set_audio(final_audio)
 
+    # Generate dynamic punchy text overlays (captions)
     sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
     chunk_duration = target_duration / max(len(sentences), 1)
     
@@ -289,7 +154,7 @@ def assemble_video(script, viggle_video_path):
     print("Rendering final MP4...")
     final_video.write_videofile(
         "final_short.mp4", fps=24, codec="libx264", 
-        audio_codec="aac", threads=2, preset="ultrafast"
+        audio_codec="aac", threads=2, preset="ultrafast", logger=None
     )
     print("Video assembly complete: final_short.mp4 created.\n")
 
@@ -320,8 +185,8 @@ def upload_to_youtube(script_snippet):
     body = {
         "snippet": {
             "title": f"{dynamic_title}... #Shorts",
-            "description": f"{script_snippet}\n\n#Shorts #Roblox #BloxFruits #Animation",
-            "tags": ["Roblox", "BloxFruits", "Shorts", "Animation", "3D"],
+            "description": f"{script_snippet}\n\n#Shorts #Roblox #BloxFruits #Gaming",
+            "tags": ["Roblox", "BloxFruits", "Shorts", "Gaming", "Gameplay"],
             "categoryId": "20"
         },
         "status": {
@@ -345,15 +210,15 @@ def upload_to_youtube(script_snippet):
 # 5. MAIN EXECUTION
 # ==========================================
 def main():
-    print("=== Starting 3D YouTube Shorts Automation Pipeline ===\n")
+    print("=== Starting Hybrid Gameplay Pipeline ==-\n")
     
     script = generate_infinite_script()
     asyncio.run(generate_voiceover(script, "voiceover.mp3"))
-    viggle_output = trigger_viggle_render()
-    assemble_video(script, viggle_output)
+    chosen_gameplay = select_gameplay_clip()
+    assemble_video(script, chosen_gameplay)
     upload_to_youtube(script)
     
-    print("=== Pipeline Complete! 3D Short is Live. ===")
+    print("=== Pipeline Complete! Short is Live. ===")
 
 if __name__ == "__main__":
     main()
