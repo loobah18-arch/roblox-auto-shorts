@@ -1,15 +1,16 @@
 import os
 import random
-import time
 import json
+import subprocess
 import requests
 import asyncio
 import edge_tts
+import glob
 
-# Fix MoviePy ImageMagick path detection on GitHub Actions Ubuntu runners to prevent exit code 1 crashes
+# Fix MoviePy ImageMagick path detection on GitHub Actions Ubuntu runners
 os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
 
-from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip, CompositeAudioClip, TextClip
+from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip, CompositeAudioClip, TextClip, concatenate_videoclips, ColorClip
 import moviepy.video.fx.all as vfx
 from groq import Groq
 import google.auth.transport.requests
@@ -18,11 +19,11 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # ==========================================
-# 1. INFINITE STORY GENERATION (GROQ)
+# 1. GROQ SCRIPT & DYNAMIC QUERY GENERATOR
 # ==========================================
-def generate_infinite_script():
-    """Generates an infinite story script using Groq's 70B model."""
-    print("--- [Step 1/4] Generating Next Chapter via Groq Llama 3.3 70B ---")
+def generate_script_and_queries():
+    """Generates the story script and custom yt-dlp search queries via Groq."""
+    print("--- [Step 1/5] Groq Directing Script & Visual Queries ---")
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise Exception("Missing GROQ_API_KEY environment variable!")
@@ -44,73 +45,185 @@ def generate_infinite_script():
     {previous_context}
     
     YOUR TASK:
-    Write the NEXT immediate part of this story. It must continue EXACTLY where the previous episode left off.
-    Keep it between 130 and 150 words. Absurd, catchy, meme energy, ending on a jaw-dropping cliffhanger. 
-    Output purely the spoken text, no labels, no sound effect notes.
+    1. Write the NEXT immediate part of this story (between 130 and 150 words). Absurd, catchy, meme energy, ending on a cliffhanger.
+    2. Generate exactly 5 distinct, high-energy YouTube search queries for `yt-dlp` to find gameplay clips that visually match the action happening in this specific story segment.
+    
+    You MUST output your response strictly as a JSON object with this exact structure, with no markdown formatting around it (no ```json):
+    {{
+      "script": "The full story text here...",
+      "queries": [
+        "query 1 matching early part of story",
+        "query 2 matching middle part",
+        "query 3 matching climax",
+        "query 4 matching twist",
+        "query 5 matching ending cliffhanger"
+      ]
+    }}
     """
     
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=300,
+        max_tokens=500,
         temperature=0.9
     )
     
-    script = response.choices[0].message.content.strip()
+    raw_response = response.choices[0].message.content.strip()
+    
+    # Clean potential markdown wrapping from response
+    if raw_response.startswith("```"):
+        raw_response = raw_response.split("```")[1]
+        if raw_response.startswith("json"):
+            raw_response = raw_response[4:]
+    raw_response = raw_response.strip()
+    
+    data = json.loads(raw_response)
+    script = data["script"]
+    queries = data["queries"]
     
     with open(history_file, "w") as f:
         f.write(script)
         
     print(f"Generated Script:\n{script}\n")
-    return script
+    print(f"Generated Dynamic Queries: {queries}\n")
+    return script, queries
 
 async def generate_voiceover(text, output_filename):
     """Generates an Edge-TTS voiceover file."""
-    print("--- [Step 2/4] Generating Voiceover Audio ---")
+    print("--- [Step 2/5] Generating Voiceover Audio ---")
     communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural", rate="+10%")
     await communicate.save(output_filename)
     print(f"Voiceover saved to {output_filename}\n")
 
 # ==========================================
-# 2. LOCAL GAMEPLAY TEMPLATE SELECTION
+# 2. DYNAMIC YT-DLP CLIP FETCHING
 # ==========================================
-def select_gameplay_clip():
-    """Selects a random pre-recorded Roblox MP4 clip from the local motion_templates folder."""
-    print("--- [Step 3/4] Selecting Local Gameplay from motion_templates ---")
+def fetch_dynamic_clips(queries):
+    """Downloads 4-5 custom clips based on Groq's queries using yt-dlp."""
+    print("--- [Step 3/5] yt-dlp Fetching Custom Story Clips ---")
     templates_dir = "motion_templates"
+    os.makedirs(templates_dir, exist_ok=True)
     
-    if not os.path.exists(templates_dir):
-        os.makedirs(templates_dir, exist_ok=True)
-        raise Exception(f"Missing '{templates_dir}' folder. Add at least one Roblox MP4 clip!")
+    # Clear old clips
+    for old_file in glob.glob(os.path.join(templates_dir, "*.mp4")):
+        try:
+            os.remove(old_file)
+        except Exception:
+            pass
+            
+    downloaded_clips = []
+    fallback_url = "[https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-and-numbers-31908-large.mp4](https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-and-numbers-31908-large.mp4)"
+    fallback_path = os.path.join(templates_dir, "fallback.mp4")
+    
+    try:
+        urllib.request.urlretrieve(fallback_url, fallback_path)
+    except Exception:
+        pass
+
+    for i, query in enumerate(queries):
+        clip_filename = f"clip_{i+1}.mp4"
+        output_path = os.path.join(templates_dir, clip_filename)
+        success = False
         
-    clips = [f for f in os.listdir(templates_dir) if f.endswith('.mp4')]
-    if not clips:
-        raise Exception(f"No MP4 files found in '{templates_dir}' folder!")
+        print(f"Fetching clip {i+1} via yt-dlp -> Query: {query}")
+        cmd = [
+            "yt-dlp",
+            f"ytsearch1:{query} roblox shorts",
+            "--extractor-args", "youtube:player_client=android",
+            "-f", "best[ext=mp4]/best",
+            "-o", output_path,
+            "--max-downloads", "1",
+            "--no-playlist",
+            "--quiet",
+            "--no-warnings"
+        ]
         
-    chosen_clip = os.path.join(templates_dir, random.choice(clips))
-    print(f"Selected Gameplay Clip: {chosen_clip}\n")
-    return chosen_clip
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
+                downloaded_clips.append(output_path)
+                success = True
+                print(f"Successfully downloaded: {clip_filename}")
+        except Exception as e:
+            print(f"yt-dlp notice for query '{query}': {e}")
+            
+        if not success and os.path.exists(fallback_path):
+            import shutil
+            shutil.copy(fallback_path, output_path)
+            downloaded_clips.append(output_path)
+            print(f"Used motion fallback for clip {i+1}")
+            
+    if os.path.exists(fallback_path):
+        try:
+            os.remove(fallback_path)
+        except Exception:
+            pass
+            
+    return downloaded_clips
 
 # ==========================================
-# 3. VIDEO ASSEMBLY (GAMEPLAY + AUDIO + CAPTIONS)
+# 3. DYNAMIC MOTION ASSEMBLY & EDITING
 # ==========================================
-def assemble_video(script, gameplay_path):
-    print("--- [Step 4/4] Assembling Final MP4 Video ---")
+def assemble_video(script, clip_paths):
+    print("--- [Step 4/5] Assembling Video with Dynamic Zoom Motion ---")
     
     voice_clip = AudioFileClip("voiceover.mp3")
     target_duration = voice_clip.duration
     
-    base_video = VideoFileClip(gameplay_path)
-    base_video = base_video.resize(height=1920)
+    sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
+    total_words = sum(len(s.split()) for s in sentences) or 1
     
-    if base_video.duration < target_duration:
-        looped_video = vfx.loop(base_video, duration=target_duration)
-    else:
-        looped_video = base_video.subclip(0, target_duration)
+    video_segments = []
+    caption_clips = []
+    current_time = 0.0
+    
+    clip_index = 0
+    for i, sentence in enumerate(sentences):
+        sentence_words = len(sentence.split())
+        dur = max((sentence_words / total_words) * target_duration, 1.5)
         
-    if looped_video.w > 1080:
-        x_center = looped_video.w / 2
-        looped_video = looped_video.crop(x1=x_center - 540, x2=x_center + 540, y1=0, y2=1920)
+        # Cycle through the custom clips fetched by yt-dlp
+        current_clip_path = clip_paths[clip_index % len(clip_paths)]
+        clip_index += 1
+        
+        try:
+            sub_clip = VideoFileClip(current_clip_path)
+            max_start = max(0, sub_clip.duration - dur)
+            start_t = random.uniform(0, max_start) if max_start > 0 else 0
+            end_t = min(start_t + dur, sub_clip.duration)
+            snippet = sub_clip.subclip(start_t, end_t).resize(height=1920)
+            if snippet.w > 1080:
+                x_center = snippet.w / 2
+                snippet = snippet.crop(x1=x_center - 540, x2=x_center + 540, y1=0, y2=1920)
+            
+            # Ken Burns Dynamic Zoom Motion (kills the slideshow feel)
+            c_dur = snippet.duration
+            if i % 2 == 0:
+                snippet = snippet.resize(lambda t, d=c_dur: 1.0 + 0.12 * (t / d))
+            else:
+                snippet = snippet.resize(lambda t, d=c_dur: 1.12 - 0.12 * (t / d))
+                
+            video_segments.append(snippet)
+        except Exception:
+            fallback_bg = ColorClip(size=(1080, 1920), color=(15, 18, 30), duration=dur)
+            video_segments.append(fallback_bg)
+        
+        try:
+            txt_clip = TextClip(
+                sentence, fontsize=60, color='yellow', 
+                stroke_color='black', stroke_width=4, size=(950, None), method='caption'
+            )
+            txt_clip = txt_clip.set_start(current_time).set_duration(dur).set_position(('center', 1400))
+            caption_clips.append(txt_clip)
+        except Exception:
+            pass
+            
+        current_time += dur
+
+    final_base_video = concatenate_videoclips(video_segments)
+    
+    if final_base_video.duration > target_duration:
+        final_base_video = final_base_video.subclip(0, target_duration)
     
     bgm_folder = "bgm"
     if not os.path.exists(bgm_folder):
@@ -128,29 +241,10 @@ def assemble_video(script, gameplay_path):
     else:
         final_audio = voice_clip
         
-    looped_video = looped_video.set_audio(final_audio)
-
-    sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
-    chunk_duration = target_duration / max(len(sentences), 1)
+    final_base_video = final_base_video.set_audio(final_audio)
+    final_video = CompositeVideoClip([final_base_video] + caption_clips)
     
-    caption_clips = []
-    for i, sentence in enumerate(sentences):
-        start_t = i * chunk_duration
-        end_t = min((i + 1) * chunk_duration, target_duration)
-        dur = max(end_t - start_t, 1.0)
-        
-        try:
-            txt_clip = TextClip(
-                sentence, fontsize=60, color='yellow', 
-                stroke_color='black', stroke_width=4, size=(950, None), method='caption'
-            )
-            txt_clip = txt_clip.set_start(start_t).set_duration(dur).set_position(('center', 1400))
-            caption_clips.append(txt_clip)
-        except Exception:
-            pass
-
-    final_video = CompositeVideoClip([looped_video] + caption_clips)
-    print("Rendering final MP4...")
+    print("Rendering final dynamic story MP4...")
     final_video.write_videofile(
         "final_short.mp4", fps=24, codec="libx264", 
         audio_codec="aac", threads=2, preset="ultrafast", logger=None
@@ -172,12 +266,11 @@ def upload_to_youtube(script_snippet):
         return
 
     credentials = google.oauth2.credentials.Credentials(
-        None, refresh_token=refresh_token, token_uri="https://oauth2.googleapis.com/token",
+        None, refresh_token=refresh_token, token_uri="[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)",
         client_id=client_id, client_secret=client_secret
     )
     
     youtube = build("youtube", "v3", credentials=credentials)
-    
     title_words = script_snippet.split()[:7]
     dynamic_title = " ".join(title_words) if title_words else "Blox Fruits Madness!"
     
@@ -203,18 +296,18 @@ def upload_to_youtube(script_snippet):
         if status:
             print(f"Uploading file: {int(status.progress() * 100)}%")
             
-    print(f"Upload Successful! Video ID: {response.get('id')}\nURL: https://youtube.com/shorts/{response.get('id')}")
+    print(f"Upload Successful! Video ID: {response.get('id')}\nURL: [https://youtube.com/shorts/](https://youtube.com/shorts/){response.get('id')}")
 
 # ==========================================
 # 5. MAIN EXECUTION
 # ==========================================
 def main():
-    print("=== Starting Hybrid Gameplay Pipeline ===\n")
+    print("=== Starting Dynamic Director Pipeline ===\n")
     
-    script = generate_infinite_script()
+    script, queries = generate_script_and_queries()
     asyncio.run(generate_voiceover(script, "voiceover.mp3"))
-    chosen_gameplay = select_gameplay_clip()
-    assemble_video(script, chosen_gameplay)
+    clip_paths = fetch_dynamic_clips(queries)
+    assemble_video(script, clip_paths)
     upload_to_youtube(script)
     
     print("=== Pipeline Complete! Short is Live. ===")
