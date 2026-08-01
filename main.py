@@ -5,6 +5,10 @@ import json
 import requests
 import asyncio
 import edge_tts
+
+# Fix MoviePy ImageMagick path detection on GitHub Actions Ubuntu runners to prevent exit code 1 crashes
+os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
+
 from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip, TextClip
 import moviepy.video.fx.all as vfx
 from groq import Groq
@@ -96,22 +100,18 @@ def assemble_video(script, gameplay_path):
     voice_clip = AudioFileClip("voiceover.mp3")
     target_duration = voice_clip.duration
     
-    # Load background video, crop/resize to vertical 9:16 shorts dimensions (1080x1920)
     base_video = VideoFileClip(gameplay_path)
     base_video = base_video.resize(height=1920)
     
-    # Loop or trim the video clip to match the exact length of the voiceover audio
     if base_video.duration < target_duration:
         looped_video = vfx.loop(base_video, duration=target_duration)
     else:
         looped_video = base_video.subclip(0, target_duration)
         
-    # Center crop horizontally to fit 1080 width
     if looped_video.w > 1080:
         x_center = looped_video.w / 2
         looped_video = looped_video.crop(x1=x_center - 540, x2=x_center + 540, y1=0, y2=1920)
     
-    # Handle background music mixing
     bgm_folder = "bgm"
     if not os.path.exists(bgm_folder):
         os.makedirs(bgm_folder, exist_ok=True)
@@ -130,7 +130,6 @@ def assemble_video(script, gameplay_path):
         
     looped_video = looped_video.set_audio(final_audio)
 
-    # Generate dynamic punchy text overlays (captions)
     sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
     chunk_duration = target_duration / max(len(sentences), 1)
     
@@ -210,7 +209,7 @@ def upload_to_youtube(script_snippet):
 # 5. MAIN EXECUTION
 # ==========================================
 def main():
-    print("=== Starting Hybrid Gameplay Pipeline ==-\n")
+    print("=== Starting Hybrid Gameplay Pipeline ===\n")
     
     script = generate_infinite_script()
     asyncio.run(generate_voiceover(script, "voiceover.mp3"))
