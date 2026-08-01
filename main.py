@@ -4,6 +4,7 @@ import time
 import requests
 import asyncio
 import edge_tts
+from PIL import Image
 from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip, TextClip
 import moviepy.video.fx.all as vfx
 from groq import Groq
@@ -92,15 +93,18 @@ async def generate_voiceover(text, output_filename):
     print(f"Voiceover saved to {output_filename}\n")
 
 # ==========================================
-# 2. VIGGLE AI 3D MOTION TRANSFER WITH AUTO-FALLBACK
+# 2. VIGGLE AI 3D MOTION TRANSFER WITH COMPRESSION & AUTO-FALLBACK
 # ==========================================
 def trigger_viggle_render():
-    """Selects a motion template and maps the character using Viggle API with automatic key failover across 3 keys."""
+    """Compresses assets, selects a motion template, and maps the character using Viggle API with failover."""
     print("--- [Step 3/5] Triggering Viggle AI 3D Motion Rendering ---")
     
     char_path = "assets/character.png"
     motion_dir = "motion_templates"
     
+    if not os.path.exists(char_path):
+        raise Exception("Missing 'assets/character.png' image file!")
+        
     if not os.path.exists(motion_dir):
         os.makedirs(motion_dir, exist_ok=True)
         raise Exception(f"Missing '{motion_dir}' folder. Add at least one MP4 motion template!")
@@ -112,6 +116,26 @@ def trigger_viggle_render():
     chosen_template = os.path.join(motion_dir, random.choice(templates))
     print(f"Selected Motion Template: {chosen_template}")
     
+    # AUTO-COMPRESS CHARACTER IMAGE TO PREVENT 413 ERRORS
+    compressed_char_path = "temp_character.png"
+    img = Image.open(char_path)
+    img.thumbnail((720, 720))
+    img.save(compressed_char_path, "PNG")
+    
+    # AUTO-COMPRESS & RESIZE MOTION TEMPLATE VIDEO TO PREVENT 413 ERRORS
+    compressed_template_path = "temp_motion.mp4"
+    print("Compressing motion template for API payload limits...")
+    vid_clip = VideoFileClip(chosen_template)
+    if vid_clip.duration > 12:
+        vid_clip = vid_clip.subclip(0, 12)  # Trim to max 12 seconds
+    vid_resized = vid_clip.resize(height=720)
+    vid_resized.write_videofile(
+        compressed_template_path, fps=24, codec="libx264", audio_codec="aac", 
+        preset="ultrafast", bitrate="800k", logger=None
+    )
+    vid_clip.close()
+    vid_resized.close()
+
     available_keys = get_all_api_keys()
     job_id = None
     working_key = None
@@ -123,7 +147,7 @@ def trigger_viggle_render():
         }
         try:
             print(f"Attempting request with RapidAPI Key slot #{idx + 1}...")
-            with open(char_path, 'rb') as img_file, open(chosen_template, 'rb') as vid_file:
+            with open(compressed_char_path, 'rb') as img_file, open(compressed_template_path, 'rb') as vid_file:
                 response = requests.post(
                     MIX_ENDPOINT, 
                     headers=headers, 
@@ -147,6 +171,12 @@ def trigger_viggle_render():
                 continue
             raise e
             
+    # Cleanup temporary compressed files
+    if os.path.exists(compressed_char_path):
+        os.remove(compressed_char_path)
+    if os.path.exists(compressed_template_path):
+        os.remove(compressed_template_path)
+        
     if not job_id or not working_key:
         raise Exception("Fatal: All RapidAPI keys have exceeded their quotas or failed!")
         
@@ -157,7 +187,6 @@ def trigger_viggle_render():
     
     print("Polling for render completion...")
     while True:
-        # Fixed: job-results requires a POST request with JSON payload per RapidAPI specs
         res = requests.post(RESULT_ENDPOINT, headers=headers, json={"job_id": job_id})
         res.raise_for_status()
         data = res.json()
@@ -223,7 +252,6 @@ def assemble_video(script, viggle_video_path):
         dur = max(end_t - start_t, 1.0)
         
         try:
-            # Fixed: Removed custom font to prevent missing font crashes on GitHub Actions Linux runners
             txt_clip = TextClip(
                 sentence, fontsize=60, color='yellow', 
                 stroke_color='black', stroke_width=4, size=(950, None), method='caption'
