@@ -117,11 +117,12 @@ def trigger_viggle_render():
     chosen_template = os.path.join(motion_dir, random.choice(templates))
     print(f"Selected Motion Template: {chosen_template}")
     
-    # AUTO-COMPRESS CHARACTER IMAGE
-    compressed_char_path = "temp_character.png"
+    # AUTO-COMPRESS CHARACTER IMAGE (Fixed: Force RGB JPEG to strip Alpha Channel transparency)
+    compressed_char_path = "temp_character.jpg"
     img = Image.open(char_path)
+    img = img.convert('RGB')
     img.thumbnail((720, 720))
-    img.save(compressed_char_path, "PNG")
+    img.save(compressed_char_path, "JPEG")
     
     # AUTO-COMPRESS & RESIZE MOTION TEMPLATE VIDEO
     compressed_template_path = "temp_motion.mp4"
@@ -149,14 +150,14 @@ def trigger_viggle_render():
                 m = MultipartEncoder(
                     fields={
                         'video': ('motion.mp4', vid_file, 'video/mp4'),
-                        'image': ('character.png', img_file, 'image/png')
+                        'image': ('character.jpg', img_file, 'image/jpeg')
                     }
                 )
                 headers = {
                     "X-RapidAPI-Key": key,
                     "X-RapidAPI-Host": RAPIDAPI_HOST,
                     "Content-Type": m.content_type,
-                    "Content-Length": str(m.len)  # CRITICAL FIX: RapidAPI gateway requires explicit size to avoid chunking 400 errors
+                    "Content-Length": str(m.len)
                 }
                 
                 response = requests.post(
@@ -165,16 +166,22 @@ def trigger_viggle_render():
                     data=m
                 )
                 
+                # Debugging: Print exact raw response
+                print(f"Raw API Response (Status {response.status_code}): {response.text}")
+                
                 if response.status_code == 429:
                     print(f"Key slot #{idx + 1} quota exhausted (429). Falling back to next key...")
                     continue
-                
-                if response.status_code != 200:
-                    print(f"API Error Response: {response.text}")
                     
                 response.raise_for_status()
                 data = response.json()
-                job_id = data.get("job_id")
+                
+                # Failsafe: Try multiple known JSON structures for the job ID
+                job_id = data.get("job_id") or data.get("id") or data.get("data", {}).get("job_id")
+                
+                if not job_id:
+                    raise Exception(f"API returned 200 OK, but no Job ID was found! Payload: {data}")
+
                 working_key = key
                 print(f"Success with Key slot #{idx + 1}! Job ID: {job_id}")
                 break
