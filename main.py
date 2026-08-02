@@ -1,12 +1,20 @@
 """
 Roblox Auto-Shorts — Multi-Game Edition (v3)
 ============================================
-8 popular Roblox games — rotates each run so every game gets coverage
-Per-game story memory & character bible — each game continues its own saga
-Real-life references baked into every episode (current date sent to Groq)
-game_state.json tracks rotation index + episode count per game
-Together AI FLUX.1-schnell PRIMARY | Pollinations fallback (free)
-MoviePy v2.0 syntax throughout
+What's new in v3:
+  • 8 popular Roblox games — rotates each run so every game gets coverage
+  • Per-game story memory & character bible — each game continues its own saga
+  • Real-life references baked into every episode (current date sent to Groq)
+  • game_state.json tracks rotation index + episode count per game
+  • Together AI FLUX.1-schnell PRIMARY | Pollinations fallback (free)
+  • MoviePy v2.0 syntax throughout
+  • Cinematic UE5 prompts, 10 frames per scene, 6-step crossfade
+
+Games in rotation (cycles in order, one per daily run):
+  1. Blox Fruits        5. Doors
+  2. Adopt Me!          6. Arsenal
+  3. Murder Mystery 2   7. Anime Adventures
+  4. Pet Simulator X    8. Brookhaven
 """
 
 import os, time, random, json, math, requests, asyncio, edge_tts
@@ -25,6 +33,9 @@ import google.oauth2.credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
+# ─────────────────────────────────────────────────────────────────────────────
+# VIDEO CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
 VIDEO_W, VIDEO_H  = 1080, 1920
 FPS               = 24
 CAPTION_Y_FRAC    = 0.82
@@ -43,7 +54,11 @@ POLL_TIMEOUT      = 90
 
 GAME_STATE_FILE   = "game_state.json"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ROBLOX GAME CATALOG
+# ─────────────────────────────────────────────────────────────────────────────
 ROBLOX_GAMES = {
+
     "blox_fruits": {
         "display_name": "Blox Fruits",
         "genre": "action RPG, open-world sea adventure",
@@ -52,7 +67,7 @@ ROBLOX_GAMES = {
             "tropical colorful sea island world, vivid neon fruit powers, "
             "plastic shiny textures, dramatic ocean background"
         ),
-        "hashtags": ["#BloxFruits","#Roblox","#Shorts","#Gaming","#RobloxShorts","#BloxFruitsStory"],
+        "hashtags": ["#BloxFruits", "#Roblox", "#Shorts", "#Gaming", "#RobloxShorts", "#BloxFruitsStory"],
         "scene_examples": [
             "Luffy blox fruits dough awakening sea battle",
             "Shanks blox fruits sword clash island boss",
@@ -64,6 +79,7 @@ ROBLOX_GAMES = {
             "The sea holds ancient secrets and legendary Devil Fruits waiting to be found."
         ),
     },
+
     "adopt_me": {
         "display_name": "Adopt Me!",
         "genre": "trading, pet collecting, family roleplay",
@@ -72,7 +88,7 @@ ROBLOX_GAMES = {
             "colorful pastel Adoption Island world, adorable pixel pets, "
             "bright cheerful neighborhood, neon trade signs"
         ),
-        "hashtags": ["#AdoptMe","#Roblox","#Shorts","#Gaming","#RobloxPets","#AdoptMeTrading"],
+        "hashtags": ["#AdoptMe", "#Roblox", "#Shorts", "#Gaming", "#RobloxPets", "#AdoptMeTrading"],
         "scene_examples": [
             "rare neon unicorn pet trade Adopt Me island",
             "shadow dragon scam drama Adopt Me school",
@@ -84,6 +100,7 @@ ROBLOX_GAMES = {
             "The legendary Neon Shadow Dragon is rumored to appear at the trading plaza."
         ),
     },
+
     "murder_mystery_2": {
         "display_name": "Murder Mystery 2",
         "genre": "thriller, whodunit, survival horror",
@@ -92,7 +109,7 @@ ROBLOX_GAMES = {
             "dark moody map with neon lighting, knife glint effects, "
             "sheriff badge glow, dramatic shadows, tense atmosphere"
         ),
-        "hashtags": ["#MM2","#MurderMystery2","#Roblox","#Shorts","#RobloxThriller","#MM2Story"],
+        "hashtags": ["#MM2", "#MurderMystery2", "#Roblox", "#Shorts", "#RobloxThriller", "#MM2Story"],
         "scene_examples": [
             "sheriff chasing murderer MM2 dark warehouse",
             "innocent discovers body MM2 haunted mansion",
@@ -104,6 +121,7 @@ ROBLOX_GAMES = {
             "Nobody knows who the murderer is yet — but the body count is about to rise."
         ),
     },
+
     "pet_simulator_x": {
         "display_name": "Pet Simulator X",
         "genre": "idle collecting, pet evolution, trading battles",
@@ -112,7 +130,7 @@ ROBLOX_GAMES = {
             "colorful floating islands coin world, giant glowing pets, "
             "rainbow explosion effects, huge coin stacks, vivid neon background"
         ),
-        "hashtags": ["#PetSimX","#PetSimulatorX","#Roblox","#Shorts","#RobloxPets","#PSXTrading"],
+        "hashtags": ["#PetSimX", "#PetSimulatorX", "#Roblox", "#Shorts", "#RobloxPets", "#PSXTrading"],
         "scene_examples": [
             "giant rainbow unicorn pet destroy coins PSX island",
             "exclusive titanic cat unboxing surprise PSX",
@@ -124,6 +142,7 @@ ROBLOX_GAMES = {
             "Rumors spread about a secret Titanic Dark Matter cat hidden in a locked chest."
         ),
     },
+
     "doors": {
         "display_name": "Doors",
         "genre": "horror survival, puzzle escape",
@@ -133,7 +152,7 @@ ROBLOX_GAMES = {
             "glowing red entity eyes, dramatic shadow horror atmosphere, "
             "door number glowing in darkness"
         ),
-        "hashtags": ["#RobloxDoors","#Doors","#Roblox","#Shorts","#RobloxHorror","#DoorsEntity"],
+        "hashtags": ["#RobloxDoors", "#Doors", "#Roblox", "#Shorts", "#RobloxHorror", "#DoorsEntity"],
         "scene_examples": [
             "Rush entity sprint Door 50 Doors horror hotel",
             "Seek floor chase escape Doors dark corridor",
@@ -145,6 +164,7 @@ ROBLOX_GAMES = {
             "The lights are already flickering at Door 1. Something is already watching."
         ),
     },
+
     "arsenal": {
         "display_name": "Arsenal",
         "genre": "FPS action, kill streaks, weapon unlocks",
@@ -154,7 +174,7 @@ ROBLOX_GAMES = {
             "kill streak explosion, bright vivid game arena, "
             "headshot particle burst, scorestreak banner"
         ),
-        "hashtags": ["#RobloxArsenal","#Arsenal","#Roblox","#Shorts","#RobloxFPS","#ArsenalKills"],
+        "hashtags": ["#RobloxArsenal", "#Arsenal", "#Roblox", "#Shorts", "#RobloxFPS", "#ArsenalKills"],
         "scene_examples": [
             "insane 360 no-scope Arsenal FPS arena final kill",
             "golden knife unlock Arsenal locker room reveal",
@@ -166,15 +186,17 @@ ROBLOX_GAMES = {
             "The legendary Golden Knife kill is just 1 point away — can they pull it off?"
         ),
     },
+
     "anime_adventures": {
         "display_name": "Anime Adventures",
         "genre": "tower defense, anime crossover, wave survival",
         "image_style": (
             "Roblox Anime Adventures game, blocky anime-style 3D avatar, "
             "colorful tower defense map, glowing anime unit effects, "
-            "massive energy beam attacks, vivid neon skill explosions"
+            "massive energy beam attacks, vivid neon skill explosions, "
+            "anime character crossover blocky style"
         ),
-        "hashtags": ["#AnimeAdventures","#Roblox","#Shorts","#Gaming","#RobloxAnime","#AAGame"],
+        "hashtags": ["#AnimeAdventures", "#Roblox", "#Shorts", "#Gaming", "#RobloxAnime", "#AAGame"],
         "scene_examples": [
             "secret 6-star unit summon Anime Adventures reveal",
             "final wave boss destroy Anime Adventures tower map",
@@ -186,15 +208,17 @@ ROBLOX_GAMES = {
             "Wave 50 is incoming and a secret 6-star summon has just appeared on the banner."
         ),
     },
+
     "brookhaven": {
         "display_name": "Brookhaven RP",
         "genre": "social roleplay, drama, life simulation",
         "image_style": (
             "Roblox Brookhaven RP game, blocky avatar, "
             "colorful suburban neighborhood world, luxury mansion background, "
-            "sports cars, school setting, bright cheerful town atmosphere"
+            "sports cars, school setting, bright cheerful town atmosphere, "
+            "dramatic roleplay scene vivid colors"
         ),
-        "hashtags": ["#Brookhaven","#BrookhavenRP","#Roblox","#Shorts","#RobloxRP","#BrookhavenDrama"],
+        "hashtags": ["#Brookhaven", "#BrookhavenRP", "#Roblox", "#Shorts", "#RobloxRP", "#BrookhavenDrama"],
         "scene_examples": [
             "secret millionaire reveal Brookhaven luxury mansion",
             "high school drama rivalry Brookhaven school hallway",
@@ -210,6 +234,9 @@ ROBLOX_GAMES = {
 
 GAME_ORDER = list(ROBLOX_GAMES.keys())
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PROMPTS
+# ─────────────────────────────────────────────────────────────────────────────
 NEGATIVE_PROMPT = (
     "flat lighting,dull colors,2D,anime lineart,realistic human proportions,"
     "photograph,ugly,pixelated,low resolution,dark background,monochrome,horror faces,"
@@ -223,17 +250,31 @@ CINEMATIC_BASE = (
 )
 
 FRAME_STAGES = [
-    "idle standing","noticing threat","powering up aura","charging forward",
-    "mid-air leap","strike impact","shockwave burst","landing ground",
-    "dramatic aftermath","triumphant pose",
+    "idle standing",
+    "noticing threat",
+    "powering up aura",
+    "charging forward",
+    "mid-air leap",
+    "strike impact",
+    "shockwave burst",
+    "landing ground",
+    "dramatic aftermath",
+    "triumphant pose",
 ]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# LOCAL ASSET FALLBACK
+# ─────────────────────────────────────────────────────────────────────────────
 ASSET_DIR  = "assets"
 ALL_ASSETS = [
-    "roblox_landscape.jpg","ancient_island.jpg","jungle_island.jpg",
-    "ocean_battle.jpg","fortress.jpg","volcano_island.jpg",
-    "underwater_city.jpg","sea.jpg","monster_mutation.jpg",
+    "roblox_landscape.jpg", "ancient_island.jpg", "jungle_island.jpg",
+    "ocean_battle.jpg", "fortress.jpg", "volcano_island.jpg",
+    "underwater_city.jpg", "sea.jpg", "monster_mutation.jpg",
 ]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GAME STATE
+# ─────────────────────────────────────────────────────────────────────────────
 def load_game_state():
     if os.path.exists(GAME_STATE_FILE):
         try:
@@ -241,7 +282,10 @@ def load_game_state():
                 return json.load(f)
         except Exception:
             pass
-    return {"game_index": 0, "episode_counts": {g: 0 for g in GAME_ORDER}}
+    return {
+        "game_index": 0,
+        "episode_counts": {g: 0 for g in GAME_ORDER},
+    }
 
 def save_game_state(state):
     with open(GAME_STATE_FILE, "w") as f:
@@ -259,6 +303,9 @@ def game_memory_file(game_slug):
 def game_bible_file(game_slug):
     return f"character_bible_{game_slug}.json"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# UTILITIES
+# ─────────────────────────────────────────────────────────────────────────────
 def clean_env(val):
     if not val: return ""
     val = val.strip()
@@ -275,7 +322,8 @@ def find_font():
         "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
     ]
     for path in candidates:
-        if os.path.exists(path): return path
+        if os.path.exists(path):
+            return path
     result = subprocess.run(
         ["find", "/usr/share/fonts", "-name", "*.ttf", "-type", "f"],
         capture_output=True, text=True,
@@ -286,28 +334,36 @@ def find_font():
 def pick_local_assets(count=FRAMES_PER_SCENE):
     pool = [os.path.join(ASSET_DIR, f) for f in ALL_ASSETS
             if os.path.exists(os.path.join(ASSET_DIR, f))]
-    if not pool: return []
+    if not pool:
+        return []
     random.shuffle(pool)
-    while len(pool) < count: pool *= 2
+    while len(pool) < count:
+        pool *= 2
     return pool[:count]
 
 def load_and_fit(path):
     pil   = Image.open(path).convert("RGB")
     scale = max(VIDEO_W / pil.width, VIDEO_H / pil.height)
-    pil   = pil.resize((int(pil.width*scale), int(pil.height*scale)), Image.LANCZOS)
+    pil   = pil.resize((int(pil.width * scale), int(pil.height * scale)), Image.LANCZOS)
     x0    = (pil.width  - VIDEO_W) // 2
     y0    = (pil.height - VIDEO_H) // 2
-    pil   = pil.crop((x0, y0, x0+VIDEO_W, y0+VIDEO_H))
+    pil   = pil.crop((x0, y0, x0 + VIDEO_W, y0 + VIDEO_H))
     pil   = ImageEnhance.Brightness(pil).enhance(1.05)
     pil   = ImageEnhance.Contrast(pil).enhance(1.12)
     pil   = ImageEnhance.Color(pil).enhance(1.20)
     return np.array(pil)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# FRAME COMPILER
+# ─────────────────────────────────────────────────────────────────────────────
 def compile_frames_to_video(img_paths, duration, out_path):
     if not img_paths:
-        _write_blank_video(out_path, duration); return
+        _write_blank_video(out_path, duration)
+        return
+
     arrays = [load_and_fit(p) for p in img_paths]
-    n = len(arrays)
+    n      = len(arrays)
+
     frame_seq = []
     for i, arr in enumerate(arrays):
         frame_seq.append(arr)
@@ -318,12 +374,15 @@ def compile_frames_to_video(img_paths, duration, out_path):
                 blend = (arr.astype(np.float32) * (1 - alpha)
                          + nxt.astype(np.float32) * alpha).astype(np.uint8)
                 frame_seq.append(blend)
-    total_unique = len(frame_seq)
+
+    total_unique       = len(frame_seq)
     total_video_frames = max(int(duration * FPS), total_unique)
     frames_per_unique  = total_video_frames / total_unique
+
     frame_dir = out_path.replace(".mp4", "_frames")
     os.makedirs(frame_dir, exist_ok=True)
-    print(f"    🖼  {total_unique} unique → {total_video_frames} frames @ {FPS}fps")
+    print(f"    🖼  {total_unique} unique frames → {total_video_frames} video frames @ {FPS}fps")
+
     vfi = 0
     for uid, arr in enumerate(frame_seq):
         start = round(uid * frames_per_unique)
@@ -333,6 +392,7 @@ def compile_frames_to_video(img_paths, duration, out_path):
         for _ in range(cnt):
             pil.save(os.path.join(frame_dir, f"f{vfi:07d}.jpg"), quality=92)
             vfi += 1
+
     cmd = [
         "ffmpeg", "-y", "-framerate", str(FPS),
         "-i", os.path.join(frame_dir, "f%07d.jpg"),
@@ -342,8 +402,10 @@ def compile_frames_to_video(img_paths, duration, out_path):
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
         raise RuntimeError(f"ffmpeg failed:\n{res.stderr}")
+
     shutil.rmtree(frame_dir)
-    print(f"    ✅ Scene compiled: {out_path}")
+    print(f"    ✅ Scene video compiled: {out_path}")
+
 
 def _write_blank_video(out_path, duration):
     frame_dir = out_path.replace(".mp4", "_blank_frames")
@@ -358,6 +420,9 @@ def _write_blank_video(out_path, duration):
     ], capture_output=True)
     shutil.rmtree(frame_dir)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PROMPT BUILDER
+# ─────────────────────────────────────────────────────────────────────────────
 def build_image_prompt(query, narration, character_bible, frame_stage, game_config):
     narration_lower = narration.lower()
     char_parts = []
@@ -371,6 +436,7 @@ def build_image_prompt(query, narration, character_bible, frame_stage, game_conf
             if data.get("aura_color"):       parts.append(f"surrounded by {data['aura_color']}")
             if data.get("signature_weapon"): parts.append(f"wielding {data['signature_weapon']}")
             char_parts.append(", ".join(parts))
+
     char_part = (" | ".join(char_parts) + " | ") if char_parts else ""
     return (
         f"{CINEMATIC_BASE}, {game_config['image_style']}, "
@@ -379,23 +445,30 @@ def build_image_prompt(query, narration, character_bible, frame_stage, game_conf
         "9:16 vertical portrait, no watermarks, no UI overlay"
     )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ENGINE A — TOGETHER AI
+# ─────────────────────────────────────────────────────────────────────────────
 def fetch_together_frames(base_query, narration, character_bible,
                           count, out_dir, prefix, api_key, game_config):
-    print(f"    🚀 [Engine A] Together AI — {count} frames...")
+    print(f"    🚀 [Engine A] Together AI FLUX.1-schnell — {count} frames...")
     scene_seed = random.randint(10_000, 9_999_999)
     print(f"    🎲 Seed: {scene_seed}")
+
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     paths   = []
+
     for i in range(count):
         stage    = FRAME_STAGES[i % len(FRAME_STAGES)]
         prompt   = build_image_prompt(base_query, narration, character_bible, stage, game_config)
         out_path = os.path.join(out_dir, f"{prefix}_tog_{i:02d}.jpg")
-        payload  = {
+
+        payload = {
             "model": TOGETHER_MODEL, "prompt": prompt,
             "negative_prompt": NEGATIVE_PROMPT,
             "steps": TOGETHER_STEPS, "n": 1,
             "seed": scene_seed, "width": 1080, "height": 1920,
         }
+
         success = False
         for attempt in range(1, 4):
             try:
@@ -404,44 +477,62 @@ def fetch_together_frames(base_query, narration, character_bible,
                 if resp.status_code == 429:
                     wait = 30 * attempt
                     print(f"    ⏳ Frame {i+1:02d} 429 (attempt {attempt}/3) — sleeping {wait}s...")
-                    time.sleep(wait); continue
+                    time.sleep(wait)
+                    continue
                 if resp.status_code == 200:
                     img_data = resp.json().get("data", [{}])[0]
-                    b64 = img_data.get("b64_json")
-                    img_url = img_data.get("url")
+                    b64      = img_data.get("b64_json")
+                    img_url  = img_data.get("url")
                     if b64:
                         import base64
-                        with open(out_path, "wb") as f: f.write(base64.b64decode(b64))
+                        with open(out_path, "wb") as f:
+                            f.write(base64.b64decode(b64))
                     elif img_url:
                         r2 = requests.get(img_url, timeout=60)
-                        with open(out_path, "wb") as f: f.write(r2.content)
+                        with open(out_path, "wb") as f:
+                            f.write(r2.content)
                     else:
-                        print(f"    ⚠️  Frame {i+1:02d}: no image in response"); break
+                        print(f"    ⚠️  Frame {i+1:02d}: no image in response")
+                        break
                     if os.path.getsize(out_path) > 5000:
                         print(f"    ✅ Together frame {i+1:02d}/{count}")
-                        paths.append(out_path); success = True; break
-                    time.sleep(5); continue
+                        paths.append(out_path)
+                        success = True
+                        break
+                    time.sleep(5)
+                    continue
                 print(f"    ⚠️  Frame {i+1:02d} HTTP {resp.status_code}: {resp.text[:120]}")
                 time.sleep(10)
             except requests.exceptions.Timeout:
                 print(f"    ⚠️  Frame {i+1:02d} timeout (attempt {attempt}/3) — sleeping 30s...")
                 time.sleep(30)
             except Exception as e:
-                print(f"    ⚠️  Frame {i+1:02d} error: {e} — retrying 10s..."); time.sleep(10)
-        if not success: print(f"    ❌ Frame {i+1:02d} failed after 3 attempts.")
-        elif i < count - 1: time.sleep(1)
+                print(f"    ⚠️  Frame {i+1:02d} error: {e} — retrying 10s...")
+                time.sleep(10)
+
+        if not success:
+            print(f"    ❌ Frame {i+1:02d} failed after 3 attempts.")
+        elif i < count - 1:
+            time.sleep(1)
+
     return paths
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ENGINE B — POLLINATIONS AI  (free fallback)
+# ─────────────────────────────────────────────────────────────────────────────
 def fetch_pollinations_frames(base_query, narration, character_bible,
                               count, out_dir, prefix, game_config):
     scene_seed = random.randint(10_000, 9_999_999)
     neg_enc    = requests.utils.quote(NEGATIVE_PROMPT)
     print(f"    🌸 [Engine B] Pollinations — {count} frames  |  seed: {scene_seed}")
+
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                       "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"),
         "Referer": "https://pollinations.ai/",
-        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept":  "image/webp,image/apng,image/*,*/*;q=0.8",
     }
+
     paths = []
     for i in range(count):
         stage    = FRAME_STAGES[i % len(FRAME_STAGES)]
@@ -451,87 +542,131 @@ def fetch_pollinations_frames(base_query, narration, character_bible,
                     f"?width=1080&height=1920&nologo=true"
                     f"&seed={scene_seed}&model=flux&negative={neg_enc}")
         out_path = os.path.join(out_dir, f"{prefix}_pol_{i:02d}.jpg")
-        success  = False
+
+        success = False
         for attempt in range(1, POLL_MAX_RETRY + 1):
             try:
                 resp = requests.get(url, headers=headers, timeout=POLL_TIMEOUT, stream=True)
                 if resp.status_code == 429:
-                    print(f"    ⏳ Frame {i+1:02d} 429 (attempt {attempt}/{POLL_MAX_RETRY}) — sleeping {POLL_DELAY_429}s...")
-                    time.sleep(POLL_DELAY_429); continue
-                if resp.status_code == 200 and "image" in resp.headers.get("content-type", ""):
+                    print(f"    ⏳ Frame {i+1:02d} 429 (attempt {attempt}/{POLL_MAX_RETRY}) "
+                          f"— sleeping {POLL_DELAY_429}s...")
+                    time.sleep(POLL_DELAY_429)
+                    continue
+                if (resp.status_code == 200
+                        and "image" in resp.headers.get("content-type", "")):
                     with open(out_path, "wb") as f:
-                        for chunk in resp.iter_content(8192): f.write(chunk)
+                        for chunk in resp.iter_content(8192):
+                            f.write(chunk)
                     if os.path.getsize(out_path) > 5000:
                         print(f"    ✅ Frame {i+1:02d}/{count}")
-                        paths.append(out_path); success = True; break
-                    time.sleep(5); continue
+                        paths.append(out_path)
+                        success = True
+                        break
+                    time.sleep(5)
+                    continue
                 print(f"    ⚠️  Frame {i+1:02d} HTTP {resp.status_code} — retrying 10s...")
                 time.sleep(10)
             except requests.exceptions.Timeout:
-                print(f"    ⚠️  Frame {i+1:02d} timeout (attempt {attempt}/{POLL_MAX_RETRY}) — sleeping 30s...")
+                print(f"    ⚠️  Frame {i+1:02d} timeout (attempt {attempt}/{POLL_MAX_RETRY}) "
+                      f"— sleeping 30s...")
                 time.sleep(30)
             except Exception as e:
-                print(f"    ⚠️  Frame {i+1:02d} error: {e} — retrying 10s..."); time.sleep(10)
-        if success and i < count - 1: time.sleep(POLL_DELAY_OK)
-        elif not success: print(f"    ❌ Frame {i+1:02d} gave up after {POLL_MAX_RETRY} attempts.")
+                print(f"    ⚠️  Frame {i+1:02d} error: {e} — retrying 10s...")
+                time.sleep(10)
+
+        if success and i < count - 1:
+            time.sleep(POLL_DELAY_OK)
+        elif not success:
+            print(f"    ❌ Frame {i+1:02d} gave up after {POLL_MAX_RETRY} attempts.")
+
     return paths
 
+# ─────────────────────────────────────────────────────────────────────────────
+# CAPTION  (MoviePy v2)
+# ─────────────────────────────────────────────────────────────────────────────
 _FONT_PATH = None
 
 def make_caption_clip(text, duration):
     global _FONT_PATH
-    if _FONT_PATH is None: _FONT_PATH = find_font()
     if _FONT_PATH is None:
-        print("    ⚠️  No system font found — captions skipped."); return None
+        _FONT_PATH = find_font()
+    if _FONT_PATH is None:
+        print("    ⚠️  No system font found — captions skipped.")
+        return None
     try:
         txt = TextClip(
             text=text, font=_FONT_PATH, font_size=CAPTION_FONTSIZE,
             color="white", stroke_color="black", stroke_width=4,
             size=(VIDEO_W - 100, None), method="caption", text_align="center",
         )
-        return (txt.with_duration(duration)
-                   .with_position(("center", int(VIDEO_H * CAPTION_Y_FRAC))))
+        return (txt
+                .with_duration(duration)
+                .with_position(("center", int(VIDEO_H * CAPTION_Y_FRAC))))
     except Exception as e:
-        print(f"    ⚠️  Caption failed: {e}"); return None
+        print(f"    ⚠️  Caption failed: {e}")
+        return None
 
+# ─────────────────────────────────────────────────────────────────────────────
+# SCENE VISUAL — engine cascade
+# ─────────────────────────────────────────────────────────────────────────────
 def fetch_scene_visual(scene, scene_idx, character_bible, work_dir, game_config):
     query     = scene["query"]
     narration = scene["narration"]
     dur       = scene.get("duration", 10)
     out_path  = os.path.join(work_dir, f"scene_{scene_idx}_visual.mp4")
+
     together_key = clean_env(os.getenv("TOGETHER_API_KEY"))
     paths = []
+
     if together_key:
         print(f"\n    ▶ Engine A: Together AI — {FRAMES_PER_SCENE} frames for {dur:.1f}s scene...")
-        paths = fetch_together_frames(query, narration, character_bible,
-                                      FRAMES_PER_SCENE, work_dir, f"s{scene_idx}",
-                                      together_key, game_config)
+        paths = fetch_together_frames(
+            query, narration, character_bible,
+            FRAMES_PER_SCENE, work_dir, f"s{scene_idx}",
+            together_key, game_config,
+        )
     else:
         print("    ℹ️  TOGETHER_API_KEY not set — skipping Engine A.")
+
     if not paths:
         print(f"\n    ▶ Engine B: Pollinations fallback — {FRAMES_PER_SCENE} frames...")
-        paths = fetch_pollinations_frames(query, narration, character_bible,
-                                          FRAMES_PER_SCENE, work_dir, f"s{scene_idx}", game_config)
+        paths = fetch_pollinations_frames(
+            query, narration, character_bible,
+            FRAMES_PER_SCENE, work_dir, f"s{scene_idx}", game_config,
+        )
+
     if not paths:
         print("    📁 All engines failed — using local assets.")
         paths = pick_local_assets(count=FRAMES_PER_SCENE)
+
     compile_frames_to_video(paths, dur, out_path)
     return VideoFileClip(out_path)
-  def generate_storyboard(game_slug, game_config, episode_number):
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. GROQ STORYBOARD
+# ─────────────────────────────────────────────────────────────────────────────
+def generate_storyboard(game_slug, game_config, episode_number):
     print(f"─── [1/5] Groq Story Director ({game_config['display_name']} — Episode {episode_number}) ───")
+
     api_key = clean_env(os.getenv("GROQ_API_KEY"))
-    if not api_key: raise Exception("Missing GROQ_API_KEY!")
-    client     = Groq(api_key=api_key)
+    if not api_key:
+        raise Exception("Missing GROQ_API_KEY!")
+
+    client = Groq(api_key=api_key)
+
     mem_file   = game_memory_file(game_slug)
     bible_file = game_bible_file(game_slug)
+
     previous_context  = game_config["starter_context"]
     character_context = "{}"
+
     if os.path.exists(mem_file):
         c = open(mem_file).read().strip()
         if c: previous_context = c
     if os.path.exists(bible_file):
         b = open(bible_file).read().strip()
         if b: character_context = b
+
     today = datetime.utcnow().strftime("%B %d, %Y")
     ex    = game_config["scene_examples"]
     genre = game_config["genre"]
@@ -544,7 +679,7 @@ GAME: {game_config['display_name']}
 GENRE: {genre}
 EPISODE: {episode_number}
 
-PREVIOUS EPISODE CONTEXT (continue DIRECTLY from here — do NOT restart):
+PREVIOUS EPISODE CONTEXT (continue directly from here):
 {previous_context}
 
 EXISTING CHARACTER BIBLE:
@@ -552,19 +687,22 @@ EXISTING CHARACTER BIBLE:
 
 YOUR TASK:
 Write the NEXT episode as exactly 4 scenes (~130-150 words total).
-1. Continue the story DIRECTLY from the previous context. The viewer watched the last episode.
-2. End on a CLIFFHANGER so viewers want Episode {episode_number + 1}.
-3. Each scene needs a visual QUERY describing what to render.
-4. Weave in at least ONE real-life reference relevant to {today} — a trending meme, viral gaming
-   moment, current internet trend, or real-world event parallel. Make it feel natural and relatable.
+Rules:
+1. Continue the story DIRECTLY from the previous episode context.
+   The viewer watched the last episode — do NOT restart the story.
+2. End on a CLIFFHANGER so viewers want to see the next episode.
+3. Each scene needs a visual QUERY describing exactly what to render.
+4. Weave in at least ONE real-life reference relevant to {today} —
+   a trending meme, viral gaming moment, current internet trend, or
+   real-world event parallel. Make it feel current and relatable.
 
 CHARACTER BIBLE RULES — CRITICAL:
-Describe every character with ALL 7 fields using Roblox avatar language ONLY.
-NEVER write "dark robes", "glowing eyes", "black hair" — these make realistic humans, not Roblox.
+Describe EVERY character with ALL 7 fields using Roblox avatar language ONLY.
+NEVER use realistic words like "dark robes", "glowing eyes", or "black hair".
 ALWAYS use Roblox decal names, accessory item names, and avatar part colors.
 
-Required fields per character:
-- clothes: full Roblox outfit (shirt color, pants, vest, shoes, belt)
+Required fields:
+- clothes: full outfit in Roblox item names (shirt color, pants, vest, shoes)
 - facial_features: Roblox face decal name + placement
 - accessories: ALL accessories with colors (hat, back, neck, shoulder)
 - aura_color: power aura color and particle effects
@@ -574,9 +712,9 @@ Required fields per character:
 
 Output ONLY valid JSON, no markdown fences:
 {{
-  "title": "Catchy episode title — Episode {episode_number}",
+  "title": "Catchy episode title with episode number",
   "game": "{game_config['display_name']}",
-  "real_life_reference": "One sentence describing the real-life trend/event referenced",
+  "real_life_reference": "One sentence describing the real-life trend/event you referenced",
   "scenes": [
     {{"narration": "...", "query": "{ex[0]}", "duration": 10}},
     {{"narration": "...", "query": "{ex[1]}", "duration": 10}},
@@ -590,54 +728,71 @@ Output ONLY valid JSON, no markdown fences:
       "accessories": "straw hat accessory (yellow), wanted poster back accessory",
       "aura_color": "bright red-orange flame aura with ember particles",
       "body_color": "light tan blocky skin, medium height Roblox avatar",
-      "signature_weapon": "giant rubber-stretched fist, gear fourth shockwave",
+      "signature_weapon": "giant rubber-stretched fist, gear fourth paw shockwave",
       "personality": "reckless, loud, heroic"
     }}
   }}
 }}
 """
+
     resp = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=2200, temperature=0.92,
     )
     raw = resp.choices[0].message.content.strip()
+
     if "```" in raw:
         parts = raw.split("```")
         if len(parts) >= 3:
             raw = parts[1]
             if raw.startswith("json"): raw = raw[4:]
             raw = raw.strip()
+
     if not raw.endswith("}"):
-        raise ValueError(f"Groq response truncated. Last 100: {raw[-100:]}")
+        raise ValueError(f"Groq response truncated. Last 100 chars: {raw[-100:]}")
+
     data = json.loads(raw)
+
     open(mem_file, "w").write(" ".join(s["narration"] for s in data["scenes"]))
     json.dump(data.get("character_bible", {}), open(bible_file, "w"), indent=4)
+
     print(f"🎮 Game: {data.get('game', game_config['display_name'])}")
     print(f"🎬 Title: {data.get('title')}")
-    print(f"📰 Real-life ref: {data.get('real_life_reference', 'none')}")
+    print(f"📰 Real-life reference: {data.get('real_life_reference', 'none')}")
     print(f"📌 {len(data['scenes'])} scenes.\n")
     return data
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. VOICEOVER
+# ─────────────────────────────────────────────────────────────────────────────
 async def generate_voiceover(text, out_file):
     await edge_tts.Communicate(text, "en-US-ChristopherNeural", rate="+10%").save(out_file)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. ASSEMBLY  (MoviePy v2 syntax)
+# ─────────────────────────────────────────────────────────────────────────────
 def assemble_storyboard(storyboard_data, game_slug, game_config):
     print("─── [3/5] Scene Assembly ───")
+
     work_dir = "motion_templates"
     os.makedirs(work_dir, exist_ok=True)
     for f in glob.glob(os.path.join(work_dir, "*")):
         try: os.remove(f)
         except: pass
+
     character_bible = {}
     bible_file = game_bible_file(game_slug)
     if os.path.exists(bible_file):
         try: character_bible = json.load(open(bible_file))
         except: pass
+
     video_segments, audio_segments = [], []
+
     for idx, scene in enumerate(storyboard_data["scenes"]):
         narration = scene["narration"]
         print(f"\n🎬 Scene {idx+1}/{len(storyboard_data['scenes'])}: {scene['query']}")
+
         audio_file  = f"scene_{idx+1}.mp3"
         asyncio.run(generate_voiceover(narration, audio_file))
         scene_audio = AudioFileClip(audio_file)
@@ -645,23 +800,29 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
         scene["duration"] = actual_dur
         audio_segments.append(scene_audio)
         print(f"    🔊 Voiceover: {actual_dur:.1f}s")
+
         visual  = fetch_scene_visual(scene, idx, character_bible, work_dir, game_config)
         visual  = visual.with_duration(actual_dur)
         caption = make_caption_clip(narration, actual_dur)
         layers  = [visual] + ([caption] if caption else [])
+
         scene_clip = (
             CompositeVideoClip(layers, size=(VIDEO_W, VIDEO_H))
             .with_duration(actual_dur)
             .with_audio(scene_audio)
         )
         video_segments.append(scene_clip)
+
     print("\n─── [4/5] Final Render ───")
-    final_video   = concatenate_videoclips(video_segments, method="compose")
-    bgm_folder    = "bgm"
+    final_video = concatenate_videoclips(video_segments, method="compose")
+
+    bgm_folder = "bgm"
     os.makedirs(bgm_folder, exist_ok=True)
-    mp3_files     = [f for f in os.listdir(bgm_folder) if f.endswith(".mp3")]
+    mp3_files  = [f for f in os.listdir(bgm_folder) if f.endswith(".mp3")]
+
     combined_voice = (concatenate_audioclips(audio_segments)
                       if len(audio_segments) > 1 else audio_segments[0])
+
     if mp3_files:
         bg  = AudioFileClip(os.path.join(bgm_folder, random.choice(mp3_files)))
         dur = combined_voice.duration
@@ -670,24 +831,36 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
             bg = concatenate_audioclips([bg] * loops).subclipped(0, dur)
         else:
             bg = bg.subclipped(0, dur)
-        final_audio = CompositeAudioClip([combined_voice, bg.with_volume_scaled(0.10)])
+        final_audio = CompositeAudioClip([
+            combined_voice,
+            bg.with_volume_scaled(0.10),
+        ])
     else:
         final_audio = combined_voice
+
     final_video = final_video.with_audio(final_audio)
     print("🎞  Rendering final_short.mp4 ...")
     final_video.write_videofile(
-        "final_short.mp4", fps=FPS, codec="libx264",
-        audio_codec="aac", threads=4, preset="fast", logger=None,
+        "final_short.mp4", fps=FPS,
+        codec="libx264", audio_codec="aac",
+        threads=4, preset="fast", logger=None,
     )
     print("✅ Render complete.\n")
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. YOUTUBE UPLOAD
+# ─────────────────────────────────────────────────────────────────────────────
 def upload_to_youtube(storyboard_data, game_config, episode_number):
     print("─── [5/5] YouTube Upload ───")
+
     client_id     = clean_env(os.getenv("CLIENT_ID"))
     client_secret = clean_env(os.getenv("CLIENT_SECRET"))
     refresh_token = clean_env(os.getenv("REFRESH_TOKEN"))
+
     if not all([client_id, client_secret, refresh_token]):
-        print("🚨 YouTube secrets missing — skipping upload."); return
+        print("🚨 YouTube secrets missing — skipping upload.")
+        return
+
     creds = google.oauth2.credentials.Credentials(
         None, refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
@@ -697,12 +870,14 @@ def upload_to_youtube(storyboard_data, game_config, episode_number):
     title = storyboard_data.get("title", f"{game_config['display_name']} EP{episode_number}")
     hook  = storyboard_data["scenes"][0]["narration"]
     ref   = storyboard_data.get("real_life_reference", "")
-    tags  = list(dict.fromkeys(game_config["hashtags"] + ["#Roblox","#Shorts","#Gaming"]))
-    body  = {
+    tags  = list(dict.fromkeys(game_config["hashtags"] + ["#Roblox", "#Shorts", "#Gaming"]))
+
+    body = {
         "snippet": {
             "title":       f"{title} #Shorts"[:100],
             "description": (
-                f"{hook}\n\nGame: {game_config['display_name']} | Episode {episode_number}\n"
+                f"{hook}\n\n"
+                f"Game: {game_config['display_name']} | Episode {episode_number}\n"
                 + (f"Reference: {ref}\n\n" if ref else "\n")
                 + " ".join(game_config["hashtags"])
             ),
@@ -711,40 +886,55 @@ def upload_to_youtube(storyboard_data, game_config, episode_number):
         },
         "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False},
     }
+
     media    = MediaFileUpload("final_short.mp4", chunksize=-1, resumable=True)
     req      = yt.videos().insert(part="snippet,status", body=body, media_body=media)
     response = None
     while response is None:
         status, response = req.next_chunk()
         if status: print(f"    ⏳ {int(status.progress()*100)}%")
+
     print(f"🎉 Uploaded! https://youtube.com/shorts/{response.get('id')}")
 
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────────────────────────────────────
 def main():
     print("="*62)
     print("  Roblox Auto-Shorts — Multi-Game Edition v3")
     print("  8 Games · Per-game Memory · Real-life References")
     print("="*62 + "\n")
+
     together_key = clean_env(os.getenv("TOGETHER_API_KEY"))
     if together_key:
         print("🔑 TOGETHER_API_KEY found — Engine A (Together AI) active.\n")
     else:
         print("ℹ️  No TOGETHER_API_KEY — using Engine B (Pollinations, free) only.\n")
+
     state       = load_game_state()
     game_slug   = get_current_game(state)
     game_config = ROBLOX_GAMES[game_slug]
+
     state["episode_counts"] = state.get("episode_counts", {g: 0 for g in GAME_ORDER})
     state["episode_counts"][game_slug] = state["episode_counts"].get(game_slug, 0) + 1
     episode_number = state["episode_counts"][game_slug]
-    next_game = ROBLOX_GAMES[GAME_ORDER[(state["game_index"] + 1) % len(GAME_ORDER)]]["display_name"]
+
+    next_idx  = (state["game_index"] + 1) % len(GAME_ORDER)
+    next_game = ROBLOX_GAMES[GAME_ORDER[next_idx]]["display_name"]
+
     print(f"🎮 Game this run:  {game_config['display_name']}")
     print(f"📺 Episode number: {episode_number}")
-    print(f"🔄 Next run:       {next_game}\n")
+    print(f"🔄 Next run will play: {next_game}\n")
+
     advance_game_state(state)
+
     storyboard = generate_storyboard(game_slug, game_config, episode_number)
     assemble_storyboard(storyboard, game_slug, game_config)
     upload_to_youtube(storyboard, game_config, episode_number)
+
     save_game_state(state)
     print("\n🏁 Pipeline complete.")
+
 
 if __name__ == "__main__":
     main()
