@@ -49,8 +49,6 @@ CAPTION_FONT        = "Liberation-Sans-Bold"
 CROSSFADE_DUR       = 0.60
 KEYFRAMES_PER_SCENE = 12   # 12 motion keyframes → smooth 24fps animation
 
-# Motion descriptors — each keyframe gets a different one so
-# Pollinations generates a different action moment in the same scene
 MOTION_VARIANTS = [
     "initial pose, calm before action",
     "beginning to move, slight motion",
@@ -178,7 +176,6 @@ def _roblox_grade(pil_img):
 # 24FPS ANIMATED CLIP — frame-by-frame interpolation between keyframes
 # ──────────────────────────────────────────────────────────────────────────────
 def _get_kb_frame(arr, sw, sh, direction, p):
-    """Ken Burns crop at progress p (0→1), returned as float32."""
     if direction == "zoom_in":
         z = 1.0 + 0.18 * p
         cw, ch = int(VIDEO_W / z), int(VIDEO_H / z)
@@ -210,20 +207,6 @@ def _get_kb_frame(arr, sw, sh, direction, p):
 
 
 def build_animated_clip(img_paths, duration):
-    """
-    Builds a true 24fps animated clip from keyframe images.
-
-    Each keyframe was generated with a different motion descriptor, so they
-    show different action moments. Between consecutive keyframes, every single
-    frame (at 24fps) is computed as a weighted blend of the two surrounding
-    keyframes. This produces smooth motion that looks like real animation
-    rather than a slideshow.
-
-    Example with 12 keyframes over 10 seconds:
-      - Each keyframe occupies ~0.83 seconds
-      - At 24fps that is 20 interpolated frames between each pair
-      - Total = 240 rendered frames of smooth motion
-    """
     from moviepy.video.VideoClip import VideoClip
 
     if not img_paths:
@@ -231,7 +214,6 @@ def build_animated_clip(img_paths, duration):
 
     KB_DIRS = ["zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down"]
 
-    # Pre-load and grade every keyframe image into memory
     print(f"    🖼  Loading {len(img_paths)} keyframes into memory...")
     keyframes = []
     for path in img_paths:
@@ -248,21 +230,19 @@ def build_animated_clip(img_paths, duration):
         })
 
     n       = len(keyframes)
-    seg_dur = duration / n          # seconds per keyframe segment
-    xfade   = min(CROSSFADE_DUR, seg_dur * 0.5)  # crossfade window
+    seg_dur = duration / n
+    xfade   = min(CROSSFADE_DUR, seg_dur * 0.5)
 
     def make_frame(t):
-        # Which keyframe segment are we in?
         seg_idx = min(int(t / seg_dur), n - 1)
-        seg_t   = t - seg_idx * seg_dur      # elapsed time within this segment
+        seg_t   = t - seg_idx * seg_dur
         kb_p    = max(0.0, min(1.0, seg_t / seg_dur))
 
         kf   = keyframes[seg_idx]
         base = _get_kb_frame(kf["arr"], kf["sw"], kf["sh"], kf["dir"], kb_p)
 
-        # Smooth alpha blend into next keyframe during tail of segment
         if seg_idx < n - 1 and seg_t > seg_dur - xfade:
-            alpha  = (seg_t - (seg_dur - xfade)) / xfade   # 0.0 → 1.0
+            alpha  = (seg_t - (seg_dur - xfade)) / xfade
             alpha  = max(0.0, min(1.0, alpha))
             kf_nxt = keyframes[seg_idx + 1]
             nxt    = _get_kb_frame(kf_nxt["arr"], kf_nxt["sw"], kf_nxt["sh"],
@@ -277,7 +257,7 @@ def build_animated_clip(img_paths, duration):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ENGINE A — FAL.AI TEXT-TO-VIDEO (fixed polling URL)
+# ENGINE A — FAL.AI TEXT-TO-VIDEO
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_fal_video(prompt, out_path, api_keys):
     if not api_keys:
@@ -418,13 +398,6 @@ def fetch_hf_video(prompt, out_path, api_keys):
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_pollinations_keyframes(base_prompt, narration, character_bible,
                                   count, out_dir, prefix):
-    """
-    Generates `count` images from Pollinations, each with a different
-    motion-variant descriptor appended to the prompt. The varying descriptors
-    ("winding up", "peak action", "impact frame", etc.) push Pollinations to
-    generate different action moments of the same scene.
-    Each image also gets a unique random seed for maximum variety.
-    """
     paths = []
     for i in range(count):
         motion = MOTION_VARIANTS[i % len(MOTION_VARIANTS)]
@@ -599,7 +572,6 @@ def fetch_scene_visual(scene, scene_idx, character_bible,
     query     = scene["query"]
     narration = scene["narration"]
     dur       = scene.get("duration", 10)
-    # Base prompt (no motion variant — used for video engines)
     base_prompt = build_roblox_prompt(query, narration, character_bible)
     print(f"  📝 Base prompt: {base_prompt[:100]}...")
 
@@ -737,16 +709,27 @@ Output ONLY this JSON (no markdown fences):
     resp = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=900,
+        max_tokens=1800,
         temperature=0.92,
     )
 
     raw = resp.choices[0].message.content.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
+
+    # Strip markdown code fences in any format: ```json ... ```, ``` ... ```, etc.
+    if "```" in raw:
+        parts = raw.split("```")
+        if len(parts) >= 3:
+            raw = parts[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
     raw = raw.strip()
+
+    # If JSON is still truncated (ends without closing brace), raise a clear error
+    if not raw.endswith("}"):
+        raise ValueError(
+            f"Groq response appears truncated (does not end with '}}').\n"
+            f"Last 100 chars: {raw[-100:]}"
+        )
 
     data      = json.loads(raw)
     full_text = " ".join(s["narration"] for s in data["scenes"])
@@ -802,11 +785,10 @@ def assemble_storyboard(storyboard_data):
         narration = scene["narration"]
         print(f"\n🎬 Scene {idx + 1}/{len(storyboard_data['scenes'])}: {scene['query']}")
 
-        # Voiceover first — its duration drives the scene length exactly
         audio_file  = f"scene_{idx + 1}.mp3"
         asyncio.run(generate_voiceover(narration, audio_file))
         scene_audio = AudioFileClip(audio_file)
-        actual_dur        = scene_audio.duration   # audio = source of truth, no padding
+        actual_dur        = scene_audio.duration
         scene["duration"] = actual_dur
         audio_segments.append(scene_audio)
         print(f"  🔊 Voiceover: {actual_dur:.1f}s")
@@ -823,14 +805,13 @@ def assemble_storyboard(storyboard_data):
         scene_clip = CompositeVideoClip(layers, size=(VIDEO_W, VIDEO_H))
         scene_clip = (scene_clip
                       .set_duration(actual_dur)
-                      .set_audio(scene_audio))   # exact match — no looping
+                      .set_audio(scene_audio))
 
         if idx > 0:
             scene_clip = scene_clip.fx(vfx.fadein, CROSSFADE_DUR)
 
         video_segments.append(scene_clip)
 
-    # ── FINAL RENDER ──────────────────────────────────────────────────────────
     print("\n─── [4/5] Final Render ───")
     final_video = concatenate_videoclips(video_segments, method="compose")
 
