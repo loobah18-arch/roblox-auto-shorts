@@ -4,11 +4,12 @@ Targets the @NinjaRoblox visual style: bright blocky Roblox environments,
 consistent characters, clean captions, and a dramatic voiced story.
 
 Visual engine order (per scene):
-  A. FAL.ai text-to-video  — actual Roblox-style video clips  (key rotation)
-  B. Pollinations AI        — character-aware Roblox images     (always free)
-  C. HuggingFace FLUX       — high-quality Roblox images        (key rotation)
-  D. Dezgo                  — free SD images, no key, no CI blocks
-  E. Local assets           — absolute last resort
+  A. FAL.ai text-to-video       — actual Roblox-style video clips   (key rotation)
+  B. HuggingFace text-to-video  — free AI video via HF_TOKEN        (key rotation)
+  C. Pollinations AI            — character-aware Roblox images     (always free)
+  D. HuggingFace FLUX           — high-quality Roblox images        (key rotation)
+  E. Dezgo                      — free SD images, no key, no CI blocks
+  F. Local assets               — absolute last resort
 """
 
 import os
@@ -221,11 +222,13 @@ def build_image_clip(img_paths, duration):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ENGINE A — FAL.AI TEXT-TO-VIDEO
+# ENGINE A — FAL.AI TEXT-TO-VIDEO (fixed polling URL)
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_fal_video(prompt, out_path, api_keys):
     if not api_keys:
         return False
+
+    MODEL_BASE = "fal-ai/wan/v2.1/1.3b/text-to-video"
 
     for key in api_keys:
         print(f"  🎬 FAL.ai text-to-video...")
@@ -241,7 +244,7 @@ def fetch_fal_video(prompt, out_path, api_keys):
                 "resolution":   "720p",
             }
             submit = requests.post(
-                "https://queue.fal.run/fal-ai/wan/v2.1/1.3b/text-to-video",
+                f"https://queue.fal.run/{MODEL_BASE}",
                 headers=headers,
                 json=payload,
                 timeout=30,
@@ -252,21 +255,25 @@ def fetch_fal_video(prompt, out_path, api_keys):
 
             request_id = submit.json().get("request_id")
             if not request_id:
+                print(f"    ⚠️ FAL submit returned no request_id.")
                 continue
 
-            status_url = (
-                f"https://queue.fal.run/fal-ai/wan/v2.1/1.3b/"
-                f"text-to-video/requests/{request_id}"
-            )
+            # poll /status endpoint (not the result endpoint)
+            status_url = f"https://queue.fal.run/{MODEL_BASE}/requests/{request_id}/status"
+            result_url = f"https://queue.fal.run/{MODEL_BASE}/requests/{request_id}"
+
             for _ in range(36):
                 time.sleep(5)
-                poll   = requests.get(status_url, headers=headers, timeout=15)
+                poll = requests.get(status_url, headers=headers, timeout=15)
                 if poll.status_code != 200:
                     continue
-                result = poll.json()
-                status = result.get("status", "")
-                if status == "COMPLETED":
-                    output    = result.get("output", {})
+                job_status = poll.json().get("status", "")
+                if job_status == "COMPLETED":
+                    result_resp = requests.get(result_url, headers=headers, timeout=30)
+                    if result_resp.status_code != 200:
+                        print(f"    ⚠️ FAL result fetch failed: {result_resp.status_code}.")
+                        break
+                    output = result_resp.json().get("output", {})
                     video_url = (
                         output.get("video", {}).get("url", "")
                         or (output.get("videos") or [{}])[0].get("url", "")
@@ -276,12 +283,13 @@ def fetch_fal_video(prompt, out_path, api_keys):
                         if os.path.exists(out_path) and os.path.getsize(out_path) > 10_000:
                             print(f"    ✅ FAL.ai video downloaded.")
                             return True
+                    print(f"    ⚠️ FAL completed but no video URL found.")
                     break
-                elif status in ("FAILED", "CANCELLED"):
-                    print(f"    ⚠️ FAL job {status}.")
+                elif job_status in ("FAILED", "CANCELLED"):
+                    print(f"    ⚠️ FAL job {job_status}.")
                     break
             else:
-                print(f"    ⏱ FAL.ai timed out.")
+                print(f"    ⏱ FAL.ai timed out after 3 minutes.")
 
         except Exception as e:
             print(f"    ⚠️ FAL.ai error: {e}")
@@ -291,7 +299,80 @@ def fetch_fal_video(prompt, out_path, api_keys):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ENGINE B — POLLINATIONS AI (always free, browser UA required)
+# ENGINE B — HUGGINGFACE TEXT-TO-VIDEO (free with HF_TOKEN, key rotation)
+# ──────────────────────────────────────────────────────────────────────────────
+def fetch_hf_video(prompt, out_path, api_keys):
+    if not api_keys:
+        return False
+
+    HF_VIDEO_MODELS = [
+        "https://router.huggingface.co/hf-inference/models/damo-vilab/text-to-video-ms-1.7b",
+        "https://router.huggingface.co/hf-inference/models/cerspense/zeroscope_v2_576w",
+    ]
+
+    # Keep prompt short — these models work best under 60 words
+    short_prompt = " ".join(prompt.split()[:50])
+
+    for key in api_keys:
+        for model_url in HF_VIDEO_MODELS:
+            model_name = model_url.split("/")[-1]
+            print(f"  🎥 HuggingFace video ({model_name})...")
+            try:
+                headers = {
+                    "Authorization":    f"Bearer {key}",
+                    "Content-Type":     "application/json",
+                    "x-wait-for-model": "true",
+                }
+                resp = requests.post(
+                    model_url,
+                    headers=headers,
+                    json={"inputs": short_prompt},
+                    timeout=180,
+                )
+                if resp.status_code == 200:
+                    content_type = resp.headers.get("content-type", "")
+                    if "video" in content_type or "octet-stream" in content_type or len(resp.content) > 50_000:
+                        with open(out_path, "wb") as f:
+                            f.write(resp.content)
+                        if os.path.exists(out_path) and os.path.getsize(out_path) > 50_000:
+                            print(f"    ✅ HuggingFace video generated ({model_name}).")
+                            return True
+                        else:
+                            print(f"    ⚠️ HF video file too small — skipping.")
+                            if os.path.exists(out_path):
+                                os.remove(out_path)
+                    else:
+                        print(f"    ⚠️ HF unexpected content-type: {content_type[:60]}")
+                elif resp.status_code == 503:
+                    print(f"    ⏳ HF model loading, retrying in 20s...")
+                    time.sleep(20)
+                    resp2 = requests.post(
+                        model_url,
+                        headers=headers,
+                        json={"inputs": short_prompt},
+                        timeout=180,
+                    )
+                    if resp2.status_code == 200 and len(resp2.content) > 50_000:
+                        with open(out_path, "wb") as f:
+                            f.write(resp2.content)
+                        if os.path.exists(out_path) and os.path.getsize(out_path) > 50_000:
+                            print(f"    ✅ HuggingFace video generated ({model_name}, retry).")
+                            return True
+                elif resp.status_code == 429:
+                    print(f"    ⚠️ HF rate limited — trying next model.")
+                else:
+                    print(f"    ⚠️ HF {model_name} returned {resp.status_code}.")
+            except requests.exceptions.Timeout:
+                print(f"    ⏱ HF {model_name} timed out.")
+            except Exception as e:
+                print(f"    ⚠️ HF video error ({model_name}): {e}")
+
+    print("    ❌ HuggingFace video: all keys/models exhausted.")
+    return False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ENGINE C — POLLINATIONS AI (always free, browser UA required)
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_pollinations_image(prompt, out_path):
     encoded = requests.utils.quote(prompt)
@@ -300,7 +381,6 @@ def fetch_pollinations_image(prompt, out_path):
         f"https://image.pollinations.ai/prompt/{encoded}"
         f"?width=1080&height=1920&nologo=true&seed={seed}&model=flux"
     )
-    # Must send a browser User-Agent — Pollinations blocks Python/CI default UA
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -327,13 +407,12 @@ def fetch_pollinations_image(prompt, out_path):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ENGINE C — HUGGINGFACE FLUX (free inference, key rotation)
+# ENGINE D — HUGGINGFACE FLUX images (free inference, key rotation)
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_huggingface_image(prompt, out_path, api_keys):
     if not api_keys:
         return False
 
-    # New HF router URL — old api-inference.huggingface.co DNS fails from CI runners
     MODEL_URLS = [
         "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
         "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
@@ -387,7 +466,7 @@ def fetch_huggingface_image(prompt, out_path, api_keys):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ENGINE D — DEZGO (free Stable Diffusion, no key, works from CI)
+# ENGINE E — DEZGO (free Stable Diffusion, no key, works from CI)
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_dezgo_image(prompt, out_path):
     print(f"  🎨 Dezgo free SD image...")
@@ -469,7 +548,7 @@ def make_caption_clip(text, duration):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SCENE VISUAL FETCHER — Five-Engine Chain
+# SCENE VISUAL FETCHER — Six-Engine Chain
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_scene_visual(scene, scene_idx, character_bible,
                        fal_keys, hf_keys, templates_dir):
@@ -493,7 +572,21 @@ def fetch_scene_visual(scene, scene_idx, character_bible,
             except Exception as e:
                 print(f"  ⚠️ FAL clip load failed: {e}")
 
-    # Engine B — Pollinations images
+    # Engine B — HuggingFace text-to-video
+    if hf_keys:
+        hf_vid_out = os.path.join(templates_dir, f"hf_video_{scene_idx}.mp4")
+        if fetch_hf_video(rich_prompt, hf_vid_out, hf_keys):
+            try:
+                raw_clip = VideoFileClip(hf_vid_out)
+                loops    = math.ceil(dur / raw_clip.duration)
+                looped   = concatenate_videoclips([raw_clip] * loops)
+                visual   = crop_video_to_vertical(looped, dur)
+                print(f"  🎥 HuggingFace video used (looped {loops}x for {dur:.1f}s).")
+                return visual
+            except Exception as e:
+                print(f"  ⚠️ HF video clip load failed: {e}")
+
+    # Engine C — Pollinations images (always free, always available)
     print(f"  🖼  Pollinations — character-aware images...")
     poll_paths = []
     for i in range(IMAGES_PER_SCENE):
@@ -504,7 +597,7 @@ def fetch_scene_visual(scene, scene_idx, character_bible,
         print(f"  🎨 Pollinations: {len(poll_paths)} story-matched image(s).")
         return build_image_clip(poll_paths, dur)
 
-    # Engine C — HuggingFace FLUX
+    # Engine D — HuggingFace FLUX images
     if hf_keys:
         hf_paths = []
         for i in range(IMAGES_PER_SCENE):
@@ -512,10 +605,10 @@ def fetch_scene_visual(scene, scene_idx, character_bible,
             if fetch_huggingface_image(rich_prompt, hf_out, hf_keys):
                 hf_paths.append(hf_out)
         if hf_paths:
-            print(f"  🤗 HuggingFace: {len(hf_paths)} image(s) used.")
+            print(f"  🤗 HuggingFace FLUX: {len(hf_paths)} image(s) used.")
             return build_image_clip(hf_paths, dur)
 
-    # Engine D — Dezgo (free SD, no key, no CI IP blocks)
+    # Engine E — Dezgo
     dezgo_paths = []
     for i in range(IMAGES_PER_SCENE):
         dezgo_out = os.path.join(templates_dir, f"dezgo_{scene_idx}_{i}.jpg")
@@ -525,7 +618,7 @@ def fetch_scene_visual(scene, scene_idx, character_bible,
         print(f"  🎨 Dezgo: {len(dezgo_paths)} image(s) used.")
         return build_image_clip(dezgo_paths, dur)
 
-    # Engine E — Local assets (absolute last resort)
+    # Engine F — Local assets (absolute last resort)
     print(f"  📁 Falling back to local assets...")
     asset_paths = pick_assets_for_query(query, count=IMAGES_PER_SCENE)
     if asset_paths:
