@@ -7,7 +7,8 @@ Visual engine order (per scene):
   A. FAL.ai text-to-video  — actual Roblox-style video clips  (key rotation)
   B. Pollinations AI        — character-aware Roblox images     (always free)
   C. HuggingFace FLUX       — high-quality Roblox images        (key rotation)
-  D. Local assets           — last resort static images
+  D. Dezgo                  — free SD images, no key, no CI blocks
+  E. Local assets           — absolute last resort
 """
 
 import os
@@ -83,7 +84,6 @@ def clean_env(val):
 
 
 def load_env_keys(base_name):
-    """Collect BASE_NAME, BASE_NAME_1 … BASE_NAME_10 for key rotation."""
     keys = []
     v = clean_env(os.getenv(base_name, ""))
     if v:
@@ -291,7 +291,7 @@ def fetch_fal_video(prompt, out_path, api_keys):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ENGINE B — POLLINATIONS AI (always free, no key needed)
+# ENGINE B — POLLINATIONS AI (always free, browser UA required)
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_pollinations_image(prompt, out_path):
     encoded = requests.utils.quote(prompt)
@@ -300,11 +300,27 @@ def fetch_pollinations_image(prompt, out_path):
         f"https://image.pollinations.ai/prompt/{encoded}"
         f"?width=1080&height=1920&nologo=true&seed={seed}&model=flux"
     )
+    # Must send a browser User-Agent — Pollinations blocks Python/CI default UA
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Referer":  "https://pollinations.ai/",
+        "Accept":   "image/webp,image/apng,image/*,*/*;q=0.8",
+    }
     try:
-        urllib.request.urlretrieve(url, out_path)
-        if os.path.exists(out_path) and os.path.getsize(out_path) > 5000:
-            print(f"    ✅ Pollinations image generated.")
-            return True
+        resp = requests.get(url, headers=headers, timeout=90, stream=True)
+        if resp.status_code == 200 and "image" in resp.headers.get("content-type", ""):
+            with open(out_path, "wb") as f:
+                for chunk in resp.iter_content(8192):
+                    f.write(chunk)
+            if os.path.exists(out_path) and os.path.getsize(out_path) > 5000:
+                print(f"    ✅ Pollinations image generated.")
+                return True
+        else:
+            print(f"    ⚠️ Pollinations returned {resp.status_code}.")
     except Exception as e:
         print(f"    ⚠️ Pollinations failed: {e}")
     return False
@@ -317,10 +333,11 @@ def fetch_huggingface_image(prompt, out_path, api_keys):
     if not api_keys:
         return False
 
-    model_url = (
-        "https://api-inference.huggingface.co/models/"
-        "black-forest-labs/FLUX.1-schnell"
-    )
+    # New HF router URL — old api-inference.huggingface.co DNS fails from CI runners
+    MODEL_URLS = [
+        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+        "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
+    ]
     payload = {
         "inputs": prompt,
         "parameters": {
@@ -333,35 +350,80 @@ def fetch_huggingface_image(prompt, out_path, api_keys):
 
     for key in api_keys:
         print(f"  🖼  HuggingFace FLUX image...")
-        try:
-            headers = {
-                "Authorization":    f"Bearer {key}",
-                "Content-Type":     "application/json",
-                "x-wait-for-model": "true",
-            }
-            resp = requests.post(model_url, headers=headers, json=payload, timeout=90)
-            if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
-                with open(out_path, "wb") as f:
-                    f.write(resp.content)
-                if os.path.exists(out_path) and os.path.getsize(out_path) > 5000:
-                    print(f"    ✅ HuggingFace FLUX image generated.")
-                    return True
-            elif resp.status_code == 503:
-                print(f"    ⏳ HF model loading — retrying in 20s...")
-                time.sleep(20)
-                resp2 = requests.post(model_url, headers=headers, json=payload, timeout=90)
-                if resp2.status_code == 200 and resp2.headers.get("content-type", "").startswith("image"):
+        for model_url in MODEL_URLS:
+            try:
+                headers = {
+                    "Authorization":    f"Bearer {key}",
+                    "Content-Type":     "application/json",
+                    "x-wait-for-model": "true",
+                }
+                resp = requests.post(model_url, headers=headers, json=payload, timeout=90)
+                if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
                     with open(out_path, "wb") as f:
-                        f.write(resp2.content)
+                        f.write(resp.content)
                     if os.path.exists(out_path) and os.path.getsize(out_path) > 5000:
-                        print(f"    ✅ HuggingFace FLUX image generated (retry).")
+                        print(f"    ✅ HuggingFace FLUX image generated.")
                         return True
-            else:
-                print(f"    ⚠️ HF returned {resp.status_code} — trying next key.")
-        except Exception as e:
-            print(f"    ⚠️ HuggingFace error: {e}")
+                elif resp.status_code == 503:
+                    print(f"    ⏳ HF model loading — retrying in 20s...")
+                    time.sleep(20)
+                    resp2 = requests.post(model_url, headers=headers, json=payload, timeout=90)
+                    if resp2.status_code == 200 and resp2.headers.get("content-type", "").startswith("image"):
+                        with open(out_path, "wb") as f:
+                            f.write(resp2.content)
+                        if os.path.exists(out_path) and os.path.getsize(out_path) > 5000:
+                            print(f"    ✅ HuggingFace FLUX image generated (retry).")
+                            return True
+                else:
+                    print(f"    ⚠️ HF {model_url.split('/')[2]} returned {resp.status_code} — trying next URL.")
+                    continue
+            except Exception as e:
+                print(f"    ⚠️ HuggingFace error ({model_url.split('/')[2]}): {e}")
+                continue
+            break
 
     print("    ❌ HuggingFace: all keys exhausted.")
+    return False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ENGINE D — DEZGO (free Stable Diffusion, no key, works from CI)
+# ──────────────────────────────────────────────────────────────────────────────
+def fetch_dezgo_image(prompt, out_path):
+    print(f"  🎨 Dezgo free SD image...")
+    short_prompt = prompt[:400]
+    try:
+        resp = requests.post(
+            "https://dezgo.com/text2image",
+            data={
+                "prompt":          short_prompt,
+                "negative_prompt": "blurry, low quality, text, watermark, nsfw",
+                "guidance":        "7",
+                "steps":           "20",
+                "sampler":         "euler_a",
+                "upscale":         "1",
+                "model":           "dreamshaper_8",
+            },
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Referer": "https://dezgo.com/",
+            },
+            timeout=90,
+        )
+        if resp.status_code == 200 and "image" in resp.headers.get("content-type", ""):
+            with open(out_path, "wb") as f:
+                f.write(resp.content)
+            if os.path.exists(out_path) and os.path.getsize(out_path) > 5000:
+                print(f"    ✅ Dezgo image generated.")
+                return True
+        else:
+            print(f"    ⚠️ Dezgo returned {resp.status_code}.")
+    except Exception as e:
+        print(f"    ⚠️ Dezgo failed: {e}")
     return False
 
 
@@ -407,7 +469,7 @@ def make_caption_clip(text, duration):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SCENE VISUAL FETCHER — Four-Engine Chain
+# SCENE VISUAL FETCHER — Five-Engine Chain
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_scene_visual(scene, scene_idx, character_bible,
                        fal_keys, hf_keys, templates_dir):
@@ -453,7 +515,17 @@ def fetch_scene_visual(scene, scene_idx, character_bible,
             print(f"  🤗 HuggingFace: {len(hf_paths)} image(s) used.")
             return build_image_clip(hf_paths, dur)
 
-    # Engine D — Local assets
+    # Engine D — Dezgo (free SD, no key, no CI IP blocks)
+    dezgo_paths = []
+    for i in range(IMAGES_PER_SCENE):
+        dezgo_out = os.path.join(templates_dir, f"dezgo_{scene_idx}_{i}.jpg")
+        if fetch_dezgo_image(rich_prompt, dezgo_out):
+            dezgo_paths.append(dezgo_out)
+    if dezgo_paths:
+        print(f"  🎨 Dezgo: {len(dezgo_paths)} image(s) used.")
+        return build_image_clip(dezgo_paths, dur)
+
+    # Engine E — Local assets (absolute last resort)
     print(f"  📁 Falling back to local assets...")
     asset_paths = pick_assets_for_query(query, count=IMAGES_PER_SCENE)
     if asset_paths:
