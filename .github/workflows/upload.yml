@@ -8,10 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
-
     timeout-minutes: 60
 
     steps:
@@ -33,14 +31,14 @@ jobs:
             fonts-liberation \
             fonts-noto \
             fonts-noto-color-emoji \
-            libmagic1
+            libmagic1 || sudo apt-get install -y libmagic1t64
 
       - name: Configure ImageMagick
         run: |
-          sudo sed -i '/pattern="@\*"/d'                                /etc/ImageMagick-6/policy.xml
-          sudo sed -i 's|rights="none" pattern="PDF"|rights="read|write" pattern="PDF"|g' /etc/ImageMagick-6/policy.xml
-          sudo sed -i 's/name="memory" value="256MiB"/name="memory" value="2GiB"/'       /etc/ImageMagick-6/policy.xml
-          sudo sed -i 's/name="disk" value="1GiB"/name="disk" value="8GiB"/'             /etc/ImageMagick-6/policy.xml
+          sudo sed -i '/pattern="@\*"/d' /etc/ImageMagick-6/policy.xml
+          sudo sed -i 's#rights="none" pattern="PDF"#rights="read|write" pattern="PDF"#g' /etc/ImageMagick-6/policy.xml
+          sudo sed -i 's/name="memory" value="256MiB"/name="memory" value="2GiB"/' /etc/ImageMagick-6/policy.xml
+          sudo sed -i 's/name="disk" value="1GiB"/name="disk" value="8GiB"/' /etc/ImageMagick-6/policy.xml
 
       - name: Install Python Dependencies
         run: |
@@ -49,18 +47,10 @@ jobs:
 
       - name: Run Pipeline
         env:
-          GROQ_API_KEY:    ${{ secrets.GROQ_API_KEY }}
-          CLIENT_ID:       ${{ secrets.CLIENT_ID }}
-          CLIENT_SECRET:   ${{ secrets.CLIENT_SECRET }}
-          REFRESH_TOKEN:   ${{ secrets.REFRESH_TOKEN }}
-          FAL_API_KEY:     ${{ secrets.FAL_API_KEY }}
-          FAL_API_KEY_1:   ${{ secrets.FAL_API_KEY_1 }}
-          FAL_API_KEY_2:   ${{ secrets.FAL_API_KEY_2 }}
-          FAL_API_KEY_3:   ${{ secrets.FAL_API_KEY_3 }}
-          HF_TOKEN:        ${{ secrets.HF_TOKEN }}
-          HF_TOKEN_1:      ${{ secrets.HF_TOKEN_1 }}
-          HF_TOKEN_2:      ${{ secrets.HF_TOKEN_2 }}
-          HF_TOKEN_3:      ${{ secrets.HF_TOKEN_3 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
         run: python -u main.py
 
       - name: Clean Temp Files
@@ -71,7 +61,7 @@ jobs:
 
       - name: Commit Story Memory
         run: |
-          git config --global user.name  "Story Bot"
+          git config --global user.name "Story Bot"
           git config --global user.email "bot@users.noreply.github.com"
           git add story_memory.txt character_bible.json
           git diff --cached --quiet || git commit -m "🤖 Auto-update story memory [skip ci]"
