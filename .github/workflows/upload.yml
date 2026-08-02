@@ -61,7 +61,7 @@ jobs:
           HF_TOKEN_1:      ${{ secrets.HF_TOKEN_1 }}
           HF_TOKEN_2:      ${{ secrets.HF_TOKEN_2 }}
           HF_TOKEN_3:      ${{ secrets.HF_TOKEN_3 }}
-        run: python main.py
+        run: python -u main.py
 
       - name: Clean Temp Files
         if: always()
