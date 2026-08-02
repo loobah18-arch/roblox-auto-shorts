@@ -34,7 +34,6 @@ def get_safe_url(service_type):
     if service_type == "pexels":
         return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'a', 'p', 'i', '.', 'p', 'e', 'x', 'e', 'l', 's', '.', 'c', 'o', 'm', '/', 'v', 'i', 'd', 'e', 'o', 's', '/', 's', 'e', 'a', 'r', 'c', 'h', '?', 'q', 'u', 'e', 'r', 'y', '='])
     elif service_type == "google_token":
-        # Fixed: Added 'a' to spell "oauth2" correctly
         return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'o', 'a', 'u', 't', 'h', '2', '.', 'g', 'o', 'o', 'g', 'l', 'e', 'a', 'p', 'i', 's', '.', 'c', 'o', 'm', '/', 't', 'o', 'k', 'e', 'n'])
     elif service_type == "youtube_short":
         return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'y', 'o', 'u', 't', 'u', 'b', 'e', '.', 'c', 'o', 'm', '/', 's', 'h', 'o', 'r', 't', 's', '/'])
@@ -140,11 +139,11 @@ async def generate_voiceover(text, output_filename):
     print(f"Voiceover saved to {output_filename}\n")
 
 # ==========================================
-# 2. DUAL-ENGINE CLIP FETCHING (yt-dlp + Pexels API)
+# 2. TRIPLE-ENGINE CLIP FETCHING (YouTube API -> yt-dlp -> Pexels)
 # ==========================================
 def fetch_dynamic_clips(queries):
-    """Downloads clips using yt-dlp first, falling back to Pexels API if blocked."""
-    print("--- [Step 3/5] Dual-Engine Clip Fetching (yt-dlp + Pexels API) ---")
+    """Searches via YouTube API, downloads with yt-dlp, falling back to Pexels API if blocked."""
+    print("--- [Step 3/5] Triple-Engine Clip Fetching (YouTube API + yt-dlp + Pexels) ---")
     templates_dir = "motion_templates"
     os.makedirs(templates_dir, exist_ok=True)
     
@@ -156,17 +155,54 @@ def fetch_dynamic_clips(queries):
             
     downloaded_clips = []
     pexels_api_key = clean_env(os.getenv("PEXELS_API_KEY"))
+    youtube_api_key = clean_env(os.getenv("YOUTUBE_API_KEY"))
+    
+    # Initialize Data API client if key exists
+    youtube_client = None
+    if youtube_api_key:
+        try:
+            youtube_client = build('youtube', 'v3', developerKey=youtube_api_key, cache_discovery=False)
+        except Exception as e:
+            print(f"⚠️ Warning: Could not build YouTube Data API client: {e}")
+    else:
+        print("⚠️ YOUTUBE_API_KEY missing! Will fall back to unstable yt-dlp scraping.")
 
     for i, query in enumerate(queries):
         clip_filename = f"clip_{i+1}.mp4"
         output_path = os.path.join(templates_dir, clip_filename)
         success = False
+        yt_dlp_target = None
         
-        # --- Engine 1: yt-dlp ---
-        print(f"Trying yt-dlp for clip {i+1} -> Query: {query}")
+        # --- Engine 1: YouTube Data API Search ---
+        if youtube_client:
+            print(f"🔎 Searching YouTube Data API for: '{query}'")
+            try:
+                request = youtube_client.search().list(
+                    q=f"{query} roblox shorts",
+                    part="snippet",
+                    type="video",
+                    maxResults=1,
+                    videoDuration="short"
+                )
+                response = request.execute()
+                items = response.get("items", [])
+                
+                if items:
+                    video_id = items[0]["id"]["videoId"]
+                    yt_dlp_target = f"[https://www.youtube.com/watch?v=](https://www.youtube.com/watch?v=){video_id}"
+                    print(f"✅ API Found Video URL: {yt_dlp_target}")
+            except Exception as e:
+                print(f"⚠️ YouTube Data API search failed: {e}")
+        
+        # If API search failed or wasn't configured, fallback to raw yt-dlp scraping string
+        if not yt_dlp_target:
+            yt_dlp_target = f"ytsearch1:{query} roblox shorts"
+        
+        # --- Engine 2: yt-dlp Download ---
+        print(f"📥 Running yt-dlp for clip {i+1} -> Target: {yt_dlp_target}")
         cmd = [
             "yt-dlp",
-            f"ytsearch1:{query} roblox shorts",
+            yt_dlp_target,
             "--extractor-args", "youtube:player_client=ios,web,android",
             "-f", "best[ext=mp4]/best",
             "-o", output_path,
@@ -180,14 +216,14 @@ def fetch_dynamic_clips(queries):
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
             if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
                 downloaded_clips.append(output_path)
-                print(f"yt-dlp succeeded for clip {i+1}")
+                print(f"✅ yt-dlp succeeded for clip {i+1}")
                 success = True
         except Exception as e:
-            print(f"yt-dlp notice: {e}")
+            print(f"⚠️ yt-dlp notice: {e}")
             
-        # --- Engine 2: Pexels API Fallback ---
+        # --- Engine 3: Pexels API Fallback ---
         if not success and pexels_api_key:
-            print(f"yt-dlp blocked. Falling back to Pexels API for clip {i+1}...")
+            print(f"🔄 yt-dlp blocked. Falling back to Pexels API for clip {i+1}...")
             try:
                 headers = {"Authorization": pexels_api_key}
                 clean_query = "gaming action motion background" if "roblox" in query.lower() or "blox" in query.lower() else query
@@ -216,14 +252,14 @@ def fetch_dynamic_clips(queries):
                         urllib.request.urlretrieve(download_url, output_path)
                         if os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
                             downloaded_clips.append(output_path)
-                            print(f"Pexels API successfully downloaded fallback clip {i+1}")
+                            print(f"✅ Pexels API successfully downloaded fallback clip {i+1}")
                             success = True
             except Exception as pex_err:
-                print(f"Pexels API fallback error: {pex_err}")
+                print(f"⚠️ Pexels API fallback error: {pex_err}")
                 
         # --- Emergency Fallback ---
         if not success:
-            print(f"Creating local motion background fallback for clip {i+1}")
+            print(f"⚠️ Creating local motion background fallback for clip {i+1}")
             try:
                 fb_clip = ColorClip(size=(1080, 1920), color=(15, 18, 30), duration=10)
                 fb_clip.write_videofile(output_path, fps=24, codec="libx264", audio=False, logger=None)
@@ -321,12 +357,12 @@ def assemble_video(script, clip_paths):
     final_base_video = final_base_video.set_audio(final_audio)
     final_video = CompositeVideoClip([final_base_video] + caption_clips)
     
-    print("Rendering final dynamic story MP4...")
+    print("🎬 Rendering final dynamic story MP4...")
     final_video.write_videofile(
         "final_short.mp4", fps=24, codec="libx264", 
         audio_codec="aac", threads=2, preset="ultrafast", logger=None
     )
-    print("Video assembly complete: final_short.mp4 created.\n")
+    print("✅ Video assembly complete: final_short.mp4 created.\n")
 
 # ==========================================
 # 4. YOUTUBE UPLOAD FUNCTION (WITH DEBUG & TRACE)
@@ -343,7 +379,7 @@ def upload_to_youtube(script_snippet):
     print(f"Debug Check -> REFRESH_TOKEN loaded: {bool(refresh_token)} (Length: {len(refresh_token)})")
     
     if not client_id or not client_secret or not refresh_token:
-        print("ERROR: YouTube API secrets are missing or empty! Check your GitHub Repository Secrets.")
+        print("🚨 ERROR: YouTube API secrets are missing or empty! Check your GitHub Repository Secrets.")
         return
 
     try:
@@ -354,7 +390,7 @@ def upload_to_youtube(script_snippet):
             client_id=client_id, client_secret=client_secret
         )
         
-        youtube = build("youtube", "v3", credentials=credentials)
+        youtube = build("youtube", "v3", credentials=credentials, cache_discovery=False)
         title_words = script_snippet.split()[:7]
         dynamic_title = " ".join(title_words) if title_words else "Blox Fruits Madness!"
         
@@ -378,21 +414,21 @@ def upload_to_youtube(script_snippet):
         while response is None:
             status, response = request.next_chunk()
             if status:
-                print(f"Uploading file: {int(status.progress() * 100)}%")
+                print(f"⏳ Uploading file: {int(status.progress() * 100)}%")
                 
         base_short_url = get_safe_url("youtube_short")
         final_video_url = f"{base_short_url}{response.get('id')}"
-        print(f"Upload Successful! Video ID: {response.get('id')}\nURL: {final_video_url}")
+        print(f"🎉 Upload Successful! Video ID: {response.get('id')}\nURL: {final_video_url}")
         
     except Exception as e:
-        print(f"CRITICAL ERROR during YouTube Upload: {e}")
+        print(f"🚨 CRITICAL ERROR during YouTube Upload: {e}")
         raise e
 
 # ==========================================
 # 5. MAIN EXECUTION
 # ==========================================
 def main():
-    print("=== Starting Dual-Engine Director Pipeline ===\n")
+    print("=== Starting Triple-Engine Director Pipeline ===\n")
     
     script, queries = generate_script_and_queries()
     asyncio.run(generate_voiceover(script, "voiceover.mp3"))
