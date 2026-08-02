@@ -4,10 +4,10 @@ Targets the @NinjaRoblox visual style: bright blocky Roblox environments,
 consistent characters, clean captions, and a dramatic voiced story.
 
 Visual engine order (per scene):
-  A. FAL.ai text-to-video       — actual Roblox-style video clips   (key rotation)
-  B. HuggingFace text-to-video  — free AI video via HF_TOKEN        (key rotation)
-  C. Pollinations AI            — character-aware Roblox images     (always free)
-  D. HuggingFace FLUX           — high-quality Roblox images        (key rotation)
+  A. FAL.ai text-to-video       — actual video clips              (key rotation)
+  B. HuggingFace text-to-video  — free AI video via HF_TOKEN      (key rotation)
+  C. Pollinations AI            — 12 motion keyframes → 24fps anim (always free)
+  D. HuggingFace FLUX           — high-quality images             (key rotation)
   E. Dezgo                      — free SD images, no key, no CI blocks
   F. Local assets               — absolute last resort
 """
@@ -41,13 +41,30 @@ from googleapiclient.http import MediaFileUpload
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
-VIDEO_W, VIDEO_H   = 1080, 1920
-FPS                = 30
-CAPTION_Y_FRAC     = 0.82
-CAPTION_FONTSIZE   = 58
-CAPTION_FONT       = "Liberation-Sans-Bold"
-CROSSFADE_DUR      = 0.40
-IMAGES_PER_SCENE   = 3
+VIDEO_W, VIDEO_H    = 1080, 1920
+FPS                 = 24
+CAPTION_Y_FRAC      = 0.82
+CAPTION_FONTSIZE    = 58
+CAPTION_FONT        = "Liberation-Sans-Bold"
+CROSSFADE_DUR       = 0.60
+KEYFRAMES_PER_SCENE = 12   # 12 motion keyframes → smooth 24fps animation
+
+# Motion descriptors — each keyframe gets a different one so
+# Pollinations generates a different action moment in the same scene
+MOTION_VARIANTS = [
+    "initial pose, calm before action",
+    "beginning to move, slight motion",
+    "winding up, gathering energy",
+    "mid-motion, dynamic movement",
+    "peak action, explosive moment",
+    "impact frame, maximum force",
+    "follow-through, momentum",
+    "recoil, aftermath of action",
+    "recovery stance, catching breath",
+    "second wind, new surge of power",
+    "dramatic climax, intense expression",
+    "final pose, powerful stance",
+]
 
 ASSET_DIR  = "assets"
 ASSET_MAP  = {
@@ -96,7 +113,7 @@ def load_env_keys(base_name):
     return keys
 
 
-def pick_assets_for_query(query, count=IMAGES_PER_SCENE):
+def pick_assets_for_query(query, count=KEYFRAMES_PER_SCENE):
     q = query.lower()
     matched = []
     for keyword, files in ASSET_MAP.items():
@@ -117,7 +134,7 @@ def pick_assets_for_query(query, count=IMAGES_PER_SCENE):
 # ──────────────────────────────────────────────────────────────────────────────
 # CHARACTER-AWARE PROMPT BUILDER
 # ──────────────────────────────────────────────────────────────────────────────
-def build_roblox_prompt(query, narration, character_bible):
+def build_roblox_prompt(query, narration, character_bible, motion_variant=""):
     narration_lower = narration.lower()
     mentioned_chars = []
     for char_name, char_data in character_bible.items():
@@ -137,15 +154,17 @@ def build_roblox_prompt(query, narration, character_bible):
         "Roblox Blox Fruits screenshot, colorful sea island environment, Roblox avatars, bright vivid anime-game style",
     ])
 
+    motion_part = f", {motion_variant}" if motion_variant else ""
+
     return (
-        f"{style}, {char_part}{query}, "
+        f"{style}, {char_part}{query}{motion_part}, "
         "dramatic action pose, cinematic lighting, no watermarks, no text overlay, "
         "4K sharp, vertical portrait 9:16 composition"
     )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# KEN BURNS ENGINE
+# IMAGE GRADING
 # ──────────────────────────────────────────────────────────────────────────────
 def _roblox_grade(pil_img):
     img = pil_img.convert("RGB")
@@ -155,70 +174,106 @@ def _roblox_grade(pil_img):
     return img
 
 
-def make_ken_burns_clip(img_path, duration):
-    DIRECTIONS = ["zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down"]
-    direction  = random.choice(DIRECTIONS)
+# ──────────────────────────────────────────────────────────────────────────────
+# 24FPS ANIMATED CLIP — frame-by-frame interpolation between keyframes
+# ──────────────────────────────────────────────────────────────────────────────
+def _get_kb_frame(arr, sw, sh, direction, p):
+    """Ken Burns crop at progress p (0→1), returned as float32."""
+    if direction == "zoom_in":
+        z = 1.0 + 0.18 * p
+        cw, ch = int(VIDEO_W / z), int(VIDEO_H / z)
+        x0, y0 = (sw - cw) // 2, (sh - ch) // 2
+    elif direction == "zoom_out":
+        z = 1.18 - 0.18 * p
+        cw, ch = int(VIDEO_W / z), int(VIDEO_H / z)
+        x0, y0 = (sw - cw) // 2, (sh - ch) // 2
+    elif direction == "pan_left":
+        cw, ch = VIDEO_W, VIDEO_H
+        x0 = int((sw - VIDEO_W) * p); y0 = (sh - VIDEO_H) // 2
+    elif direction == "pan_right":
+        cw, ch = VIDEO_W, VIDEO_H
+        x0 = int((sw - VIDEO_W) * (1 - p)); y0 = (sh - VIDEO_H) // 2
+    elif direction == "pan_up":
+        cw, ch = VIDEO_W, VIDEO_H
+        x0 = (sw - VIDEO_W) // 2; y0 = int((sh - VIDEO_H) * p)
+    else:  # pan_down
+        cw, ch = VIDEO_W, VIDEO_H
+        x0 = (sw - VIDEO_W) // 2; y0 = int((sh - VIDEO_H) * (1 - p))
 
-    pil_img = _roblox_grade(Image.open(img_path).convert("RGB"))
-    scale   = max(VIDEO_W * 1.22 / pil_img.width, VIDEO_H * 1.22 / pil_img.height)
-    sw = int(pil_img.width  * scale)
-    sh = int(pil_img.height * scale)
-    pil_img = pil_img.resize((sw, sh), Image.LANCZOS)
-    arr     = np.array(pil_img)
+    x0 = max(0, min(x0, sw - VIDEO_W))
+    y0 = max(0, min(y0, sh - VIDEO_H))
+    crop = arr[y0:y0 + ch, x0:x0 + cw]
+
+    if crop.shape[1] != VIDEO_W or crop.shape[0] != VIDEO_H:
+        crop = np.array(Image.fromarray(crop).resize((VIDEO_W, VIDEO_H), Image.BILINEAR))
+    return crop.astype(np.float32)
+
+
+def build_animated_clip(img_paths, duration):
+    """
+    Builds a true 24fps animated clip from keyframe images.
+
+    Each keyframe was generated with a different motion descriptor, so they
+    show different action moments. Between consecutive keyframes, every single
+    frame (at 24fps) is computed as a weighted blend of the two surrounding
+    keyframes. This produces smooth motion that looks like real animation
+    rather than a slideshow.
+
+    Example with 12 keyframes over 10 seconds:
+      - Each keyframe occupies ~0.83 seconds
+      - At 24fps that is 20 interpolated frames between each pair
+      - Total = 240 rendered frames of smooth motion
+    """
+    from moviepy.video.VideoClip import VideoClip
+
+    if not img_paths:
+        return ColorClip(size=(VIDEO_W, VIDEO_H), color=(30, 120, 60), duration=duration)
+
+    KB_DIRS = ["zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down"]
+
+    # Pre-load and grade every keyframe image into memory
+    print(f"    🖼  Loading {len(img_paths)} keyframes into memory...")
+    keyframes = []
+    for path in img_paths:
+        pil   = _roblox_grade(Image.open(path).convert("RGB"))
+        scale = max(VIDEO_W * 1.22 / pil.width, VIDEO_H * 1.22 / pil.height)
+        sw    = int(pil.width  * scale)
+        sh    = int(pil.height * scale)
+        pil   = pil.resize((sw, sh), Image.LANCZOS)
+        keyframes.append({
+            "arr": np.array(pil),
+            "sw":  sw,
+            "sh":  sh,
+            "dir": random.choice(KB_DIRS),
+        })
+
+    n       = len(keyframes)
+    seg_dur = duration / n          # seconds per keyframe segment
+    xfade   = min(CROSSFADE_DUR, seg_dur * 0.5)  # crossfade window
 
     def make_frame(t):
-        p = t / max(duration, 0.001)
+        # Which keyframe segment are we in?
+        seg_idx = min(int(t / seg_dur), n - 1)
+        seg_t   = t - seg_idx * seg_dur      # elapsed time within this segment
+        kb_p    = max(0.0, min(1.0, seg_t / seg_dur))
 
-        if direction == "zoom_in":
-            z = 1.0 + 0.20 * p
-            cw, ch = int(VIDEO_W / z), int(VIDEO_H / z)
-            x0 = (sw - cw) // 2; y0 = (sh - ch) // 2
-        elif direction == "zoom_out":
-            z = 1.20 - 0.20 * p
-            cw, ch = int(VIDEO_W / z), int(VIDEO_H / z)
-            x0 = (sw - cw) // 2; y0 = (sh - ch) // 2
-        elif direction == "pan_left":
-            cw, ch = VIDEO_W, VIDEO_H
-            x0 = int((sw - VIDEO_W) * p);       y0 = (sh - VIDEO_H) // 2
-        elif direction == "pan_right":
-            cw, ch = VIDEO_W, VIDEO_H
-            x0 = int((sw - VIDEO_W) * (1 - p)); y0 = (sh - VIDEO_H) // 2
-        elif direction == "pan_up":
-            cw, ch = VIDEO_W, VIDEO_H
-            x0 = (sw - VIDEO_W) // 2; y0 = int((sh - VIDEO_H) * p)
-        else:
-            cw, ch = VIDEO_W, VIDEO_H
-            x0 = (sw - VIDEO_W) // 2; y0 = int((sh - VIDEO_H) * (1 - p))
+        kf   = keyframes[seg_idx]
+        base = _get_kb_frame(kf["arr"], kf["sw"], kf["sh"], kf["dir"], kb_p)
 
-        x0   = max(0, min(x0, sw - VIDEO_W))
-        y0   = max(0, min(y0, sh - VIDEO_H))
-        crop = arr[y0:y0 + ch, x0:x0 + cw]
+        # Smooth alpha blend into next keyframe during tail of segment
+        if seg_idx < n - 1 and seg_t > seg_dur - xfade:
+            alpha  = (seg_t - (seg_dur - xfade)) / xfade   # 0.0 → 1.0
+            alpha  = max(0.0, min(1.0, alpha))
+            kf_nxt = keyframes[seg_idx + 1]
+            nxt    = _get_kb_frame(kf_nxt["arr"], kf_nxt["sw"], kf_nxt["sh"],
+                                   kf_nxt["dir"], 0.0)
+            base   = base * (1.0 - alpha) + nxt * alpha
 
-        if crop.shape[1] != VIDEO_W or crop.shape[0] != VIDEO_H:
-            crop = np.array(
-                Image.fromarray(crop).resize((VIDEO_W, VIDEO_H), Image.BILINEAR)
-            )
-        return crop
+        return base.astype(np.uint8)
 
-    from moviepy.video.VideoClip import VideoClip
     clip     = VideoClip(make_frame, duration=duration)
     clip.fps = FPS
     return clip
-
-
-def build_image_clip(img_paths, duration):
-    if not img_paths:
-        return ColorClip(size=(VIDEO_W, VIDEO_H), color=(30, 120, 60), duration=duration)
-    if len(img_paths) == 1:
-        return make_ken_burns_clip(img_paths[0], duration)
-    seg    = duration / len(img_paths)
-    clips  = [make_ken_burns_clip(p, seg) for p in img_paths]
-    joined = clips[0]
-    for c in clips[1:]:
-        joined = concatenate_videoclips(
-            [joined, c.fx(vfx.fadein, CROSSFADE_DUR)], method="compose"
-        )
-    return joined.set_duration(duration)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -245,9 +300,7 @@ def fetch_fal_video(prompt, out_path, api_keys):
             }
             submit = requests.post(
                 f"https://queue.fal.run/{MODEL_BASE}",
-                headers=headers,
-                json=payload,
-                timeout=30,
+                headers=headers, json=payload, timeout=30,
             )
             if submit.status_code not in (200, 201):
                 print(f"    ⚠️ FAL submit {submit.status_code} — trying next key.")
@@ -258,7 +311,6 @@ def fetch_fal_video(prompt, out_path, api_keys):
                 print(f"    ⚠️ FAL submit returned no request_id.")
                 continue
 
-            # poll /status endpoint (not the result endpoint)
             status_url = f"https://queue.fal.run/{MODEL_BASE}/requests/{request_id}/status"
             result_url = f"https://queue.fal.run/{MODEL_BASE}/requests/{request_id}"
 
@@ -273,7 +325,7 @@ def fetch_fal_video(prompt, out_path, api_keys):
                     if result_resp.status_code != 200:
                         print(f"    ⚠️ FAL result fetch failed: {result_resp.status_code}.")
                         break
-                    output = result_resp.json().get("output", {})
+                    output    = result_resp.json().get("output", {})
                     video_url = (
                         output.get("video", {}).get("url", "")
                         or (output.get("videos") or [{}])[0].get("url", "")
@@ -299,7 +351,7 @@ def fetch_fal_video(prompt, out_path, api_keys):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ENGINE B — HUGGINGFACE TEXT-TO-VIDEO (free with HF_TOKEN, key rotation)
+# ENGINE B — HUGGINGFACE TEXT-TO-VIDEO
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_hf_video(prompt, out_path, api_keys):
     if not api_keys:
@@ -309,8 +361,6 @@ def fetch_hf_video(prompt, out_path, api_keys):
         "https://router.huggingface.co/hf-inference/models/damo-vilab/text-to-video-ms-1.7b",
         "https://router.huggingface.co/hf-inference/models/cerspense/zeroscope_v2_576w",
     ]
-
-    # Keep prompt short — these models work best under 60 words
     short_prompt = " ".join(prompt.split()[:50])
 
     for key in api_keys:
@@ -324,33 +374,25 @@ def fetch_hf_video(prompt, out_path, api_keys):
                     "x-wait-for-model": "true",
                 }
                 resp = requests.post(
-                    model_url,
-                    headers=headers,
-                    json={"inputs": short_prompt},
-                    timeout=180,
+                    model_url, headers=headers,
+                    json={"inputs": short_prompt}, timeout=180,
                 )
                 if resp.status_code == 200:
-                    content_type = resp.headers.get("content-type", "")
-                    if "video" in content_type or "octet-stream" in content_type or len(resp.content) > 50_000:
+                    ct = resp.headers.get("content-type", "")
+                    if "video" in ct or "octet-stream" in ct or len(resp.content) > 50_000:
                         with open(out_path, "wb") as f:
                             f.write(resp.content)
                         if os.path.exists(out_path) and os.path.getsize(out_path) > 50_000:
                             print(f"    ✅ HuggingFace video generated ({model_name}).")
                             return True
-                        else:
-                            print(f"    ⚠️ HF video file too small — skipping.")
-                            if os.path.exists(out_path):
-                                os.remove(out_path)
-                    else:
-                        print(f"    ⚠️ HF unexpected content-type: {content_type[:60]}")
+                        if os.path.exists(out_path):
+                            os.remove(out_path)
                 elif resp.status_code == 503:
                     print(f"    ⏳ HF model loading, retrying in 20s...")
                     time.sleep(20)
                     resp2 = requests.post(
-                        model_url,
-                        headers=headers,
-                        json={"inputs": short_prompt},
-                        timeout=180,
+                        model_url, headers=headers,
+                        json={"inputs": short_prompt}, timeout=180,
                     )
                     if resp2.status_code == 200 and len(resp2.content) > 50_000:
                         with open(out_path, "wb") as f:
@@ -372,42 +414,55 @@ def fetch_hf_video(prompt, out_path, api_keys):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ENGINE C — POLLINATIONS AI (always free, browser UA required)
+# ENGINE C — POLLINATIONS: 12 motion keyframes → 24fps animated clip
 # ──────────────────────────────────────────────────────────────────────────────
-def fetch_pollinations_image(prompt, out_path):
-    encoded = requests.utils.quote(prompt)
-    seed    = random.randint(1000, 999999)
-    url = (
-        f"https://image.pollinations.ai/prompt/{encoded}"
-        f"?width=1080&height=1920&nologo=true&seed={seed}&model=flux"
-    )
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        ),
-        "Referer":  "https://pollinations.ai/",
-        "Accept":   "image/webp,image/apng,image/*,*/*;q=0.8",
-    }
-    try:
-        resp = requests.get(url, headers=headers, timeout=90, stream=True)
-        if resp.status_code == 200 and "image" in resp.headers.get("content-type", ""):
-            with open(out_path, "wb") as f:
-                for chunk in resp.iter_content(8192):
-                    f.write(chunk)
-            if os.path.exists(out_path) and os.path.getsize(out_path) > 5000:
-                print(f"    ✅ Pollinations image generated.")
-                return True
-        else:
-            print(f"    ⚠️ Pollinations returned {resp.status_code}.")
-    except Exception as e:
-        print(f"    ⚠️ Pollinations failed: {e}")
-    return False
+def fetch_pollinations_keyframes(base_prompt, narration, character_bible,
+                                  count, out_dir, prefix):
+    """
+    Generates `count` images from Pollinations, each with a different
+    motion-variant descriptor appended to the prompt. The varying descriptors
+    ("winding up", "peak action", "impact frame", etc.) push Pollinations to
+    generate different action moments of the same scene.
+    Each image also gets a unique random seed for maximum variety.
+    """
+    paths = []
+    for i in range(count):
+        motion = MOTION_VARIANTS[i % len(MOTION_VARIANTS)]
+        prompt = build_roblox_prompt(base_prompt, narration, character_bible, motion)
+        seed   = random.randint(10_000, 9_999_999)
+        encoded = requests.utils.quote(prompt)
+        url = (
+            f"https://image.pollinations.ai/prompt/{encoded}"
+            f"?width=1080&height=1920&nologo=true&seed={seed}&model=flux"
+        )
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Referer": "https://pollinations.ai/",
+            "Accept":  "image/webp,image/apng,image/*,*/*;q=0.8",
+        }
+        out_path = os.path.join(out_dir, f"{prefix}_{i}.jpg")
+        try:
+            resp = requests.get(url, headers=headers, timeout=90, stream=True)
+            if resp.status_code == 200 and "image" in resp.headers.get("content-type", ""):
+                with open(out_path, "wb") as f:
+                    for chunk in resp.iter_content(8192):
+                        f.write(chunk)
+                if os.path.exists(out_path) and os.path.getsize(out_path) > 5000:
+                    print(f"    ✅ Keyframe {i + 1}/{count} — [{motion}]")
+                    paths.append(out_path)
+                    continue
+            print(f"    ⚠️ Keyframe {i + 1} failed (status {resp.status_code}) — skipping.")
+        except Exception as e:
+            print(f"    ⚠️ Keyframe {i + 1} error: {e} — skipping.")
+    return paths
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ENGINE D — HUGGINGFACE FLUX images (free inference, key rotation)
+# ENGINE D — HUGGINGFACE FLUX images
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_huggingface_image(prompt, out_path, api_keys):
     if not api_keys:
@@ -420,10 +475,8 @@ def fetch_huggingface_image(prompt, out_path, api_keys):
     payload = {
         "inputs": prompt,
         "parameters": {
-            "width":               1080,
-            "height":              1920,
-            "num_inference_steps": 4,
-            "guidance_scale":      0.0,
+            "width": 1080, "height": 1920,
+            "num_inference_steps": 4, "guidance_scale": 0.0,
         },
     }
 
@@ -454,10 +507,10 @@ def fetch_huggingface_image(prompt, out_path, api_keys):
                             print(f"    ✅ HuggingFace FLUX image generated (retry).")
                             return True
                 else:
-                    print(f"    ⚠️ HF {model_url.split('/')[2]} returned {resp.status_code} — trying next URL.")
+                    print(f"    ⚠️ HF returned {resp.status_code} — trying next URL.")
                     continue
             except Exception as e:
-                print(f"    ⚠️ HuggingFace error ({model_url.split('/')[2]}): {e}")
+                print(f"    ⚠️ HuggingFace error: {e}")
                 continue
             break
 
@@ -466,22 +519,19 @@ def fetch_huggingface_image(prompt, out_path, api_keys):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ENGINE E — DEZGO (free Stable Diffusion, no key, works from CI)
+# ENGINE E — DEZGO
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_dezgo_image(prompt, out_path):
     print(f"  🎨 Dezgo free SD image...")
-    short_prompt = prompt[:400]
     try:
         resp = requests.post(
             "https://dezgo.com/text2image",
             data={
-                "prompt":          short_prompt,
+                "prompt":          prompt[:400],
                 "negative_prompt": "blurry, low quality, text, watermark, nsfw",
-                "guidance":        "7",
-                "steps":           "20",
-                "sampler":         "euler_a",
-                "upscale":         "1",
-                "model":           "dreamshaper_8",
+                "guidance": "7", "steps": "20",
+                "sampler": "euler_a", "upscale": "1",
+                "model": "dreamshaper_8",
             },
             headers={
                 "User-Agent": (
@@ -529,15 +579,9 @@ def make_caption_clip(text, duration):
     for font in (CAPTION_FONT, "Liberation-Sans"):
         try:
             txt = TextClip(
-                text,
-                font=font,
-                fontsize=CAPTION_FONTSIZE,
-                color="white",
-                stroke_color="black",
-                stroke_width=4,
-                size=(VIDEO_W - 100, None),
-                method="caption",
-                align="center",
+                text, font=font, fontsize=CAPTION_FONTSIZE,
+                color="white", stroke_color="black", stroke_width=4,
+                size=(VIDEO_W - 100, None), method="caption", align="center",
             )
             return (txt.set_duration(duration)
                        .set_position(("center", int(VIDEO_H * CAPTION_Y_FRAC))))
@@ -552,22 +596,23 @@ def make_caption_clip(text, duration):
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_scene_visual(scene, scene_idx, character_bible,
                        fal_keys, hf_keys, templates_dir):
-    query       = scene["query"]
-    narration   = scene["narration"]
-    dur         = scene.get("duration", 12)
-    rich_prompt = build_roblox_prompt(query, narration, character_bible)
-    print(f"  📝 Prompt: {rich_prompt[:120]}...")
+    query     = scene["query"]
+    narration = scene["narration"]
+    dur       = scene.get("duration", 10)
+    # Base prompt (no motion variant — used for video engines)
+    base_prompt = build_roblox_prompt(query, narration, character_bible)
+    print(f"  📝 Base prompt: {base_prompt[:100]}...")
 
     # Engine A — FAL.ai video
     if fal_keys:
         fal_out = os.path.join(templates_dir, f"fal_clip_{scene_idx}.mp4")
-        if fetch_fal_video(rich_prompt, fal_out, fal_keys):
+        if fetch_fal_video(base_prompt, fal_out, fal_keys):
             try:
                 raw_clip = VideoFileClip(fal_out)
                 loops    = math.ceil(dur / raw_clip.duration)
                 looped   = concatenate_videoclips([raw_clip] * loops)
                 visual   = crop_video_to_vertical(looped, dur)
-                print(f"  🎮 FAL.ai video used (looped {loops}x for {dur:.1f}s).")
+                print(f"  🎮 FAL.ai video used.")
                 return visual
             except Exception as e:
                 print(f"  ⚠️ FAL clip load failed: {e}")
@@ -575,55 +620,55 @@ def fetch_scene_visual(scene, scene_idx, character_bible,
     # Engine B — HuggingFace text-to-video
     if hf_keys:
         hf_vid_out = os.path.join(templates_dir, f"hf_video_{scene_idx}.mp4")
-        if fetch_hf_video(rich_prompt, hf_vid_out, hf_keys):
+        if fetch_hf_video(base_prompt, hf_vid_out, hf_keys):
             try:
                 raw_clip = VideoFileClip(hf_vid_out)
                 loops    = math.ceil(dur / raw_clip.duration)
                 looped   = concatenate_videoclips([raw_clip] * loops)
                 visual   = crop_video_to_vertical(looped, dur)
-                print(f"  🎥 HuggingFace video used (looped {loops}x for {dur:.1f}s).")
+                print(f"  🎥 HuggingFace video used.")
                 return visual
             except Exception as e:
                 print(f"  ⚠️ HF video clip load failed: {e}")
 
-    # Engine C — Pollinations images (always free, always available)
-    print(f"  🖼  Pollinations — character-aware images...")
-    poll_paths = []
-    for i in range(IMAGES_PER_SCENE):
-        poll_out = os.path.join(templates_dir, f"poll_{scene_idx}_{i}.jpg")
-        if fetch_pollinations_image(rich_prompt, poll_out):
-            poll_paths.append(poll_out)
+    # Engine C — Pollinations: 12 motion keyframes → 24fps animated clip
+    print(f"  🎬 Pollinations: generating {KEYFRAMES_PER_SCENE} motion keyframes...")
+    poll_paths = fetch_pollinations_keyframes(
+        query, narration, character_bible,
+        count=KEYFRAMES_PER_SCENE,
+        out_dir=templates_dir,
+        prefix=f"poll_{scene_idx}",
+    )
     if poll_paths:
-        print(f"  🎨 Pollinations: {len(poll_paths)} story-matched image(s).")
-        return build_image_clip(poll_paths, dur)
+        print(f"  ✅ {len(poll_paths)} keyframes ready → building 24fps animated clip.")
+        return build_animated_clip(poll_paths, dur)
 
-    # Engine D — HuggingFace FLUX images
+    # Engine D — HuggingFace FLUX images → animated clip
     if hf_keys:
         hf_paths = []
-        for i in range(IMAGES_PER_SCENE):
+        for i in range(6):
             hf_out = os.path.join(templates_dir, f"hf_{scene_idx}_{i}.jpg")
-            if fetch_huggingface_image(rich_prompt, hf_out, hf_keys):
+            if fetch_huggingface_image(base_prompt, hf_out, hf_keys):
                 hf_paths.append(hf_out)
         if hf_paths:
-            print(f"  🤗 HuggingFace FLUX: {len(hf_paths)} image(s) used.")
-            return build_image_clip(hf_paths, dur)
+            print(f"  🤗 HuggingFace FLUX: {len(hf_paths)} images → animated clip.")
+            return build_animated_clip(hf_paths, dur)
 
     # Engine E — Dezgo
     dezgo_paths = []
-    for i in range(IMAGES_PER_SCENE):
+    for i in range(4):
         dezgo_out = os.path.join(templates_dir, f"dezgo_{scene_idx}_{i}.jpg")
-        if fetch_dezgo_image(rich_prompt, dezgo_out):
+        if fetch_dezgo_image(base_prompt, dezgo_out):
             dezgo_paths.append(dezgo_out)
     if dezgo_paths:
-        print(f"  🎨 Dezgo: {len(dezgo_paths)} image(s) used.")
-        return build_image_clip(dezgo_paths, dur)
+        print(f"  🎨 Dezgo: {len(dezgo_paths)} images → animated clip.")
+        return build_animated_clip(dezgo_paths, dur)
 
-    # Engine F — Local assets (absolute last resort)
+    # Engine F — Local assets
     print(f"  📁 Falling back to local assets...")
-    asset_paths = pick_assets_for_query(query, count=IMAGES_PER_SCENE)
+    asset_paths = pick_assets_for_query(query, count=6)
     if asset_paths:
-        print(f"  ✅ Local assets: {[os.path.basename(p) for p in asset_paths]}")
-        return build_image_clip(asset_paths, dur)
+        return build_animated_clip(asset_paths, dur)
 
     return ColorClip(size=(VIDEO_W, VIDEO_H), color=(56, 148, 56), duration=dur)
 
@@ -674,10 +719,10 @@ Output ONLY this JSON (no markdown fences):
 {{
   "title": "Short catchy title",
   "scenes": [
-    {{"narration": "Scene 1 text...", "query": "Luffy roblox blox fruits dough awakening showcase", "duration": 12}},
-    {{"narration": "Scene 2 text...", "query": "Shanks Big Mom roblox blox fruits sea beast boss fight", "duration": 12}},
-    {{"narration": "Scene 3 text...", "query": "Mysterious Figure roblox jujutsu zero domain expansion", "duration": 12}},
-    {{"narration": "Scene 4 text...", "query": "Luffy roblox blox fruits max level pvp cliffhanger", "duration": 12}}
+    {{"narration": "Scene 1 text...", "query": "Luffy roblox blox fruits dough awakening showcase", "duration": 10}},
+    {{"narration": "Scene 2 text...", "query": "Shanks Big Mom roblox blox fruits sea beast boss fight", "duration": 10}},
+    {{"narration": "Scene 3 text...", "query": "Mysterious Figure roblox jujutsu zero domain expansion", "duration": 10}},
+    {{"narration": "Scene 4 text...", "query": "Luffy roblox blox fruits max level pvp cliffhanger", "duration": 10}}
   ],
   "character_bible": {{
     "CharacterName": {{
@@ -757,12 +802,14 @@ def assemble_storyboard(storyboard_data):
         narration = scene["narration"]
         print(f"\n🎬 Scene {idx + 1}/{len(storyboard_data['scenes'])}: {scene['query']}")
 
+        # Voiceover first — its duration drives the scene length exactly
         audio_file  = f"scene_{idx + 1}.mp3"
         asyncio.run(generate_voiceover(narration, audio_file))
         scene_audio = AudioFileClip(audio_file)
-        actual_dur  = max(scene_audio.duration, scene.get("duration", 12))
+        actual_dur        = scene_audio.duration   # audio = source of truth, no padding
         scene["duration"] = actual_dur
         audio_segments.append(scene_audio)
+        print(f"  🔊 Voiceover: {actual_dur:.1f}s")
 
         visual = fetch_scene_visual(
             scene, idx, character_bible, fal_keys, hf_keys, templates_dir
@@ -776,7 +823,7 @@ def assemble_storyboard(storyboard_data):
         scene_clip = CompositeVideoClip(layers, size=(VIDEO_W, VIDEO_H))
         scene_clip = (scene_clip
                       .set_duration(actual_dur)
-                      .set_audio(scene_audio.set_duration(actual_dur)))
+                      .set_audio(scene_audio))   # exact match — no looping
 
         if idx > 0:
             scene_clip = scene_clip.fx(vfx.fadein, CROSSFADE_DUR)
@@ -813,12 +860,8 @@ def assemble_storyboard(storyboard_data):
     print("🎞  Rendering final_short.mp4 ...")
     final_video.write_videofile(
         "final_short.mp4",
-        fps=FPS,
-        codec="libx264",
-        audio_codec="aac",
-        threads=4,
-        preset="fast",
-        logger=None,
+        fps=FPS, codec="libx264", audio_codec="aac",
+        threads=4, preset="fast", logger=None,
     )
     print("✅ Render complete: final_short.mp4\n")
 
@@ -838,11 +881,9 @@ def upload_to_youtube(storyboard_data):
         return
 
     creds = google.oauth2.credentials.Credentials(
-        None,
-        refresh_token=refresh_token,
+        None, refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id,
-        client_secret=client_secret,
+        client_id=client_id, client_secret=client_secret,
     )
     yt    = build("youtube", "v3", credentials=creds, cache_discovery=False)
     title = storyboard_data.get("title", "Blox Fruits Madness!")
@@ -857,8 +898,7 @@ def upload_to_youtube(storyboard_data):
             "categoryId":  "20",
         },
         "status": {
-            "privacyStatus":           "public",
-            "selfDeclaredMadeForKids": False,
+            "privacyStatus": "public", "selfDeclaredMadeForKids": False,
         },
     }
 
@@ -870,8 +910,7 @@ def upload_to_youtube(storyboard_data):
         if status:
             print(f"  ⏳ Uploading: {int(status.progress() * 100)}%")
 
-    video_id = response.get("id")
-    print(f"🎉 Uploaded! https://youtube.com/shorts/{video_id}")
+    print(f"🎉 Uploaded! https://youtube.com/shorts/{response.get('id')}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
