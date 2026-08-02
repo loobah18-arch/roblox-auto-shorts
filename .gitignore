@@ -1,1 +1,16 @@
+# Generated video / audio (large files — never commit these)
+final_short.mp4
+scene_*.mp3
 motion_templates/
+
+# YouTube cookies (sensitive)
+cookies.txt
+
+# Python
+__pycache__/
+*.py[cod]
+.env
+
+# OS
+.DS_Store
+Thumbs.db
