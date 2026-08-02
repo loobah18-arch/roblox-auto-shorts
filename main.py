@@ -1,21 +1,21 @@
 """
-Roblox Shorts Pipeline — Paper-Animation Edition
-================================================
-Visuals emulate old-school hand-drawn animators:
-  • Rotoscope hand-drawn OVER Roblox characters (blocky avatars kept, ink outlines added)
-  • Classic 2D cel-shading, flat colours, textured paper background
-  • Real frame-by-frame motion (no Ken-Burns slideshow feel)
+Roblox Shorts Pipeline — Paper-Animation Edition (Fixed)
+=========================================================
+Key fixes vs previous version:
+  • 5 frames per scene instead of 24 → stays well within 60-min budget
+  • Smart retry with exponential back-off on 429 / timeout
+  • Frame hold = scene_duration / num_frames  → no looping, smooth fill
+  • Dezgo re-enabled as Engine D fallback (fast, free, no CI IP block)
+  • 2-second polite delay between successful Pollinations requests
 
 Engine order (per scene):
-  A. FAL.ai text-to-video       [DISABLED — commented out for speed]
-  B. HuggingFace text-to-video  [DISABLED — commented out for speed]
-  C. Pollinations AI — 24 sequential frames, locked seed, cel-anim style  <-- ACTIVE
-  D. HuggingFace FLUX images    [DISABLED — commented out for speed]
-  E. Dezgo free SD images       [DISABLED — commented out for speed]
-  F. Local assets (final safety net)
+  C. Pollinations AI — 5 sequential frames, locked seed, cel-anim style  ← PRIMARY
+  D. Dezgo free Stable Diffusion images                                   ← FALLBACK
+  E. Local assets (final safety net)
 """
 
 import os
+import time
 import random
 import json
 import requests
@@ -47,45 +47,40 @@ CAPTION_Y_FRAC = 0.82
 CAPTION_FONTSIZE = 58
 CAPTION_FONT = "Liberation-Sans-Bold"
 
-# Paper-animation timing:
-#   FRAMES_PER_SCENE  = how many drawings we generate per scene
-#   FRAME_HOLD        = how long each drawing is held on screen (seconds)
-#   Effective anim FPS = 1 / FRAME_HOLD  (0.4s = 2.5fps ≈ classic anime "on 3s")
-FRAMES_PER_SCENE = 24          # ~10s scene / 0.4s hold = 24 drawings
-FRAME_HOLD = 0.40              # feels hand-drawn without looking too jerky
-FRAME_XFADE = 0.05             # tiny 50ms dissolve → still crisp cel-style hard-cut feel
-PAPER_WOBBLE_PX = 6            # random 1-6px per-frame offset = hand-drawn quiver
+# Animation timing:
+#   5 frames fill the whole scene duration exactly (no looping)
+#   e.g. 8s scene → each frame shown for 1.6s  — classic "on 2s" manga feel
+FRAMES_PER_SCENE = 5
 
-# Progressive action beats — describe the SAME motion at 24 stages
-# Pollinations reads these as "draw frame N of a continuous animation"
+PAPER_WOBBLE_PX = 6          # random 1-6px per-frame offset = hand-drawn quiver
+FRAME_XFADE = 0.06           # 60ms micro-dissolve between drawings
+
+# Pollinations back-off config
+POLL_DELAY_OK   = 2          # seconds to wait after each successful download
+POLL_DELAY_429  = 20         # seconds to wait after a 429 (rate-limit)
+POLL_MAX_RETRY  = 3          # max retries per frame before giving up
+POLL_TIMEOUT    = 90         # per-request timeout (seconds)
+
+# 5 key action beats that give every scene a proper arc:
+# opening → build → climax → impact → close
 FRAME_STAGES = [
-    "frame 1 of 24, still pose, character standing calm, eyes narrowing",
-    "frame 2 of 24, character begins to shift weight, subtle tension",
-    "frame 3 of 24, breath in, chest expanding, aura starts glowing faintly",
-    "frame 4 of 24, hands lowering, fingers spreading, energy gathering",
-    "frame 5 of 24, one leg steps back, battle stance forming",
-    "frame 6 of 24, arms rising slightly, small motion blur on hands",
-    "frame 7 of 24, aura brightens around body, hair starts lifting",
-    "frame 8 of 24, mouth opens in shout, veins on neck visible",
-    "frame 9 of 24, arms fully raised, energy sphere forming between palms",
-    "frame 10 of 24, character crouches, ready to launch",
-    "frame 11 of 24, explosive push-off, ground cracks below feet",
-    "frame 12 of 24, mid-leap, body angled forward, cape/coat trailing",
-    "frame 13 of 24, apex of jump, arm winding back for strike",
-    "frame 14 of 24, arm swinging down, speed lines behind fist",
-    "frame 15 of 24, strike connecting, white impact flash starting",
-    "frame 16 of 24, peak impact, energy shockwave radiating outward",
-    "frame 17 of 24, follow-through, body twisting from momentum",
-    "frame 18 of 24, landing on one knee, dust cloud rising",
-    "frame 19 of 24, slowly standing, breathing hard, aura fading",
-    "frame 20 of 24, straightening up, eyes glowing with power",
-    "frame 21 of 24, wind blowing hair and clothes sideways",
-    "frame 22 of 24, calm exhale, small smirk forming",
-    "frame 23 of 24, camera pulls back slightly, epic wide angle",
-    "frame 24 of 24, final heroic pose, aura settling, dramatic hold",
+    "frame 1 of 5 — opening establishing shot, character in neutral pose, "
+    "setting visible, calm before the storm",
+
+    "frame 2 of 5 — tension rising, character begins charging power, "
+    "eyes narrowing, aura glowing faintly, battle stance forming",
+
+    "frame 3 of 5 — PEAK ACTION, full force unleashed, explosive motion blur, "
+    "energy shockwave radiating, maximum dramatic pose",
+
+    "frame 4 of 5 — impact aftermath, dust and debris, environment reacting, "
+    "characters mid-recovery, intense emotion on face",
+
+    "frame 5 of 5 — resolution beat, dramatic closing pose, camera pulling back, "
+    "aura settling, story moment landing, heroic still",
 ]
 
-# Paper / cel-animation style prompts — one is picked per scene for consistency
+# Paper / cel-animation style prompts — one locked per scene for consistency
 PAPER_STYLE_VARIANTS = [
     ("hand-drawn cel animation frame, rotoscoped over blocky Roblox avatar, "
      "thick black ink outlines, flat cel-shading with 2-tone lighting, "
@@ -154,16 +149,14 @@ def pick_assets_for_query(query, count=FRAMES_PER_SCENE):
             if os.path.exists(os.path.join(ASSET_DIR, f))]
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CHARACTER-AWARE PROMPT BUILDER  (paper-animation edition)
+# CHARACTER-AWARE PROMPT BUILDER
 # ──────────────────────────────────────────────────────────────────────────────
 def build_paper_prompt(query, narration, character_bible, frame_stage, paper_style):
     """
-    Builds a Pollinations prompt that:
-      1. Injects the paper/cel-anim style
-      2. Injects character clothing/features from the bible
-      3. Adds the CURRENT progressive frame beat (frame N of 24)
-    Everything else (scene content, camera) stays constant across all 24 frames
-    so we get true animation, not a slideshow.
+    All 5 frames for a scene share:
+      • The same locked seed  → same character design, same background, same angle
+      • The same paper/cel-anim style  → consistent art direction
+    Only the frame_stage changes → real motion progression instead of slideshow.
     """
     narration_lower = narration.lower()
     mentioned_chars = []
@@ -190,30 +183,27 @@ def _paper_grade(pil_img):
     img = pil_img.convert("RGB")
     img = ImageEnhance.Brightness(img).enhance(1.02)
     img = ImageEnhance.Contrast(img).enhance(1.10)
-    img = ImageEnhance.Color(img).enhance(0.92)   # slight desat for cel look
+    img = ImageEnhance.Color(img).enhance(0.92)
     return img
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PAPER-ANIMATION CLIP — hard-cut frames + tiny wobble = hand-drawn feel
+# PAPER-ANIMATION CLIP
 # ──────────────────────────────────────────────────────────────────────────────
 def build_paper_animation_clip(img_paths, duration):
     """
-    Old-school animator style:
-      - Each drawing held for FRAME_HOLD seconds (default 0.4s)
-      - Tiny per-frame pixel wobble simulates hand-drawn registration jitter
-      - Loops the frame sequence if scene is longer than frames × hold
-      - Uses hard cuts (or 50ms micro-dissolve) — NO Ken-Burns pan/zoom
+    Each frame is held for  duration / num_frames  seconds — no looping.
+    The 5-frame arc (calm → build → climax → impact → close) plays out once
+    across the full scene. No rapid slideshow flicker.
     """
     if not img_paths:
         return ColorClip(size=(VIDEO_W, VIDEO_H),
-                         color=(245, 235, 215),   # warm paper cream
+                         color=(245, 235, 215),
                          duration=duration)
 
     print(f"    🖌 Loading {len(img_paths)} hand-drawn frames...")
     frames = []
     for path in img_paths:
         pil = _paper_grade(Image.open(path).convert("RGB"))
-        # Fit to 1080x1920, cover-crop centre
         scale = max(VIDEO_W / pil.width, VIDEO_H / pil.height)
         sw, sh = int(pil.width * scale), int(pil.height * scale)
         pil = pil.resize((sw, sh), Image.LANCZOS)
@@ -223,32 +213,29 @@ def build_paper_animation_clip(img_paths, duration):
         frames.append(np.array(pil))
 
     n = len(frames)
-    # Per-frame random wobble offsets — locked at build time so it's deterministic
+    frame_hold = duration / n   # evenly distribute — no looping
+
     wobbles = [(random.randint(-PAPER_WOBBLE_PX, PAPER_WOBBLE_PX),
                 random.randint(-PAPER_WOBBLE_PX, PAPER_WOBBLE_PX))
                for _ in range(n)]
 
-    # Paper cream background so wobble edges don't show black
     bg = np.full((VIDEO_H, VIDEO_W, 3), (245, 235, 215), dtype=np.uint8)
 
     def make_frame(t):
-        # Which drawing are we on?
-        idx = int(t / FRAME_HOLD) % n
+        idx = min(int(t / frame_hold), n - 1)
         frame = frames[idx]
         dx, dy = wobbles[idx]
 
-        # Micro-dissolve into next frame (last FRAME_XFADE of each hold)
-        into_next = (t % FRAME_HOLD) - (FRAME_HOLD - FRAME_XFADE)
+        into_next = (t % frame_hold) - (frame_hold - FRAME_XFADE)
         if into_next > 0 and idx + 1 < n:
             alpha = into_next / FRAME_XFADE
-            nxt = frames[(idx + 1) % n]
+            nxt = frames[idx + 1]
             frame = (frame.astype(np.float32) * (1 - alpha)
                      + nxt.astype(np.float32) * alpha).astype(np.uint8)
 
-        # Apply wobble by pasting onto paper bg
         canvas = bg.copy()
-        x1 = max(0, dx);   x2 = min(VIDEO_W, VIDEO_W + dx)
-        y1 = max(0, dy);   y2 = min(VIDEO_H, VIDEO_H + dy)
+        x1 = max(0, dx);  x2 = min(VIDEO_W, VIDEO_W + dx)
+        y1 = max(0, dy);  y2 = min(VIDEO_H, VIDEO_H + dy)
         sx1 = max(0, -dx); sx2 = sx1 + (x2 - x1)
         sy1 = max(0, -dy); sy2 = sy1 + (y2 - y1)
         canvas[y1:y2, x1:x2] = frame[sy1:sy2, sx1:sx2]
@@ -258,36 +245,16 @@ def build_paper_animation_clip(img_paths, duration):
     clip.fps = FPS
     return clip
 
-# ══════════════════════════════════════════════════════════════════════════════
-# DISABLED ENGINES  (kept in file, easy to re-enable — just uncomment)
-# ══════════════════════════════════════════════════════════════════════════════
-# ── ENGINE A — FAL.AI text-to-video  [DISABLED] ───────────────────────────────
-# def fetch_fal_video(prompt, out_path, api_keys):
-#     ...  (original code in git history commit 0527f61 — restore to bring back)
-#
-# ── ENGINE B — HuggingFace text-to-video  [DISABLED] ──────────────────────────
-# def fetch_hf_video(prompt, out_path, api_keys):
-#     ...
-#
-# ── ENGINE D — HuggingFace FLUX images  [DISABLED] ────────────────────────────
-# def fetch_huggingface_image(prompt, out_path, api_keys):
-#     ...
-#
-# ── ENGINE E — Dezgo images  [DISABLED] ───────────────────────────────────────
-# def fetch_dezgo_image(prompt, out_path):
-#     ...
-
 # ──────────────────────────────────────────────────────────────────────────────
-# ENGINE C — POLLINATIONS: 24 sequential paper-animation frames  (ACTIVE)
+# ENGINE C — POLLINATIONS  (PRIMARY)
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_pollinations_paper_frames(base_query, narration, character_bible,
                                     count, out_dir, prefix):
     """
-    Generates `count` consecutive drawings for ONE scene.
-    All frames share:
-      • The same locked seed  → same character, same background, same angle
-      • The same paper/cel-anim style  → consistent art direction
-    Only the frame stage differs → real motion instead of slideshow.
+    Retry policy per frame:
+      429       → sleep 20s, retry (up to 3 times)
+      timeout   → sleep 30s, retry (up to 3 times)
+      success   → sleep 2s before next frame (prevents burst)
     """
     scene_seed = random.randint(10_000, 9_999_999)
     paper_style = random.choice(PAPER_STYLE_VARIANTS)
@@ -315,21 +282,124 @@ def fetch_pollinations_paper_frames(base_query, narration, character_bible,
             f"?width=1080&height=1920&nologo=true&seed={scene_seed}&model=flux"
         )
         out_path = os.path.join(out_dir, f"{prefix}_{i:02d}.jpg")
-        try:
-            resp = requests.get(url, headers=headers, timeout=90, stream=True)
-            if (resp.status_code == 200
-                    and "image" in resp.headers.get("content-type", "")):
-                with open(out_path, "wb") as f:
-                    for chunk in resp.iter_content(8192):
-                        f.write(chunk)
-                if os.path.exists(out_path) and os.path.getsize(out_path) > 5000:
-                    print(f"    ✅ Frame {i + 1:02d}/{count}")
-                    paths.append(out_path)
+
+        success = False
+        for attempt in range(1, POLL_MAX_RETRY + 1):
+            try:
+                resp = requests.get(url, headers=headers,
+                                    timeout=POLL_TIMEOUT, stream=True)
+
+                if resp.status_code == 429:
+                    print(f"    ⏳ Frame {i+1:02d} — 429 rate-limit "
+                          f"(attempt {attempt}/{POLL_MAX_RETRY}). "
+                          f"Sleeping {POLL_DELAY_429}s...")
+                    time.sleep(POLL_DELAY_429)
                     continue
-            print(f"    ⚠️ Frame {i + 1:02d} failed "
-                  f"(status {resp.status_code}) — skipping.")
-        except Exception as e:
-            print(f"    ⚠️ Frame {i + 1:02d} error: {e} — skipping.")
+
+                if (resp.status_code == 200
+                        and "image" in resp.headers.get("content-type", "")):
+                    with open(out_path, "wb") as f:
+                        for chunk in resp.iter_content(8192):
+                            f.write(chunk)
+                    if os.path.exists(out_path) and os.path.getsize(out_path) > 5000:
+                        print(f"    ✅ Frame {i+1:02d}/{count} (attempt {attempt})")
+                        paths.append(out_path)
+                        success = True
+                        break
+                    else:
+                        print(f"    ⚠️ Frame {i+1:02d} — empty file "
+                              f"(attempt {attempt}), retrying...")
+                        time.sleep(5)
+                        continue
+
+                print(f"    ⚠️ Frame {i+1:02d} — HTTP {resp.status_code} "
+                      f"(attempt {attempt}), retrying in 10s...")
+                time.sleep(10)
+
+            except requests.exceptions.Timeout:
+                print(f"    ⚠️ Frame {i+1:02d} — timeout "
+                      f"(attempt {attempt}/{POLL_MAX_RETRY}). Sleeping 30s...")
+                time.sleep(30)
+
+            except Exception as e:
+                print(f"    ⚠️ Frame {i+1:02d} — error: {e} "
+                      f"(attempt {attempt}/{POLL_MAX_RETRY}), retrying in 10s...")
+                time.sleep(10)
+
+        if success:
+            if i < count - 1:
+                time.sleep(POLL_DELAY_OK)
+        else:
+            print(f"    ❌ Frame {i+1:02d} — gave up after {POLL_MAX_RETRY} attempts.")
+
+    return paths
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ENGINE D — DEZGO fallback
+# ──────────────────────────────────────────────────────────────────────────────
+def fetch_dezgo_frames(base_query, narration, character_bible,
+                       count, out_dir, prefix):
+    """Free Stable Diffusion — no API key, no CI IP blocks."""
+    print(f"    🔄 Dezgo fallback: generating {count} frames...")
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+    }
+
+    narration_lower = narration.lower()
+    char_parts = []
+    for char_name, char_data in character_bible.items():
+        if char_name.lower() in narration_lower:
+            clothes   = char_data.get("clothes", "")
+            features  = char_data.get("facial_features", "")
+            char_parts.append(f"{char_name} ({clothes}, {features})")
+    char_str = ("featuring " + " and ".join(char_parts) + ", ") if char_parts else ""
+
+    paths = []
+    for i in range(count):
+        stage = FRAME_STAGES[i % len(FRAME_STAGES)]
+        prompt = (
+            f"Roblox blocky character, cel-shaded anime art style, "
+            f"thick black ink outlines, flat vivid colours, {char_str}"
+            f"{base_query}, {stage}, "
+            "9:16 portrait, no watermarks, no text"
+        )
+        out_path = os.path.join(out_dir, f"{prefix}_dezgo_{i:02d}.jpg")
+
+        for attempt in range(1, 3):
+            try:
+                resp = requests.post(
+                    "https://api.dezgo.com/text2image",
+                    data={
+                        "prompt": prompt,
+                        "model": "dreamshaper_8",
+                        "width": 540,
+                        "height": 960,
+                        "steps": 25,
+                        "guidance": 7.5,
+                    },
+                    headers=headers,
+                    timeout=60,
+                )
+                if resp.status_code == 200 and len(resp.content) > 5000:
+                    with open(out_path, "wb") as f:
+                        f.write(resp.content)
+                    print(f"    ✅ Dezgo frame {i+1:02d}/{count}")
+                    paths.append(out_path)
+                    break
+                else:
+                    print(f"    ⚠️ Dezgo frame {i+1:02d} HTTP {resp.status_code} "
+                          f"(attempt {attempt})")
+                    time.sleep(8)
+            except Exception as e:
+                print(f"    ⚠️ Dezgo frame {i+1:02d} error: {e} (attempt {attempt})")
+                time.sleep(8)
+
+        time.sleep(2)
+
     return paths
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -351,37 +421,44 @@ def make_caption_clip(text, duration):
     return None
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SCENE VISUAL FETCHER — Pollinations-only pipeline
+# SCENE VISUAL FETCHER
 # ──────────────────────────────────────────────────────────────────────────────
 def fetch_scene_visual(scene, scene_idx, character_bible, templates_dir):
-    query = scene["query"]
+    query     = scene["query"]
     narration = scene["narration"]
-    dur = scene.get("duration", 10)
+    dur       = scene.get("duration", 10)
 
-    frames_needed = max(6, math.ceil(dur / FRAME_HOLD))
-    frames_needed = min(frames_needed, FRAMES_PER_SCENE)
-
-    print(f"    🎬 Pollinations paper-anim: generating "
-          f"{frames_needed} hand-drawn frames for {dur:.1f}s scene...")
-
+    # Engine C: Pollinations
+    print(f"    🎬 [Engine C] Pollinations — {FRAMES_PER_SCENE} frames for {dur:.1f}s scene...")
     poll_paths = fetch_pollinations_paper_frames(
         query, narration, character_bible,
-        count=frames_needed,
+        count=FRAMES_PER_SCENE,
         out_dir=templates_dir,
         prefix=f"paper_{scene_idx}",
     )
     if poll_paths:
-        print(f"    ✅ {len(poll_paths)} drawings ready → "
-              f"building paper-animation clip.")
+        print(f"    ✅ {len(poll_paths)}/{FRAMES_PER_SCENE} frames → building clip.")
         return build_paper_animation_clip(poll_paths, dur)
 
-    print(f"    📁 Pollinations failed — falling back to local assets.")
-    asset_paths = pick_assets_for_query(query, count=6)
+    # Engine D: Dezgo
+    print(f"    📡 Pollinations returned 0 frames — trying Dezgo...")
+    dezgo_paths = fetch_dezgo_frames(
+        query, narration, character_bible,
+        count=FRAMES_PER_SCENE,
+        out_dir=templates_dir,
+        prefix=f"dezgo_{scene_idx}",
+    )
+    if dezgo_paths:
+        print(f"    ✅ Dezgo: {len(dezgo_paths)} frames ready.")
+        return build_paper_animation_clip(dezgo_paths, dur)
+
+    # Engine E: local assets
+    print(f"    📁 All engines failed — using local assets.")
+    asset_paths = pick_assets_for_query(query, count=FRAMES_PER_SCENE)
     if asset_paths:
         return build_paper_animation_clip(asset_paths, dur)
 
-    return ColorClip(size=(VIDEO_W, VIDEO_H),
-                     color=(245, 235, 215), duration=dur)
+    return ColorClip(size=(VIDEO_W, VIDEO_H), color=(245, 235, 215), duration=dur)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 1. GROQ STORYBOARD DIRECTOR
@@ -395,7 +472,7 @@ def generate_storyboard():
     client = Groq(api_key=api_key)
 
     history_file = "story_memory.txt"
-    bible_file = "character_bible.json"
+    bible_file   = "character_bible.json"
 
     previous_context = "Episode 1. Start with a shocking hook about Roblox Blox Fruits."
     character_context = "{}"
@@ -463,8 +540,7 @@ Output ONLY this JSON (no markdown fences):
 
     if not raw.endswith("}"):
         raise ValueError(
-            f"Groq response appears truncated (does not end with '}}').\n"
-            f"Last 100 chars: {raw[-100:]}"
+            f"Groq response appears truncated.\nLast 100 chars: {raw[-100:]}"
         )
 
     data = json.loads(raw)
@@ -509,9 +585,9 @@ def assemble_storyboard(storyboard_data):
 
     for idx, scene in enumerate(storyboard_data["scenes"]):
         narration = scene["narration"]
-        print(f"\n🎬 Scene {idx + 1}/{len(storyboard_data['scenes'])}: {scene['query']}")
+        print(f"\n🎬 Scene {idx+1}/{len(storyboard_data['scenes'])}: {scene['query']}")
 
-        audio_file = f"scene_{idx + 1}.mp3"
+        audio_file = f"scene_{idx+1}.mp3"
         asyncio.run(generate_voiceover(narration, audio_file))
         scene_audio = AudioFileClip(audio_file)
         actual_dur = scene_audio.duration
@@ -529,10 +605,7 @@ def assemble_storyboard(storyboard_data):
             layers.append(caption)
 
         scene_clip = CompositeVideoClip(layers, size=(VIDEO_W, VIDEO_H))
-        scene_clip = (scene_clip
-                      .set_duration(actual_dur)
-                      .set_audio(scene_audio))
-
+        scene_clip = scene_clip.set_duration(actual_dur).set_audio(scene_audio)
         video_segments.append(scene_clip)
 
     print("\n─── [4/5] Final Render ───")
@@ -575,7 +648,7 @@ def assemble_storyboard(storyboard_data):
 def upload_to_youtube(storyboard_data):
     print("─── [5/5] YouTube Upload ───")
 
-    client_id = clean_env(os.getenv("CLIENT_ID"))
+    client_id     = clean_env(os.getenv("CLIENT_ID"))
     client_secret = clean_env(os.getenv("CLIENT_SECRET"))
     refresh_token = clean_env(os.getenv("REFRESH_TOKEN"))
 
@@ -588,25 +661,29 @@ def upload_to_youtube(storyboard_data):
         token_uri="https://oauth2.googleapis.com/token",
         client_id=client_id, client_secret=client_secret,
     )
-    yt = build("youtube", "v3", credentials=creds, cache_discovery=False)
+    yt    = build("youtube", "v3", credentials=creds, cache_discovery=False)
     title = storyboard_data.get("title", "Blox Fruits Madness!")
-    hook = storyboard_data["scenes"][0]["narration"]
+    hook  = storyboard_data["scenes"][0]["narration"]
 
     body = {
         "snippet": {
             "title": f"{title} #Shorts",
-            "description": f"{hook}\n\n#Shorts #Roblox #BloxFruits #Gaming #RobloxShorts #Animation",
+            "description": (
+                f"{hook}\n\n"
+                "#Shorts #Roblox #BloxFruits #Gaming #RobloxShorts #Animation"
+            ),
             "tags": ["Roblox", "BloxFruits", "Shorts", "Gaming",
                      "Roblox Shorts", "Blox Fruits", "Animation"],
             "categoryId": "20",
         },
         "status": {
-            "privacyStatus": "public", "selfDeclaredMadeForKids": False,
+            "privacyStatus": "public",
+            "selfDeclaredMadeForKids": False,
         },
     }
 
-    media = MediaFileUpload("final_short.mp4", chunksize=-1, resumable=True)
-    req = yt.videos().insert(part="snippet,status", body=body, media_body=media)
+    media    = MediaFileUpload("final_short.mp4", chunksize=-1, resumable=True)
+    req      = yt.videos().insert(part="snippet,status", body=body, media_body=media)
     response = None
     while response is None:
         status, response = req.next_chunk()
