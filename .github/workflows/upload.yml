@@ -1,58 +1,79 @@
-name: Generate Automated Roblox Short
+name: Generate Roblox Short
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:         # run manually from GitHub Actions tab
   schedule:
-    - cron: '30 12 * * *'
+    - cron: '30 12 * * *'   # every day at 12:30 UTC
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
-    permissions:
-      contents: write
 
-    timeout-minutes: 30
+    permissions:
+      contents: write        # needed to push story_memory.txt / character_bible.json
+
+    timeout-minutes: 45      # increased — video render can take 20-30 min
 
     steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # ── 2. Python ──────────────────────────────────────────────────────────
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           cache: 'pip'
 
-      - name: Install System Dependencies (FFmpeg, ImageMagick & Fonts)
+      # ── 3. System deps ─────────────────────────────────────────────────────
+      - name: Install System Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg imagemagick fonts-liberation
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            ffmpeg \
+            imagemagick \
+            fonts-liberation \
+            fonts-noto \
+            fonts-noto-color-emoji \
+            libmagic1
 
-      - name: Modify ImageMagick Security Policy for MoviePy
+      # ── 4. Fix ImageMagick security policy for MoviePy TextClip ───────────
+      - name: Configure ImageMagick
         run: |
-          sudo sed -i '/pattern="@\*"/d' /etc/ImageMagick-6/policy.xml
-          sudo sed -i 's/name="memory" value="256MiB"/name="memory" value="2GiB"/' /etc/ImageMagick-6/policy.xml
-          sudo sed -i 's/name="disk" value="1GiB"/name="disk" value="4GiB"/' /etc/ImageMagick-6/policy.xml
+          sudo sed -i '/pattern="@\*"/d'                                /etc/ImageMagick-6/policy.xml
+          sudo sed -i 's|rights="none" pattern="PDF"|rights="read|write" pattern="PDF"|g' /etc/ImageMagick-6/policy.xml
+          sudo sed -i 's/name="memory" value="256MiB"/name="memory" value="2GiB"/'       /etc/ImageMagick-6/policy.xml
+          sudo sed -i 's/name="disk" value="1GiB"/name="disk" value="8GiB"/'             /etc/ImageMagick-6/policy.xml
 
+      # ── 5. Python dependencies ─────────────────────────────────────────────
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # ── 6. Run the pipeline ────────────────────────────────────────────────
       - name: Run Pipeline
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-          CLIENT_ID: ${{ secrets.CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-          REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+          GROQ_API_KEY:     ${{ secrets.GROQ_API_KEY }}
+          YOUTUBE_API_KEY:  ${{ secrets.YOUTUBE_API_KEY }}
+          CLIENT_ID:        ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET:    ${{ secrets.CLIENT_SECRET }}
+          REFRESH_TOKEN:    ${{ secrets.REFRESH_TOKEN }}
         run: python main.py
 
-      - name: Commit and Push Story and Character Memory
+      # ── 8. Clean up temp files ─────────────────────────────────────────────
+      - name: Clean Temp Files
+        if: always()
         run: |
-          git config --global user.name "Story Bot"
+          rm -f scene_*.mp3 final_short.mp4 cookies.txt
+          rm -rf motion_templates/
+
+      # ── 9. Save story state to repo ───────────────────────────────────────
+      - name: Commit Story Memory
+        run: |
+          git config --global user.name  "Story Bot"
           git config --global user.email "bot@users.noreply.github.com"
           git add story_memory.txt character_bible.json
-          git commit -m "Auto-update story and character memory for next episode" || echo "No changes to commit"
+          git diff --cached --quiet || git commit -m "🤖 Auto-update story memory [skip ci]"
           git push
