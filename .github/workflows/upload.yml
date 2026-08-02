@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    timeout-minutes: 60
+    timeout-minutes: 90   # bumped from 60 — retries need the extra headroom
 
     steps:
       - name: Checkout Repository
