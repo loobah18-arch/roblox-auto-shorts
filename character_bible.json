@@ -1,22 +1,22 @@
 {
     "Luffy": {
-        "facial_features": "Wide eyes, determined expression, pixelated glow",
-        "clothes": "Black 'Gamepass of the Gods' outfit",
-        "personality": "Adventurous, fearless, and eager for battle"
+        "clothes": "black shirt, blue pants",
+        "facial_features": "smiling face decal",
+        "personality": "adventurous"
     },
     "Big Mom": {
-        "facial_features": "Menacing stare, sharp jawline",
-        "clothes": "Robloxian pirate outfit",
-        "personality": "Ruthless, cunning, and power-hungry"
+        "clothes": "pink vest, golden sword accessory",
+        "facial_features": "angry face decal",
+        "personality": "ruthless"
     },
     "Shanks": {
-        "facial_features": "Scar above left eyebrow, confident smile",
-        "clothes": "Robloxian pirate captain outfit",
-        "personality": "Charismatic, mysterious, and powerful"
+        "clothes": "red bandana, white shirt",
+        "facial_features": "scar face decal under left eye",
+        "personality": "charismatic"
     },
     "Mysterious Figure": {
-        "facial_features": "Hidden behind a glitching mask, hint of red glow",
-        "clothes": "Black robes with 'Gamepass of the Gods' cape",
-        "personality": "Enigmatic, manipulative, and godlike"
+        "clothes": "black shirt, glitch mask accessory",
+        "facial_features": "blank face decal",
+        "personality": "enigmatic"
     }
 }
