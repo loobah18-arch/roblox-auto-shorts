@@ -12,7 +12,7 @@ import re
 # Fix MoviePy ImageMagick path detection on GitHub Actions Ubuntu runners
 os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
 
-from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip, CompositeAudioClip, TextClip, concatenate_videoclips, ColorClip
+from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip, CompositeAudioClip, TextClip, concatenate_videoclips, concatenate_audioclips, ColorClip
 import moviepy.video.fx.all as vfx
 from groq import Groq
 import google.auth.transport.requests
@@ -311,7 +311,7 @@ def assemble_storyboard(storyboard_data):
         os.makedirs(bgm_folder, exist_ok=True)
     mp3_files = [f for f in os.listdir(bgm_folder) if f.endswith('.mp3')]
     
-    combined_voice = concatenate_videoclips(audio_segments) if len(audio_segments) > 1 else audio_segments[0]
+    combined_voice = concatenate_audioclips(audio_segments) if len(audio_segments) > 1 else audio_segments[0]
     target_duration = combined_voice.duration
 
     if mp3_files:
