@@ -31,9 +31,7 @@ def clean_env(val):
 
 def get_safe_url(service_type):
     """Builds URLs safely at runtime using character lists to bypass parser injection."""
-    if service_type == "pexels":
-        return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'a', 'p', 'i', '.', 'p', 'e', 'x', 'e', 'l', 's', '.', 'c', 'o', 'm', '/', 'v', 'i', 'd', 'e', 'o', 's', '/', 's', 'e', 'a', 'r', 'c', 'h', '?', 'q', 'u', 'e', 'r', 'y', '='])
-    elif service_type == "google_token":
+    if service_type == "google_token":
         return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'o', 'a', 'u', 't', 'h', '2', '.', 'g', 'o', 'o', 'g', 'l', 'e', 'a', 'p', 'i', 's', '.', 'c', 'o', 'm', '/', 't', 'o', 'k', 'e', 'n'])
     elif service_type == "youtube_short":
         return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'y', 'o', 'u', 't', 'u', 'b', 'e', '.', 'c', 'o', 'm', '/', 's', 'h', 'o', 'r', 't', 's', '/'])
@@ -139,11 +137,11 @@ async def generate_voiceover(text, output_filename):
     print(f"Voiceover saved to {output_filename}\n")
 
 # ==========================================
-# 2. TRIPLE-ENGINE CLIP FETCHING (YouTube API -> yt-dlp -> Pexels)
+# 2. TRIPLE-ENGINE CLIP FETCHING (YouTube API -> yt-dlp -> Free AI Gen)
 # ==========================================
 def fetch_dynamic_clips(queries):
-    """Searches via YouTube API, downloads with yt-dlp, falling back to Pexels API if blocked."""
-    print("--- [Step 3/5] Triple-Engine Clip Fetching (YouTube API + yt-dlp + Pexels) ---")
+    """Searches via YouTube API, downloads with yt-dlp, falling back to Free AI Image Gen if blocked."""
+    print("--- [Step 3/5] Triple-Engine Clip Fetching (YouTube API + yt-dlp + Free AI Gen) ---")
     templates_dir = "motion_templates"
     os.makedirs(templates_dir, exist_ok=True)
     
@@ -154,18 +152,14 @@ def fetch_dynamic_clips(queries):
             pass
             
     downloaded_clips = []
-    pexels_api_key = clean_env(os.getenv("PEXELS_API_KEY"))
     youtube_api_key = clean_env(os.getenv("YOUTUBE_API_KEY"))
     
-    # Initialize Data API client if key exists
     youtube_client = None
     if youtube_api_key:
         try:
             youtube_client = build('youtube', 'v3', developerKey=youtube_api_key, cache_discovery=False)
         except Exception as e:
             print(f"⚠️ Warning: Could not build YouTube Data API client: {e}")
-    else:
-        print("⚠️ YOUTUBE_API_KEY missing! Will fall back to unstable yt-dlp scraping.")
 
     for i, query in enumerate(queries):
         clip_filename = f"clip_{i+1}.mp4"
@@ -190,11 +184,9 @@ def fetch_dynamic_clips(queries):
                 if items:
                     video_id = items[0]["id"]["videoId"]
                     yt_dlp_target = f"[https://www.youtube.com/watch?v=](https://www.youtube.com/watch?v=){video_id}"
-                    print(f"✅ API Found Video URL: {yt_dlp_target}")
             except Exception as e:
-                print(f"⚠️ YouTube Data API search failed: {e}")
+                pass
         
-        # If API search failed or wasn't configured, fallback to raw yt-dlp scraping string
         if not yt_dlp_target:
             yt_dlp_target = f"ytsearch1:{query} roblox shorts"
         
@@ -219,47 +211,34 @@ def fetch_dynamic_clips(queries):
                 print(f"✅ yt-dlp succeeded for clip {i+1}")
                 success = True
         except Exception as e:
-            print(f"⚠️ yt-dlp notice: {e}")
+            print(f"⚠️ yt-dlp blocked or failed.")
             
-        # --- Engine 3: Pexels API Fallback ---
-        if not success and pexels_api_key:
-            print(f"🔄 yt-dlp blocked. Falling back to Pexels API for clip {i+1}...")
-            try:
-                headers = {"Authorization": pexels_api_key}
-                clean_query = "gaming action motion background" if "roblox" in query.lower() or "blox" in query.lower() else query
-                
-                base_url = get_safe_url("pexels")
-                pexels_url = f"{base_url}{requests.utils.quote(clean_query)}&per_page=5&orientation=portrait"
-                
-                response = requests.get(pexels_url, headers=headers, timeout=15)
-                
-                if response.status_code == 401:
-                    print("🚨 PEXELS ERROR: Your PEXELS_API_KEY is invalid or not set in GitHub Secrets!")
-                
-                data = response.json()
-                videos = data.get("videos", [])
-                if videos:
-                    selected_video = random.choice(videos)
-                    video_files = selected_video.get("video_files", [])
-                    
-                    download_url = None
-                    for vf in video_files:
-                        if vf.get("file_type") == "video/mp4":
-                            download_url = vf.get("link")
-                            break
-                            
-                    if download_url:
-                        urllib.request.urlretrieve(download_url, output_path)
-                        if os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
-                            downloaded_clips.append(output_path)
-                            print(f"✅ Pexels API successfully downloaded fallback clip {i+1}")
-                            success = True
-            except Exception as pex_err:
-                print(f"⚠️ Pexels API fallback error: {pex_err}")
-                
-        # --- Emergency Fallback ---
+        # --- Engine 3: Free AI Image Generation Fallback (Bulletproof) ---
         if not success:
-            print(f"⚠️ Creating local motion background fallback for clip {i+1}")
+            print(f"🔄 yt-dlp blocked. Falling back to Free AI Generation for clip {i+1}...")
+            try:
+                # Use Pollinations AI (Free, no API key required) to generate an image based on the query
+                clean_query = requests.utils.quote(f"Anime style {query} cinematic lighting")
+                ai_image_url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){clean_query}?width=1080&height=1920&nologo=true"
+                
+                image_path = os.path.join(templates_dir, f"ai_img_{i+1}.jpg")
+                urllib.request.urlretrieve(ai_image_url, image_path)
+                
+                if os.path.exists(image_path):
+                    # Convert the generated image into a 10-second video clip
+                    img_clip = ImageClip(image_path).set_duration(10)
+                    img_clip.write_videofile(output_path, fps=24, codec="libx264", logger=None)
+                    
+                    if os.path.exists(output_path):
+                        downloaded_clips.append(output_path)
+                        print(f"✅ AI Generation successfully created fallback clip {i+1}")
+                        success = True
+            except Exception as ai_err:
+                print(f"⚠️ AI Generation fallback error: {ai_err}")
+                
+        # --- Emergency Fallback (The Dark Blue Screen) ---
+        if not success:
+            print(f"⚠️ All engines failed. Creating dark blue motion background for clip {i+1}")
             try:
                 fb_clip = ColorClip(size=(1080, 1920), color=(15, 18, 30), duration=10)
                 fb_clip.write_videofile(output_path, fps=24, codec="libx264", audio=False, logger=None)
