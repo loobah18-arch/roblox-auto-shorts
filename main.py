@@ -34,7 +34,8 @@ def get_safe_url(service_type):
     if service_type == "pexels":
         return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'a', 'p', 'i', '.', 'p', 'e', 'x', 'e', 'l', 's', '.', 'c', 'o', 'm', '/', 'v', 'i', 'd', 'e', 'o', 's', '/', 's', 'e', 'a', 'r', 'c', 'h', '?', 'q', 'u', 'e', 'r', 'y', '='])
     elif service_type == "google_token":
-        return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'o', 'u', 't', 'h', '2', '.', 'g', 'o', 'o', 'g', 'l', 'e', 'a', 'p', 'i', 's', '.', 'c', 'o', 'm', '/', 't', 'o', 'k', 'e', 'n'])
+        # Fixed: Added 'a' to spell "oauth2" correctly
+        return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'o', 'a', 'u', 't', 'h', '2', '.', 'g', 'o', 'o', 'g', 'l', 'e', 'a', 'p', 'i', 's', '.', 'c', 'o', 'm', '/', 't', 'o', 'k', 'e', 'n'])
     elif service_type == "youtube_short":
         return "".join(['h', 't', 't', 'p', 's', ':', '/', '/', 'y', 'o', 'u', 't', 'u', 'b', 'e', '.', 'c', 'o', 'm', '/', 's', 'h', 'o', 'r', 't', 's', '/'])
     return ""
