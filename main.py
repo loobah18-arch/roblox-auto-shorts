@@ -23,6 +23,10 @@ Games in rotation (one per daily run, 8-game cycle):
 import os, time, random, json, math, requests, asyncio, edge_tts
 import glob, subprocess, shutil
 from datetime import datetime
+
+# Required for MoviePy TextClip on GitHub Actions Ubuntu runners.
+# Without this, ImageMagick binary is not found and captions silently fail.
+os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
 import numpy as np
 
 from moviepy import (
@@ -417,41 +421,48 @@ def compile_frames_to_video(img_paths, duration, out_path):
     os.makedirs(frame_dir, exist_ok=True)
     print(f"    🖼  {total_unique} unique frames → {total_video_frames} video frames @ {FPS}fps")
 
-    vfi = 0
-    for uid, arr in enumerate(frame_seq):
-        start = round(uid * frames_per_unique)
-        end   = round((uid + 1) * frames_per_unique)
-        cnt   = max(1, end - start)
-        pil   = Image.fromarray(arr)
-        for _ in range(cnt):
-            pil.save(os.path.join(frame_dir, f"f{vfi:07d}.jpg"), quality=92)
-            vfi += 1
+    # BUG FIX: always clean up frame_dir even if ffmpeg fails (was leaking
+    # hundreds of JPG files per failed scene, risking runner disk exhaustion)
+    try:
+        vfi = 0
+        for uid, arr in enumerate(frame_seq):
+            start = round(uid * frames_per_unique)
+            end   = round((uid + 1) * frames_per_unique)
+            cnt   = max(1, end - start)
+            pil   = Image.fromarray(arr)
+            for _ in range(cnt):
+                pil.save(os.path.join(frame_dir, f"f{vfi:07d}.jpg"), quality=92)
+                vfi += 1
 
-    cmd = [
-        "ffmpeg", "-y", "-framerate", str(FPS),
-        "-i", os.path.join(frame_dir, "f%07d.jpg"),
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-preset", "fast", "-crf", "22", "-t", str(duration), out_path,
-    ]
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0:
-        raise RuntimeError(f"ffmpeg compile failed:\n{res.stderr}")
-    shutil.rmtree(frame_dir)
-    print(f"    ✅ Scene compiled: {out_path}")
+        cmd = [
+            "ffmpeg", "-y", "-framerate", str(FPS),
+            "-i", os.path.join(frame_dir, "f%07d.jpg"),
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-preset", "fast", "-crf", "22", "-t", str(duration), out_path,
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            raise RuntimeError(f"ffmpeg compile failed:\n{res.stderr}")
+        print(f"    ✅ Scene compiled: {out_path}")
+    finally:
+        shutil.rmtree(frame_dir, ignore_errors=True)
 
 
 def _write_blank_video(out_path, duration):
     frame_dir = out_path.replace(".mp4", "_blank_frames")
     os.makedirs(frame_dir, exist_ok=True)
-    Image.new("RGB", (VIDEO_W, VIDEO_H), (10, 10, 30)).save(
-        os.path.join(frame_dir, "f0000000.jpg"))
-    subprocess.run([
-        "ffmpeg", "-y", "-loop", "1",
-        "-i", os.path.join(frame_dir, "f0000000.jpg"),
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-t", str(duration), "-r", str(FPS), out_path,
-    ], capture_output=True)
-    shutil.rmtree(frame_dir)
+    # BUG FIX: use try/finally so frame_dir is always cleaned up
+    try:
+        Image.new("RGB", (VIDEO_W, VIDEO_H), (10, 10, 30)).save(
+            os.path.join(frame_dir, "f0000000.jpg"))
+        subprocess.run([
+            "ffmpeg", "-y", "-loop", "1",
+            "-i", os.path.join(frame_dir, "f0000000.jpg"),
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-t", str(duration), "-r", str(FPS), out_path,
+        ], capture_output=True)
+    finally:
+        shutil.rmtree(frame_dir, ignore_errors=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -635,8 +646,25 @@ def _save_hf_video_bytes(video_bytes, duration, out_path):
     return os.path.exists(out_path) and os.path.getsize(out_path) > 10_000
 
 
+class _HFBillingError(Exception):
+    """Raised when the account lacks Inference Provider billing access.
+
+    This is a permanent account-level block (not a per-model failure), so
+    there is no point trying further models — bail out of the whole HF engine.
+
+    Cause: either a read-only token (needs 'Make calls to serverless
+    Inference API' scope) OR no HuggingFace PRO / billing credits set up.
+    The providers that require billing are third parties routed through HF
+    (fal-ai, replicate, wavespeed, etc.).
+    """
+
+
 def _try_hf_video_model(prompt, duration, out_path, hf_token, model_id):
-    """Try one routed model and return whether it produced a valid MP4."""
+    """Try one routed model and return whether it produced a valid MP4.
+
+    Raises _HFBillingError if the account-level 403 fires so the caller
+    can immediately abort the whole engine rather than retrying all models.
+    """
     print(f"    🎬 [Engine V] HF routed video → {model_id}")
     try:
         client = InferenceClient(provider="auto", api_key=hf_token)
@@ -648,10 +676,20 @@ def _try_hf_video_model(prompt, duration, out_path, hf_token, model_id):
             return True
         print(f"    ⚠️  {model_id} returned no usable video.")
     except Exception as exc:
-        # This includes no-credit, unauthorized, unavailable-provider,
-        # unsupported-model, timeout, and rate-limit errors.
-        message = str(exc).replace("\n", " ")[:240]
-        print(f"    ⚠️  {model_id} unavailable: {message}")
+        message = str(exc).replace("\n", " ")
+        # Detect account-level billing/permission block.
+        # "Inference Providers" in the 403 body is HuggingFace's specific
+        # wording for this error — distinct from a single model being
+        # unavailable. Re-raise so fetch_hf_video aborts immediately.
+        if "403" in message and "Inference Provider" in message:
+            print(
+                "    ❌ HF Inference Providers blocked (403). "
+                "Fix: create a new HF token with 'Make calls to serverless "
+                "Inference API' scope, AND ensure your HF account has billing "
+                "or PRO enabled. Skipping all remaining HF models."
+            )
+            raise _HFBillingError(message)
+        print(f"    ⚠️  {model_id} unavailable: {message[:240]}")
     return False
 
 
@@ -679,9 +717,15 @@ def fetch_hf_video(prompt, duration, out_path, hf_token):
         return False
 
     for model_id in models[:8]:
-        if _try_hf_video_model(prompt, duration, out_path, hf_token, model_id):
-            save_hf_model_state(model_id)
-            return True
+        try:
+            if _try_hf_video_model(prompt, duration, out_path, hf_token, model_id):
+                save_hf_model_state(model_id)
+                return True
+        except _HFBillingError:
+            # Account-level block — no point trying remaining models.
+            clear_hf_model_state()
+            _HF_SEARCH_FAILED_THIS_RUN = True
+            return False
 
     clear_hf_model_state()
     _HF_SEARCH_FAILED_THIS_RUN = True
@@ -907,8 +951,16 @@ def fetch_scene_visual(scene, scene_idx, character_bible, work_dir, game_config)
         print("    📁 All image engines failed — using local assets.")
         paths = pick_local_assets(count=FRAMES_PER_SCENE)
 
-    compile_frames_to_video(paths, dur, out_path)
-    return VideoFileClip(out_path)
+    # BUG FIX: wrap compile in try/except — an ffmpeg failure previously raised
+    # RuntimeError which propagated all the way up and killed the entire pipeline.
+    # Now we fall back to a blank clip so the rest of the scenes still render.
+    try:
+        compile_frames_to_video(paths, dur, out_path)
+        return VideoFileClip(out_path)
+    except Exception as e:
+        print(f"    ⚠️  Frame compile failed: {e} — using blank fallback clip.")
+        _write_blank_video(out_path, dur)
+        return VideoFileClip(out_path)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1110,9 +1162,11 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
             bg = concatenate_audioclips([bg] * loops).subclipped(0, dur)
         else:
             bg = bg.subclipped(0, dur)
+        # BUG FIX: MoviePy v2 renamed volumex() → multiply_volume()
+        # with_volume_scaled() does not exist in v2 and crashes at this step
         final_audio = CompositeAudioClip([
             combined_voice,
-            bg.with_volume_scaled(0.10),
+            bg.multiply_volume(0.10),
         ])
     else:
         final_audio = combined_voice
@@ -1214,12 +1268,15 @@ def main():
     print(f"🔄 Next run:       {next_game}\n")
 
     advance_game_state(state)
+    # BUG FIX: save state immediately after advancing — if the pipeline crashes
+    # during assembly or upload, the new game index is preserved so the next
+    # run starts on the correct game instead of repeating this one
+    save_game_state(state)
 
     storyboard = generate_storyboard(game_slug, game_config, episode_number)
     assemble_storyboard(storyboard, game_slug, game_config)
     upload_to_youtube(storyboard, game_config, episode_number)
 
-    save_game_state(state)
     print("\n🏁 Pipeline complete.")
 
 
