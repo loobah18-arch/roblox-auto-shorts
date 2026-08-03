@@ -1078,3 +1078,68 @@ def upload_to_youtube(storyboard_data, game_config, episode_number):
         None,
         refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
+        client_id=client_id,
+        client_secret=client_secret,
+    )
+
+    yt    = build("youtube", "v3", credentials=creds, cache_discovery=False)
+    title = storyboard_data.get("title", "Roblox Story!")
+    hook  = storyboard_data["scenes"][0]["narration"]
+    tags  = [h.lstrip("#") for h in game_config.get("hashtags", ["Roblox", "Shorts"])]
+    hashtags_str = " ".join(game_config.get("hashtags", ["#Roblox", "#Shorts"]))
+
+    body = {
+        "snippet": {
+            "title":       f"{title} #Shorts",
+            "description": f"{hook}\n\n{hashtags_str}",
+            "tags":        tags,
+            "categoryId":  "20",
+        },
+        "status": {
+            "privacyStatus":          "public",
+            "selfDeclaredMadeForKids": False,
+        },
+    }
+
+    media    = MediaFileUpload("final_short.mp4", chunksize=-1, resumable=True)
+    req      = yt.videos().insert(part="snippet,status", body=body, media_body=media)
+    response = None
+    while response is None:
+        status, response = req.next_chunk()
+        if status:
+            print(f"  ⏳ Uploading: {int(status.progress() * 100)}%")
+
+    vid_id = response.get("id", "?")
+    print(f"🎉 Uploaded! https://youtube.com/shorts/{vid_id}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────────────────────────────────────
+def main():
+    print("=" * 60)
+    print("  Roblox Auto-Shorts — Multi-Game Edition v6")
+    print("=" * 60 + "\n")
+
+    state       = load_game_state()
+    game_slug   = get_current_game(state)
+    game_config = ROBLOX_GAMES[game_slug]
+
+    state["episode_counts"].setdefault(game_slug, 0)
+    state["episode_counts"][game_slug] += 1
+    episode_number = state["episode_counts"][game_slug]
+
+    print(f"🎮 Game: {game_config['display_name']}  |  Episode {episode_number}\n")
+
+    storyboard = generate_storyboard(game_slug, game_config, episode_number)
+    assemble_storyboard(storyboard, game_slug, game_config)
+    upload_to_youtube(storyboard, game_config, episode_number)
+
+    advance_game_state(state)
+    save_game_state(state)
+
+    print("\n🏁 Pipeline complete.")
+
+
+if __name__ == "__main__":
+    main()
