@@ -23,6 +23,7 @@ Games in rotation (one per daily run, 8-game cycle):
 import os, time, random, json, math, requests, asyncio, edge_tts
 import glob, subprocess, shutil
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Required for MoviePy TextClip on GitHub Actions Ubuntu runners.
 # Without this, ImageMagick binary is not found and captions silently fail.
@@ -438,7 +439,7 @@ def compile_frames_to_video(img_paths, duration, out_path):
             "ffmpeg", "-y", "-framerate", str(FPS),
             "-i", os.path.join(frame_dir, "f%07d.jpg"),
             "-c:v", "libx264", "-pix_fmt", "yuv420p",
-            "-preset", "fast", "-crf", "22", "-t", str(duration), out_path,
+            "-preset", "ultrafast", "-crf", "23", "-t", str(duration), out_path,
         ]
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0:
@@ -809,66 +810,69 @@ def fetch_together_frames(base_query, narration, character_bible,
 # ─────────────────────────────────────────────────────────────────────────────
 # ENGINE B — POLLINATIONS AI  (free, no key needed)
 # ─────────────────────────────────────────────────────────────────────────────
-def fetch_pollinations_frames(base_query, narration, character_bible,
-                              count, out_dir, prefix, game_config):
-    scene_seed = random.randint(10_000, 9_999_999)
-    neg_enc    = requests.utils.quote(NEGATIVE_PROMPT)
-    print(f"    🌸 [Engine B] Pollinations AI — {count} frames  |  seed: {scene_seed}")
-
+def _fetch_one_pollinations_frame(args):
+    """Fetch a single Pollinations frame. Runs inside ThreadPoolExecutor."""
+    i, url, out_path = args
     headers = {
         "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                        "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"),
         "Referer": "https://pollinations.ai/",
         "Accept":  "image/webp,image/apng,image/*,*/*;q=0.8",
     }
+    for attempt in range(1, POLL_MAX_RETRY + 1):
+        try:
+            resp = requests.get(url, headers=headers, timeout=POLL_TIMEOUT, stream=True)
+            if resp.status_code == 429:
+                time.sleep(POLL_DELAY_429)
+                continue
+            if (resp.status_code == 200
+                    and "image" in resp.headers.get("content-type", "")):
+                with open(out_path, "wb") as f:
+                    for chunk in resp.iter_content(8192):
+                        f.write(chunk)
+                if os.path.getsize(out_path) > 5000:
+                    return (i, out_path, True)
+            time.sleep(5)
+        except requests.exceptions.Timeout:
+            time.sleep(10)
+        except Exception:
+            time.sleep(5)
+    return (i, out_path, False)
 
-    paths = []
+
+def fetch_pollinations_frames(base_query, narration, character_bible,
+                              count, out_dir, prefix, game_config):
+    # One seed per scene: small +i*1000 offset nudges the pose without
+    # changing the character's outfit, colours, or proportions across frames.
+    scene_seed = random.randint(10_000, 9_999_999)
+    neg_enc    = requests.utils.quote(NEGATIVE_PROMPT)
+    print(f"    🌸 [Engine B] Pollinations AI — {count} frames IN PARALLEL  |  seed: {scene_seed}")
+
+    tasks = []
     for i in range(count):
         stage    = FRAME_STAGES[i % len(FRAME_STAGES)]
         prompt   = build_image_prompt(base_query, narration, character_bible, stage, game_config)
         encoded  = requests.utils.quote(prompt)
+        seed     = scene_seed + i * 1000
         url      = (f"https://image.pollinations.ai/prompt/{encoded}"
                     f"?width=1080&height=1920&nologo=true"
-                    f"&seed={scene_seed}&model=flux&negative={neg_enc}")
+                    f"&seed={seed}&model=flux&negative={neg_enc}")
         out_path = os.path.join(out_dir, f"{prefix}_pol_{i:02d}.jpg")
+        tasks.append((i, url, out_path))
 
-        success = False
-        for attempt in range(1, POLL_MAX_RETRY + 1):
-            try:
-                resp = requests.get(url, headers=headers, timeout=POLL_TIMEOUT, stream=True)
-                if resp.status_code == 429:
-                    print(f"    ⏳ Frame {i+1:02d} 429 (attempt {attempt}/{POLL_MAX_RETRY}) "
-                          f"— sleeping {POLL_DELAY_429}s...")
-                    time.sleep(POLL_DELAY_429)
-                    continue
-                if (resp.status_code == 200
-                        and "image" in resp.headers.get("content-type", "")):
-                    with open(out_path, "wb") as f:
-                        for chunk in resp.iter_content(8192):
-                            f.write(chunk)
-                    if os.path.getsize(out_path) > 5000:
-                        print(f"    ✅ Frame {i+1:02d}/{count}")
-                        paths.append(out_path)
-                        success = True
-                        break
-                    time.sleep(5)
-                    continue
-                print(f"    ⚠️  Frame {i+1:02d} HTTP {resp.status_code} — retrying 10s...")
-                time.sleep(10)
-            except requests.exceptions.Timeout:
-                print(f"    ⚠️  Frame {i+1:02d} timeout (attempt {attempt}/{POLL_MAX_RETRY}) "
-                      f"— sleeping 30s...")
-                time.sleep(30)
-            except Exception as e:
-                print(f"    ⚠️  Frame {i+1:02d} error: {e} — retrying 10s...")
-                time.sleep(10)
+    results = [None] * count
+    with ThreadPoolExecutor(max_workers=count) as pool:
+        futures = {pool.submit(_fetch_one_pollinations_frame, t): t[0] for t in tasks}
+        for fut in as_completed(futures):
+            i, out_path, ok = fut.result()
+            stage = FRAME_STAGES[i % len(FRAME_STAGES)]
+            if ok:
+                print(f"    ✅ Frame {i+1:02d}/{count} — [{stage}]")
+                results[i] = out_path
+            else:
+                print(f"    ❌ Frame {i+1:02d}/{count} failed after {POLL_MAX_RETRY} attempts.")
 
-        if success and i < count - 1:
-            time.sleep(POLL_DELAY_OK)
-        elif not success:
-            print(f"    ❌ Frame {i+1:02d} gave up after {POLL_MAX_RETRY} attempts.")
-
-    return paths
+    return [p for p in results if p is not None]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1010,7 +1014,8 @@ EXISTING CHARACTER BIBLE:
 {character_context}
 
 YOUR TASK:
-Write the NEXT episode as exactly 4 scenes (~130-150 words total).
+Write the NEXT episode as exactly 5 scenes (~200-220 words total, ~40-44 words per scene).
+Each scene narration MUST be 2-3 full sentences so the voiceover fills ~10-12 seconds.
 Rules:
 1. Continue the story DIRECTLY from the previous episode context.
    The viewer watched the last episode — do NOT restart the story.
@@ -1040,10 +1045,11 @@ Output ONLY valid JSON, no markdown fences:
   "game": "{game_config['display_name']}",
   "real_life_reference": "One sentence describing the real-life trend/event you referenced",
   "scenes": [
-    {{"narration": "...", "query": "{ex[0]}", "duration": 10}},
-    {{"narration": "...", "query": "{ex[1]}", "duration": 10}},
-    {{"narration": "...", "query": "{ex[2]}", "duration": 10}},
-    {{"narration": "...", "query": "{ex[3]}", "duration": 10}}
+    {{"narration": "Two or three full dramatic sentences for scene 1.", "query": "{ex[0]}", "duration": 11}},
+    {{"narration": "Two or three full dramatic sentences for scene 2.", "query": "{ex[1]}", "duration": 11}},
+    {{"narration": "Two or three full dramatic sentences for scene 3.", "query": "{ex[2]}", "duration": 11}},
+    {{"narration": "Two or three full dramatic sentences for scene 4.", "query": "{ex[3]}", "duration": 11}},
+    {{"narration": "Two or three full dramatic sentences, massive cliffhanger.", "query": "{ex[0]} epic finale cliffhanger", "duration": 11}}
   ],
   "character_bible": {{
     "CharacterName": {{
@@ -1176,7 +1182,7 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
     final_video.write_videofile(
         "final_short.mp4", fps=FPS,
         codec="libx264", audio_codec="aac",
-        threads=4, preset="fast", logger=None,
+        threads=4, preset="ultrafast", logger=None,
     )
     print("✅ Render complete.\n")
 
