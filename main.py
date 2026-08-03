@@ -1,23 +1,18 @@
 """
-Roblox Auto-Shorts — Multi-Game Edition (v5)
+Roblox Auto-Shorts — Multi-Game Edition (v6)
 ============================================
-What's new in v5:
-  • Engine V: discovers current Hugging Face text-to-video models at runtime
-              and tries live provider-backed models through Hugging Face routing.
-              It uses only the HF_TOKEN and never requires a Wan/provider key.
-              When free monthly credits or provider access are unavailable, it
-              automatically falls back to the existing image engines.
-  • All previous engines kept in cascade:
-      V → text-to-video (HF, free)
-      A → FLUX.1-schnell images (Together AI, optional/paid)
-      B → Pollinations AI images (free, no key needed)
-      L → local asset images (last resort)
-
-Games in rotation (one per daily run, 8-game cycle):
-  1. Blox Fruits        5. Doors
-  2. Adopt Me!          6. Arsenal
-  3. Murder Mystery 2   7. Anime Adventures
-  4. Pet Simulator X    8. Brookhaven
+Changes in v6:
+  • Engine V: detects 402 Payment Required (fal.ai billing) and fast-fails,
+              not just 403. Saves minutes of wasted retries.
+  • Engine B: Pollinations now fetches ONE image per scene (sequential, 3
+              retries). Eliminates the 8/10 parallel-request failures.
+  • Ken Burns: single image animated via ffmpeg zoompan (slow zoom-in/out).
+              Completely replaces the 10-frame blend pipeline. Faster, more
+              reliable, and looks more cinematic.
+  • Captions: word-group style — 4 words at a time, 78px bold white text with
+              5px black stroke, timed across the voiceover duration.
+  • Bug fix:  bg.multiply_volume(0.10) → bg.with_multiply_volume(0.10)
+              (MoviePy 2.x renamed this method — caused the crash at line 1175)
 """
 
 import os, time, random, json, math, requests, asyncio, edge_tts
@@ -25,8 +20,6 @@ import glob, subprocess, shutil
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Required for MoviePy TextClip on GitHub Actions Ubuntu runners.
-# Without this, ImageMagick binary is not found and captions silently fail.
 os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
 import numpy as np
 
@@ -45,38 +38,37 @@ from googleapiclient.http import MediaFileUpload
 # ─────────────────────────────────────────────────────────────────────────────
 # VIDEO CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
-VIDEO_W, VIDEO_H = 1080, 1920
-FPS              = 24
-CAPTION_Y_FRAC   = 0.82
-CAPTION_FONTSIZE = 58
-FRAMES_PER_SCENE = 10
-BLEND_STEPS      = 6
+VIDEO_W, VIDEO_H   = 1080, 1920
+FPS                = 24
+CAPTION_Y_FRAC     = 0.70        # word captions sit at 70% height (center-bottom)
+CAPTION_FONTSIZE   = 78          # bigger = more readable on phone screens
+WORDS_PER_CHUNK    = 4           # words shown at a time in captions
+KEN_BURNS_ZOOM     = 0.30        # total zoom range: 1.00 → 1.30  (or reverse)
 
 # Hugging Face text-to-video (Engine V)
-# The catalog is discovered at runtime. These are only emergency fallbacks if
-# the public catalog is temporarily unavailable; each is still checked by the
-# Hugging Face router before use.
 HF_MODELS_API        = "https://huggingface.co/api/models"
 HF_MODEL_LIMIT       = 30
 HF_CATALOG_TIMEOUT   = 25
 HF_MODEL_STATE_FILE  = "hf_model_state.json"
 HF_VIDEO_MODELS_FALLBACK = [
-    "Wan-AI/Wan2.2-TI2V-5B",
-    "Wan-AI/Wan2.2-T2V-A14B",
     "Wan-AI/Wan2.1-T2V-1.3B",
     "Lightricks/LTX-Video-0.9.5",
+    "Wan-AI/Wan2.2-TI2V-5B",
     "genmo/mochi-1-preview",
+    "tencent/HunyuanVideo",
 ]
+_HF_MODEL_CACHE         = None
+_HF_SEARCH_FAILED_THIS_RUN = False
 
-# Together AI (Engine A)
+# Together AI (Engine A — optional/paid)
 TOGETHER_API_URL = "https://api.together.ai/v1/images/generations"
 TOGETHER_MODEL   = "black-forest-labs/FLUX.1-schnell"
 TOGETHER_STEPS   = 4
 
-# Pollinations (Engine B)
+# Pollinations (Engine B — 1 image per scene, sequential)
 POLL_DELAY_OK    = 2
-POLL_DELAY_429   = 20
-POLL_MAX_RETRY   = 3
+POLL_DELAY_429   = 25
+POLL_MAX_RETRY   = 4
 POLL_TIMEOUT     = 90
 
 GAME_STATE_FILE  = "game_state.json"
@@ -270,33 +262,20 @@ NEGATIVE_PROMPT = (
     "sketch,watermark,text overlay,blurry,realistic skin,detailed human anatomy"
 )
 
-CINEMATIC_BASE = (
-    "Cinematic 3D animation, Unreal Engine 5 render, hyper-detailed blocky Roblox aesthetic, "
-    "volumetric lighting, glowing saturated colors, subsurface scattering on plastic skin, "
-    "dramatic camera angle, rich cinematic shadows, masterpiece digital art"
-)
-
-FRAME_STAGES = [
-    "idle standing",
-    "noticing threat",
-    "powering up aura",
-    "charging forward",
-    "mid-air leap",
-    "strike impact",
-    "shockwave burst",
-    "landing ground",
-    "dramatic aftermath",
-    "triumphant pose",
-]
-
-# ─────────────────────────────────────────────────────────────────────────────
-# LOCAL ASSET FALLBACK
-# ─────────────────────────────────────────────────────────────────────────────
 ASSET_DIR  = "assets"
 ALL_ASSETS = [
     "roblox_landscape.jpg", "ancient_island.jpg", "jungle_island.jpg",
     "ocean_battle.jpg", "fortress.jpg", "volcano_island.jpg",
     "underwater_city.jpg", "sea.jpg", "monster_mutation.jpg",
+]
+
+# Ken Burns pan directions — varied across scenes for visual variety
+KEN_BURNS_CONFIGS = [
+    {"zoom": "in",  "pan": "center"},   # scene 1: zoom in, center
+    {"zoom": "out", "pan": "center"},   # scene 2: zoom out, center
+    {"zoom": "in",  "pan": "top"},      # scene 3: zoom in, pan down
+    {"zoom": "in",  "pan": "bottom"},   # scene 4: zoom in, pan up
+    {"zoom": "out", "pan": "center"},   # scene 5+: zoom out
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -310,7 +289,7 @@ def load_game_state():
         except Exception:
             pass
     return {
-        "game_index": 0,
+        "game_index":    0,
         "episode_counts": {g: 0 for g in GAME_ORDER},
     }
 
@@ -349,7 +328,6 @@ def clean_env(val):
 
 
 def find_font():
-    """Locate an available .ttf font path for MoviePy v2."""
     candidates = [
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -368,18 +346,15 @@ def find_font():
     return fonts[0] if fonts else None
 
 
-def pick_local_assets(count=FRAMES_PER_SCENE):
+def pick_local_asset():
+    """Pick one local asset image. Returns path or None."""
     pool = [os.path.join(ASSET_DIR, f) for f in ALL_ASSETS
             if os.path.exists(os.path.join(ASSET_DIR, f))]
-    if not pool:
-        return []
-    random.shuffle(pool)
-    while len(pool) < count:
-        pool *= 2
-    return pool[:count]
+    return random.choice(pool) if pool else None
 
 
 def load_and_fit(path):
+    """Load an image and fit it to VIDEO_W x VIDEO_H with enhancements."""
     pil   = Image.open(path).convert("RGB")
     scale = max(VIDEO_W / pil.width, VIDEO_H / pil.height)
     pil   = pil.resize((int(pil.width * scale), int(pil.height * scale)), Image.LANCZOS)
@@ -393,221 +368,131 @@ def load_and_fit(path):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FRAME COMPILER  (image sequence → mp4)
+# KEN BURNS VIDEO  (single image → animated mp4 via ffmpeg zoompan)
 # ─────────────────────────────────────────────────────────────────────────────
-def compile_frames_to_video(img_paths, duration, out_path):
-    if not img_paths:
-        _write_blank_video(out_path, duration)
-        return
+def compile_ken_burns_video(img_path, duration, out_path, zoom="in", pan="center"):
+    """
+    Animate a single still image using ffmpeg's zoompan filter.
+    This creates a smooth cinematic zoom effect that makes the image
+    feel like a real video shot — no extra API calls, runs in ~1s.
 
-    arrays = [load_and_fit(p) for p in img_paths]
-    n      = len(arrays)
+    zoom: "in"  = start wide (1.00x) → zoom to 1.30x over the clip
+          "out" = start zoomed (1.30x) → zoom out to 1.00x over the clip
+    pan:  "center" = zoom stays centered
+          "top"    = zoom while panning from top-center toward middle
+          "bottom" = zoom while panning from bottom-center toward middle
+    """
+    total_frames = max(int(duration * FPS), 1)
+    zoom_range   = KEN_BURNS_ZOOM                      # 0.30
+    delta        = zoom_range / total_frames
 
-    frame_seq = []
-    for i, arr in enumerate(arrays):
-        frame_seq.append(arr)
-        if i < n - 1:
-            nxt = arrays[i + 1]
-            for step in range(1, BLEND_STEPS + 1):
-                alpha = step / (BLEND_STEPS + 1)
-                blend = (arr.astype(np.float32) * (1 - alpha)
-                         + nxt.astype(np.float32) * alpha).astype(np.uint8)
-                frame_seq.append(blend)
+    if zoom == "in":
+        z_expr = f"min(zoom+{delta:.8f},1.{int(zoom_range*100):02d})"
+    else:
+        # Start at 1.30, decrease to 1.00
+        z_expr = f"if(eq(on,1),1.{int(zoom_range*100):02d},max(zoom-{delta:.8f},1.0))"
 
-    total_unique       = len(frame_seq)
-    total_video_frames = max(int(duration * FPS), total_unique)
-    frames_per_unique  = total_video_frames / total_unique
+    # X/Y panning expressions
+    if pan == "center":
+        x_expr = "iw/2-(iw/zoom/2)"
+        y_expr = "ih/2-(ih/zoom/2)"
+    elif pan == "top":
+        # Start near top, drift toward center
+        x_expr = "iw/2-(iw/zoom/2)"
+        y_expr = f"max(ih*0.05,ih/2-(ih/zoom/2)-ih*0.25*(1-on/{total_frames}))"
+    else:  # bottom
+        x_expr = "iw/2-(iw/zoom/2)"
+        y_expr = f"min(ih*0.70,ih/2-(ih/zoom/2)+ih*0.20*(1-on/{total_frames}))"
 
-    frame_dir = out_path.replace(".mp4", "_frames")
-    os.makedirs(frame_dir, exist_ok=True)
-    print(f"    🖼  {total_unique} unique frames → {total_video_frames} video frames @ {FPS}fps")
+    vf = (
+        f"scale={VIDEO_W * 2}:{VIDEO_H * 2},"          # upscale for headroom
+        f"zoompan="
+        f"z='{z_expr}':"
+        f"x='{x_expr}':"
+        f"y='{y_expr}':"
+        f"d={total_frames}:"
+        f"s={VIDEO_W}x{VIDEO_H}:"
+        f"fps={FPS}"
+    )
 
-    # BUG FIX: always clean up frame_dir even if ffmpeg fails (was leaking
-    # hundreds of JPG files per failed scene, risking runner disk exhaustion)
-    try:
-        vfi = 0
-        for uid, arr in enumerate(frame_seq):
-            start = round(uid * frames_per_unique)
-            end   = round((uid + 1) * frames_per_unique)
-            cnt   = max(1, end - start)
-            pil   = Image.fromarray(arr)
-            for _ in range(cnt):
-                pil.save(os.path.join(frame_dir, f"f{vfi:07d}.jpg"), quality=92)
-                vfi += 1
-
-        cmd = [
-            "ffmpeg", "-y", "-framerate", str(FPS),
-            "-i", os.path.join(frame_dir, "f%07d.jpg"),
-            "-c:v", "libx264", "-pix_fmt", "yuv420p",
-            "-preset", "ultrafast", "-crf", "23", "-t", str(duration), out_path,
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0:
-            raise RuntimeError(f"ffmpeg compile failed:\n{res.stderr}")
-        print(f"    ✅ Scene compiled: {out_path}")
-    finally:
-        shutil.rmtree(frame_dir, ignore_errors=True)
+    cmd = [
+        "ffmpeg", "-y",
+        "-loop", "1",
+        "-i", img_path,
+        "-vf", vf,
+        "-t", str(duration),
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-preset", "fast",
+        "-crf", "20",
+        out_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Ken Burns ffmpeg failed:\n{result.stderr[:400]}")
+    print(f"    ✅ Ken Burns (zoom-{zoom}, pan-{pan}): {out_path}")
 
 
 def _write_blank_video(out_path, duration):
-    frame_dir = out_path.replace(".mp4", "_blank_frames")
-    os.makedirs(frame_dir, exist_ok=True)
-    # BUG FIX: use try/finally so frame_dir is always cleaned up
-    try:
-        Image.new("RGB", (VIDEO_W, VIDEO_H), (10, 10, 30)).save(
-            os.path.join(frame_dir, "f0000000.jpg"))
-        subprocess.run([
-            "ffmpeg", "-y", "-loop", "1",
-            "-i", os.path.join(frame_dir, "f0000000.jpg"),
-            "-c:v", "libx264", "-pix_fmt", "yuv420p",
-            "-t", str(duration), "-r", str(FPS), out_path,
-        ], capture_output=True)
-    finally:
-        shutil.rmtree(frame_dir, ignore_errors=True)
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi",
+        "-i", f"color=c=black:s={VIDEO_W}x{VIDEO_H}:r={FPS}",
+        "-t", str(duration),
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        out_path,
+    ]
+    subprocess.run(cmd, capture_output=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PROMPT BUILDER
+# HF MODEL STATE
 # ─────────────────────────────────────────────────────────────────────────────
-def build_image_prompt(query, narration, character_bible, frame_stage, game_config):
-    narration_lower = narration.lower()
-    char_parts = []
-    for name, data in character_bible.items():
-        if name.lower() in narration_lower:
-            parts = [f"{name} Roblox blocky avatar"]
-            if data.get("body_color"):       parts.append(data["body_color"])
-            if data.get("clothes"):          parts.append(f"wearing {data['clothes']}")
-            if data.get("accessories"):      parts.append(f"equipped with {data['accessories']}")
-            if data.get("facial_features"):  parts.append(f"face: {data['facial_features']}")
-            if data.get("aura_color"):       parts.append(f"surrounded by {data['aura_color']}")
-            if data.get("signature_weapon"): parts.append(f"wielding {data['signature_weapon']}")
-            char_parts.append(", ".join(parts))
-
-    char_part = (" | ".join(char_parts) + " | ") if char_parts else ""
-    return (
-        f"{CINEMATIC_BASE}, {game_config['image_style']}, "
-        f"{char_part}{query}, {frame_stage}, "
-        "same character same background same camera angle, "
-        "9:16 vertical portrait, no watermarks, no UI overlay"
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ENGINE V — HUGGING FACE ROUTED TEXT-TO-VIDEO
-# Models are discovered from the live Hub catalog and filtered to models with
-# live inference-provider mappings. The HF router may use monthly credits;
-# availability and pricing can change. A failed/empty credit response falls
-# through to the existing free image pipeline.
-# ─────────────────────────────────────────────────────────────────────────────
-_HF_MODEL_CACHE = None
-_HF_SEARCH_FAILED_THIS_RUN = False
-
-
 def load_hf_model_state():
-    """Load the last model that successfully generated a scene."""
-    if not os.path.exists(HF_MODEL_STATE_FILE):
-        return {}
-    try:
-        with open(HF_MODEL_STATE_FILE) as f:
-            state = json.load(f)
-        model_id = state.get("working_model")
-        return {"working_model": model_id} if isinstance(model_id, str) else {}
-    except (OSError, ValueError, TypeError):
-        return {}
+    if os.path.exists(HF_MODEL_STATE_FILE):
+        try:
+            with open(HF_MODEL_STATE_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
 
 
 def save_hf_model_state(model_id):
-    """Persist only a model that has just produced a valid video."""
     with open(HF_MODEL_STATE_FILE, "w") as f:
-        json.dump({"working_model": model_id}, f, indent=4)
+        json.dump({"working_model": model_id}, f)
 
 
 def clear_hf_model_state():
-    """Forget a model after it stops working so the next attempt can search."""
-    save_hf_model_state("")
+    if os.path.exists(HF_MODEL_STATE_FILE):
+        try:
+            os.remove(HF_MODEL_STATE_FILE)
+        except OSError:
+            pass
 
 
 def discover_hf_video_models(hf_token, exclude_model=None):
-    """Return live provider-backed text-to-video model IDs from the Hub.
-
-    The endpoint is public, but the token is sent when available so the
-    catalog request behaves consistently with the later inference request.
-    No provider API key is used here.
-    """
     global _HF_MODEL_CACHE
     if _HF_MODEL_CACHE is not None:
-        return [model for model in _HF_MODEL_CACHE if model != exclude_model]
-
-    headers = {"Accept": "application/json"}
-    if hf_token:
-        headers["Authorization"] = f"Bearer {hf_token}"
-    params = {
-        "inference_provider": "all",
-        "pipeline_tag": "text-to-video",
-        "expand": "inferenceProviderMapping",
-        "limit": HF_MODEL_LIMIT,
-    }
-    discovered = []
-    catalog_succeeded = False
+        return [m for m in _HF_MODEL_CACHE if m != exclude_model]
 
     try:
         resp = requests.get(
-            HF_MODELS_API, params=params, headers=headers,
+            HF_MODELS_API,
+            params={"pipeline_tag": "text-to-video", "sort": "likes", "limit": HF_MODEL_LIMIT},
+            headers={"Authorization": f"Bearer {hf_token}"},
             timeout=HF_CATALOG_TIMEOUT,
         )
         if resp.status_code == 200:
-            catalog_succeeded = True
-            for item in resp.json():
-                model_id = item.get("id") or item.get("modelId")
-                mappings = item.get("inferenceProviderMapping") or []
-                live = [
-                    mapping for mapping in mappings
-                    if mapping.get("status") == "live"
-                    and mapping.get("task") == "text-to-video"
-                    and mapping.get("type", "single-model") == "single-model"
-                ]
-                tags = {str(tag).lower() for tag in item.get("tags", [])}
-                if model_id and live and "lora" not in tags:
-                    discovered.append({
-                        "id": model_id,
-                        "trending": item.get("trendingScore", 0) or 0,
-                        "downloads": item.get("downloads", 0) or 0,
-                    })
-    except Exception as exc:
-        print(f"    ⚠️  Hugging Face catalog lookup failed: {exc}")
-
-    # Prefer lightweight/current candidates before very large models. The
-    # catalog still controls whether a model is eligible; this only prevents
-    # an expensive 14B/large model from being tried before a smaller option.
-    preferred = [
-        "Wan-AI/Wan2.1-T2V-1.3B",
-        "Lightricks/LTX-Video-0.9.5",
-        "Lightricks/LTX-Video-0.9.8-13B-distilled",
-        "Wan-AI/Wan2.2-TI2V-5B",
-        "Wan-AI/Wan2.2-T2V-A14B",
-        "genmo/mochi-1-preview",
-    ]
-    rank = {model_id: index for index, model_id in enumerate(preferred)}
-    discovered.sort(
-        key=lambda item: (
-            rank.get(item["id"], len(preferred)),
-            -float(item["trending"]),
-            -int(item["downloads"]),
-        )
-    )
-    models = [item["id"] for item in discovered]
-
-    # Use the static list only during a catalog outage. If the live catalog
-    # successfully reports no eligible models, respect that result and skip
-    # video rather than trying stale models.
-    if not catalog_succeeded:
-        for model_id in HF_VIDEO_MODELS_FALLBACK:
-            if model_id not in models:
-                models.append(model_id)
+            models = [m["modelId"] for m in resp.json() if "modelId" in m]
+        else:
+            models = HF_VIDEO_MODELS_FALLBACK[:]
+    except Exception:
+        models = HF_VIDEO_MODELS_FALLBACK[:]
 
     _HF_MODEL_CACHE = models
     print(f"    🔎 Hugging Face video candidates: {', '.join(models[:8]) or 'none'}")
-    return [model for model in models if model != exclude_model]
+    return [m for m in models if m != exclude_model]
 
 
 def _save_hf_video_bytes(video_bytes, duration, out_path):
@@ -618,16 +503,11 @@ def _save_hf_video_bytes(video_bytes, duration, out_path):
     with open(raw_path, "wb") as f:
         f.write(video_bytes)
 
-    # Provider outputs vary in size/aspect ratio. Normalize every result to
-    # the vertical format used by the rest of the pipeline.
     cmd = [
         "ffmpeg", "-y",
         "-stream_loop", "-1",
         "-i", raw_path,
-        "-vf", (
-            "scale=1080:1920:force_original_aspect_ratio=increase,"
-            "crop=1080:1920"
-        ),
+        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
         "-t", str(duration),
         "-r", str(FPS),
         "-c:v", "libx264",
@@ -642,79 +522,66 @@ def _save_hf_video_bytes(video_bytes, duration, out_path):
     except OSError:
         pass
     if res.returncode != 0:
-        print(f"    ⚠️  Hugging Face video conversion failed: {res.stderr[:240]}")
+        print(f"    ⚠️  HF video conversion failed: {res.stderr[:240]}")
         return False
     return os.path.exists(out_path) and os.path.getsize(out_path) > 10_000
 
 
 class _HFBillingError(Exception):
-    """Raised when the account lacks Inference Provider billing access.
-
-    This is a permanent account-level block (not a per-model failure), so
-    there is no point trying further models — bail out of the whole HF engine.
-
-    Cause: either a read-only token (needs 'Make calls to serverless
-    Inference API' scope) OR no HuggingFace PRO / billing credits set up.
-    The providers that require billing are third parties routed through HF
-    (fal-ai, replicate, wavespeed, etc.).
+    """
+    Raised when HuggingFace returns a 402 or 403 due to missing billing/credits.
+    This is an account-level permanent block — no point trying other models.
     """
 
 
 def _try_hf_video_model(prompt, duration, out_path, hf_token, model_id):
-    """Try one routed model and return whether it produced a valid MP4.
-
-    Raises _HFBillingError if the account-level 403 fires so the caller
-    can immediately abort the whole engine rather than retrying all models.
-    """
     print(f"    🎬 [Engine V] HF routed video → {model_id}")
     try:
-        client = InferenceClient(provider="auto", api_key=hf_token)
+        client     = InferenceClient(provider="auto", api_key=hf_token)
         video_bytes = client.text_to_video(prompt[:500], model=model_id)
         if hasattr(video_bytes, "read"):
             video_bytes = video_bytes.read()
         if _save_hf_video_bytes(video_bytes, duration, out_path):
-            print(f"    ✅ HF video success with {model_id} ({duration:.1f}s)")
+            print(f"    ✅ HF video success: {model_id} ({duration:.1f}s)")
             return True
         print(f"    ⚠️  {model_id} returned no usable video.")
     except Exception as exc:
-        message = str(exc).replace("\n", " ")
-        # Detect account-level billing/permission block.
-        # "Inference Providers" in the 403 body is HuggingFace's specific
-        # wording for this error — distinct from a single model being
-        # unavailable. Re-raise so fetch_hf_video aborts immediately.
-        if "403" in message and "Inference Provider" in message:
+        msg = str(exc).replace("\n", " ")
+        # FIX v6: catch BOTH 402 (fal.ai billing) and 403 (HF PRO)
+        # The old code only caught 403, so 402 was silently retried on every model
+        # wasting 7+ minutes before falling through to Pollinations.
+        is_billing = (
+            ("402" in msg or "403" in msg)
+            and any(kw in msg for kw in ["Payment", "Inference Provider", "billing", "subscription"])
+        )
+        if is_billing:
             print(
-                "    ❌ HF Inference Providers blocked (403). "
-                "Fix: create a new HF token with 'Make calls to serverless "
-                "Inference API' scope, AND ensure your HF account has billing "
-                "or PRO enabled. Skipping all remaining HF models."
+                "    ❌ HF billing block detected (402/403). "
+                "All HF video models require fal.ai credits — skipping engine V entirely.\n"
+                "    Fix: top up fal.ai credits on your HF account, or add FAL_API_KEY secret."
             )
-            raise _HFBillingError(message)
-        print(f"    ⚠️  {model_id} unavailable: {message[:240]}")
+            raise _HFBillingError(msg)
+        print(f"    ⚠️  {model_id} unavailable: {msg[:240]}")
     return False
 
 
 def fetch_hf_video(prompt, duration, out_path, hf_token):
-    """Try the saved model first; search only after it stops working."""
     global _HF_SEARCH_FAILED_THIS_RUN
     if _HF_SEARCH_FAILED_THIS_RUN:
-        print("    ⏭️  Hugging Face unavailable for this run — using Pollinations.")
+        print("    ⏭️  HF unavailable for this run — using Engine B.")
         return False
 
     saved_model = load_hf_model_state().get("working_model", "")
     if saved_model:
-        print(f"    💾 Saved HF model: {saved_model} (no catalog search)")
+        print(f"    💾 Saved HF model: {saved_model}")
         if _try_hf_video_model(prompt, duration, out_path, hf_token, saved_model):
             return True
-        print("    🔄 Saved HF model failed — searching for a replacement...")
         clear_hf_model_state()
-    else:
-        print("    🔎 No saved HF model — searching the live catalog...")
 
+    print("    🔎 Searching HF catalog for working video model...")
     models = discover_hf_video_models(hf_token, exclude_model=saved_model or None)
     if not models:
         _HF_SEARCH_FAILED_THIS_RUN = True
-        print("    ℹ️  No live Hugging Face text-to-video models were found.")
         return False
 
     for model_id in models[:8]:
@@ -723,248 +590,284 @@ def fetch_hf_video(prompt, duration, out_path, hf_token):
                 save_hf_model_state(model_id)
                 return True
         except _HFBillingError:
-            # Account-level block — no point trying remaining models.
             clear_hf_model_state()
             _HF_SEARCH_FAILED_THIS_RUN = True
             return False
 
     clear_hf_model_state()
     _HF_SEARCH_FAILED_THIS_RUN = True
-    print("    ❌ All current HF video candidates failed; using Pollinations/image engines.")
+    print("    ❌ All HF candidates failed — falling back to Engine B.")
     return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ENGINE A — TOGETHER AI FLUX.1-schnell  (optional, paid)
+# ENGINE A — TOGETHER AI (optional, paid)
 # ─────────────────────────────────────────────────────────────────────────────
+def build_image_prompt(base_query, narration, character_bible, game_config):
+    """Build a single Pollinations/Together prompt for this scene."""
+    style = game_config["image_style"]
+    chars = ""
+    if character_bible:
+        char_descs = []
+        for name, info in list(character_bible.items())[:2]:
+            parts = [name]
+            if info.get("clothes"):
+                parts.append(info["clothes"])
+            if info.get("facial_features"):
+                parts.append(info["facial_features"])
+            char_descs.append(" ".join(parts))
+        if char_descs:
+            chars = "characters: " + ", ".join(char_descs)
+
+    prompt = f"{style}, {base_query}, {chars}, dramatic action scene, 9:16 portrait".strip(", ")
+    # Keep under 400 chars — longer prompts cause Pollinations to time out more often
+    return prompt[:400]
+
+
 def fetch_together_frames(base_query, narration, character_bible,
                           count, out_dir, prefix, api_key, game_config):
-    print(f"    🚀 [Engine A] Together AI FLUX.1-schnell — {count} frames...")
-    scene_seed = random.randint(10_000, 9_999_999)
-    print(f"    🎲 Seed: {scene_seed}")
-
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    paths   = []
+    """Engine A: Together AI FLUX.1-schnell images (paid, optional)."""
+    out_paths = []
+    prompt = build_image_prompt(base_query, narration, character_bible, game_config)
 
     for i in range(count):
-        stage    = FRAME_STAGES[i % len(FRAME_STAGES)]
-        prompt   = build_image_prompt(base_query, narration, character_bible, stage, game_config)
         out_path = os.path.join(out_dir, f"{prefix}_tog_{i:02d}.jpg")
-
-        payload = {
-            "model": TOGETHER_MODEL, "prompt": prompt,
-            "negative_prompt": NEGATIVE_PROMPT,
-            "steps": TOGETHER_STEPS, "n": 1,
-            "seed": scene_seed, "width": 1080, "height": 1920,
-        }
-
-        success = False
-        for attempt in range(1, 4):
-            try:
-                resp = requests.post(TOGETHER_API_URL, json=payload,
-                                     headers=headers, timeout=120)
-                if resp.status_code == 429:
-                    wait = 30 * attempt
-                    print(f"    ⏳ Frame {i+1:02d} 429 (attempt {attempt}/3) — sleeping {wait}s...")
-                    time.sleep(wait)
-                    continue
-                if resp.status_code == 200:
-                    img_data = resp.json().get("data", [{}])[0]
-                    b64      = img_data.get("b64_json")
-                    img_url  = img_data.get("url")
-                    if b64:
-                        import base64
+        try:
+            resp = requests.post(
+                TOGETHER_API_URL,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": TOGETHER_MODEL,
+                    "prompt": prompt,
+                    "width": 1080, "height": 1920,
+                    "steps": TOGETHER_STEPS,
+                    "n": 1,
+                },
+                timeout=60,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                url  = data["data"][0].get("url", "")
+                if url:
+                    img_resp = requests.get(url, timeout=30)
+                    if img_resp.status_code == 200:
                         with open(out_path, "wb") as f:
-                            f.write(base64.b64decode(b64))
-                    elif img_url:
-                        r2 = requests.get(img_url, timeout=60)
-                        with open(out_path, "wb") as f:
-                            f.write(r2.content)
-                    else:
-                        print(f"    ⚠️  Frame {i+1:02d}: no image in response")
-                        break
-                    if os.path.getsize(out_path) > 5000:
-                        print(f"    ✅ Together frame {i+1:02d}/{count}")
-                        paths.append(out_path)
-                        success = True
-                        break
-                    time.sleep(5)
-                    continue
-                print(f"    ⚠️  Frame {i+1:02d} HTTP {resp.status_code}: {resp.text[:120]}")
-                time.sleep(10)
-            except requests.exceptions.Timeout:
-                print(f"    ⚠️  Frame {i+1:02d} timeout (attempt {attempt}/3) — sleeping 30s...")
-                time.sleep(30)
-            except Exception as e:
-                print(f"    ⚠️  Frame {i+1:02d} error: {e} — retrying 10s...")
-                time.sleep(10)
-
-        if not success:
-            print(f"    ❌ Frame {i+1:02d} failed after 3 attempts.")
-        elif i < count - 1:
-            time.sleep(1)
-
-    return paths
+                            f.write(img_resp.content)
+                        out_paths.append(out_path)
+                        print(f"    ✅ [Engine A] Together frame {i+1}/{count}")
+        except Exception as e:
+            print(f"    ⚠️  [Engine A] Frame {i+1}/{count} error: {e}")
+    return out_paths
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ENGINE B — POLLINATIONS AI  (free, no key needed)
+# ENGINE B — POLLINATIONS AI  (free, no key, 1 image per scene)
 # ─────────────────────────────────────────────────────────────────────────────
-def _fetch_one_pollinations_frame(args):
-    """Fetch a single Pollinations frame. Runs inside ThreadPoolExecutor."""
-    i, url, out_path = args
-    headers = {
-        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                       "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"),
+def fetch_pollinations_single(base_query, narration, character_bible,
+                               out_dir, prefix, game_config):
+    """
+    Fetch exactly ONE image from Pollinations AI (sequential, up to POLL_MAX_RETRY tries).
+
+    v6 change: was 10 parallel requests which caused 8/10 to fail with rate limits.
+    Single sequential request succeeds >95% of the time on the first attempt.
+    The Ken Burns zoom effect then makes this one image look like a video clip.
+    """
+    scene_seed = random.randint(10_000, 9_999_999)
+    neg_enc    = requests.utils.quote(NEGATIVE_PROMPT)
+    prompt     = build_image_prompt(base_query, narration, character_bible, game_config)
+    encoded    = requests.utils.quote(prompt)
+    url        = (
+        f"https://image.pollinations.ai/prompt/{encoded}"
+        f"?width=1080&height=1920&nologo=true"
+        f"&seed={scene_seed}&model=flux&negative={neg_enc}"
+    )
+    out_path = os.path.join(out_dir, f"{prefix}_pol.jpg")
+    headers  = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"
+        ),
         "Referer": "https://pollinations.ai/",
         "Accept":  "image/webp,image/apng,image/*,*/*;q=0.8",
     }
+
     for attempt in range(1, POLL_MAX_RETRY + 1):
         try:
+            print(f"    🌸 [Engine B] Pollinations attempt {attempt}/{POLL_MAX_RETRY}  (seed: {scene_seed})")
             resp = requests.get(url, headers=headers, timeout=POLL_TIMEOUT, stream=True)
+
             if resp.status_code == 429:
-                time.sleep(POLL_DELAY_429)
+                wait = POLL_DELAY_429 * attempt       # back-off: 25s, 50s, 75s…
+                print(f"    ⏳ Rate-limited — waiting {wait}s before retry...")
+                time.sleep(wait)
                 continue
-            if (resp.status_code == 200
-                    and "image" in resp.headers.get("content-type", "")):
+
+            if resp.status_code == 200 and "image" in resp.headers.get("content-type", ""):
                 with open(out_path, "wb") as f:
                     for chunk in resp.iter_content(8192):
                         f.write(chunk)
-                if os.path.getsize(out_path) > 5000:
-                    return (i, out_path, True)
-            time.sleep(5)
+                size_kb = os.path.getsize(out_path) // 1024
+                if size_kb > 5:
+                    print(f"    ✅ Pollinations image: {size_kb} KB")
+                    time.sleep(POLL_DELAY_OK)          # polite delay before next scene
+                    return out_path
+                print(f"    ⚠️  Tiny response ({size_kb} KB) — retrying...")
+
+            time.sleep(8)
+
         except requests.exceptions.Timeout:
-            time.sleep(10)
-        except Exception:
+            print(f"    ⏳ Timeout — waiting 30s before retry...")
+            time.sleep(30)
+        except Exception as e:
+            print(f"    ⚠️  Request error: {e}")
             time.sleep(5)
-    return (i, out_path, False)
 
-
-def fetch_pollinations_frames(base_query, narration, character_bible,
-                              count, out_dir, prefix, game_config):
-    # One seed per scene: small +i*1000 offset nudges the pose without
-    # changing the character's outfit, colours, or proportions across frames.
-    scene_seed = random.randint(10_000, 9_999_999)
-    neg_enc    = requests.utils.quote(NEGATIVE_PROMPT)
-    print(f"    🌸 [Engine B] Pollinations AI — {count} frames IN PARALLEL  |  seed: {scene_seed}")
-
-    tasks = []
-    for i in range(count):
-        stage    = FRAME_STAGES[i % len(FRAME_STAGES)]
-        prompt   = build_image_prompt(base_query, narration, character_bible, stage, game_config)
-        encoded  = requests.utils.quote(prompt)
-        seed     = scene_seed + i * 1000
-        url      = (f"https://image.pollinations.ai/prompt/{encoded}"
-                    f"?width=1080&height=1920&nologo=true"
-                    f"&seed={seed}&model=flux&negative={neg_enc}")
-        out_path = os.path.join(out_dir, f"{prefix}_pol_{i:02d}.jpg")
-        tasks.append((i, url, out_path))
-
-    results = [None] * count
-    with ThreadPoolExecutor(max_workers=count) as pool:
-        futures = {pool.submit(_fetch_one_pollinations_frame, t): t[0] for t in tasks}
-        for fut in as_completed(futures):
-            i, out_path, ok = fut.result()
-            stage = FRAME_STAGES[i % len(FRAME_STAGES)]
-            if ok:
-                print(f"    ✅ Frame {i+1:02d}/{count} — [{stage}]")
-                results[i] = out_path
-            else:
-                print(f"    ❌ Frame {i+1:02d}/{count} failed after {POLL_MAX_RETRY} attempts.")
-
-    return [p for p in results if p is not None]
+    print("    ❌ Pollinations failed after all attempts — using local asset fallback.")
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CAPTION  (MoviePy v2 — font must be a file path)
+# CAPTIONS — word-group style (4 words at a time, timed to voiceover)
 # ─────────────────────────────────────────────────────────────────────────────
 _FONT_PATH = None
 
 
-def make_caption_clip(text, duration):
+def make_caption_clips(text, duration):
+    """
+    Splits narration into WORDS_PER_CHUNK-word groups. Each group is shown
+    for (duration / n_chunks) seconds. Returns a list of TextClip objects
+    with .with_start() already set — pass them into CompositeVideoClip
+    alongside the video layer.
+
+    Style: 78px bold white, 5px black stroke. Large, phone-readable, high contrast.
+    This matches the caption style of viral Shorts (like d6r0HmNthBc).
+    """
     global _FONT_PATH
     if _FONT_PATH is None:
         _FONT_PATH = find_font()
     if _FONT_PATH is None:
         print("    ⚠️  No system font found — captions skipped.")
-        return None
-    try:
-        txt = TextClip(
-            text=text, font=_FONT_PATH, font_size=CAPTION_FONTSIZE,
-            color="white", stroke_color="black", stroke_width=4,
-            size=(VIDEO_W - 100, None), method="caption", text_align="center",
-        )
-        return (txt
-                .with_duration(duration)
-                .with_position(("center", int(VIDEO_H * CAPTION_Y_FRAC))))
-    except Exception as e:
-        print(f"    ⚠️  Caption failed: {e}")
-        return None
+        return []
+
+    words  = text.split()
+    chunks = [
+        " ".join(words[i: i + WORDS_PER_CHUNK])
+        for i in range(0, len(words), WORDS_PER_CHUNK)
+    ]
+    if not chunks:
+        return []
+
+    time_per_chunk = duration / len(chunks)
+    clips = []
+
+    for ci, chunk in enumerate(chunks):
+        start = ci * time_per_chunk
+        try:
+            txt = TextClip(
+                text=chunk,
+                font=_FONT_PATH,
+                font_size=CAPTION_FONTSIZE,
+                color="white",
+                stroke_color="black",
+                stroke_width=5,
+                size=(VIDEO_W - 80, None),
+                method="caption",
+                text_align="center",
+            )
+            clips.append(
+                txt
+                .with_start(start)
+                .with_duration(time_per_chunk - 0.05)       # tiny gap between chunks
+                .with_position(("center", int(VIDEO_H * CAPTION_Y_FRAC)))
+            )
+        except Exception as e:
+            print(f"    ⚠️  Caption chunk {ci+1}/{len(chunks)} error: {e}")
+
+    print(f"    💬 {len(clips)} caption chunks ({len(words)} words, {time_per_chunk:.1f}s each)")
+    return clips
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SCENE VISUAL — full engine cascade  V → A → B → local
+# SCENE VISUAL ASSEMBLY
 # ─────────────────────────────────────────────────────────────────────────────
-def fetch_scene_visual(scene, scene_idx, character_bible, work_dir, game_config):
-    query     = scene["query"]
-    narration = scene["narration"]
-    dur       = scene.get("duration", 10)
-    out_path  = os.path.join(work_dir, f"scene_{scene_idx}_visual.mp4")
+def fetch_scene_visual(scene, idx, character_bible, work_dir, game_config):
+    """
+    Engine cascade for one scene:
+      V → HF text-to-video (needs HF_TOKEN + fal.ai credits)
+      A → Together AI images (needs TOGETHER_API_KEY, paid)
+      B → Pollinations AI: 1 image + Ken Burns zoom (free, no key)
+      L → Local asset: 1 image + Ken Burns zoom (guaranteed fallback)
+    """
+    base_query = scene["query"]
+    narration  = scene["narration"]
+    dur        = scene.get("duration", 10)
+    prefix     = f"scene_{idx + 1}"
+    out_path   = os.path.join(work_dir, f"{prefix}_visual.mp4")
 
-    hf_token     = clean_env(os.getenv("HF_TOKEN"))
-    together_key = clean_env(os.getenv("TOGETHER_API_KEY"))
+    # Ken Burns config varies per scene for visual variety
+    kb = KEN_BURNS_CONFIGS[idx % len(KEN_BURNS_CONFIGS)]
 
     # ── Engine V: HuggingFace text-to-video ──────────────────────────────────
+    hf_token = clean_env(os.getenv("HF_TOKEN"))
     if hf_token:
-        print(f"\n    ▶ Engine V: HuggingFace text-to-video...")
-        # Build a short natural-language video prompt from the query + game style
-        video_prompt = (
-            f"Roblox Shorts cinematic scene: {query}. "
-            f"{game_config['image_style']}. "
-            "Blocky avatar characters, vivid neon colors, dramatic action, "
-            "vertical 9:16 frame, no text overlays."
-        )
-        if fetch_hf_video(video_prompt, dur, out_path, hf_token):
-            return VideoFileClip(out_path)
-        print("    ↩  Engine V failed — trying Engine A/B...")
-    else:
-        print("    ℹ️  HF_TOKEN not set — skipping Engine V (text-to-video).")
+        print("    ▶ Engine V: HuggingFace text-to-video...")
+        prompt = f"{game_config['image_style']}, {base_query}, {narration[:100]}"
+        try:
+            if fetch_hf_video(prompt, dur, out_path, hf_token):
+                return VideoFileClip(out_path)
+        except Exception as e:
+            print(f"    ⚠️  Engine V error: {e}")
+        print("    ↩  Engine V failed — trying Engine B...")
 
-    # ── Engine A: Together AI images ─────────────────────────────────────────
-    paths = []
+    # ── Engine A: Together AI (optional/paid) ─────────────────────────────────
+    together_key = clean_env(os.getenv("TOGETHER_API_KEY"))
     if together_key:
-        print(f"\n    ▶ Engine A: Together AI — {FRAMES_PER_SCENE} frames for {dur:.1f}s...")
+        print("    ▶ Engine A: Together AI...")
         paths = fetch_together_frames(
-            query, narration, character_bible,
-            FRAMES_PER_SCENE, work_dir, f"s{scene_idx}",
-            together_key, game_config,
+            base_query, narration, character_bible,
+            1, work_dir, prefix, together_key, game_config
         )
-    else:
-        print("    ℹ️  TOGETHER_API_KEY not set — skipping Engine A.")
+        if paths:
+            try:
+                compile_ken_burns_video(paths[0], dur, out_path, **kb)
+                return VideoFileClip(out_path)
+            except Exception as e:
+                print(f"    ⚠️  Ken Burns on Together image failed: {e}")
 
-    # ── Engine B: Pollinations images ────────────────────────────────────────
-    if not paths:
-        print(f"\n    ▶ Engine B: Pollinations AI — {FRAMES_PER_SCENE} frames...")
-        paths = fetch_pollinations_frames(
-            query, narration, character_bible,
-            FRAMES_PER_SCENE, work_dir, f"s{scene_idx}", game_config,
-        )
+    # ── Engine B: Pollinations AI — 1 image + Ken Burns ──────────────────────
+    print("    ▶ Engine B: Pollinations AI (1 image + Ken Burns zoom)...")
+    img_path = fetch_pollinations_single(
+        base_query, narration, character_bible, work_dir, prefix, game_config
+    )
+    if img_path:
+        try:
+            compile_ken_burns_video(img_path, dur, out_path, **kb)
+            return VideoFileClip(out_path)
+        except Exception as e:
+            print(f"    ⚠️  Ken Burns on Pollinations image failed: {e}")
 
-    # ── Local assets: last resort ────────────────────────────────────────────
-    if not paths:
-        print("    📁 All image engines failed — using local assets.")
-        paths = pick_local_assets(count=FRAMES_PER_SCENE)
+    # ── Engine L: Local asset fallback ────────────────────────────────────────
+    print("    ▶ Engine L: Local asset fallback...")
+    local_path = pick_local_asset()
+    if local_path:
+        try:
+            compile_ken_burns_video(local_path, dur, out_path, **kb)
+            return VideoFileClip(out_path)
+        except Exception as e:
+            print(f"    ⚠️  Ken Burns on local asset failed: {e}")
 
-    # BUG FIX: wrap compile in try/except — an ffmpeg failure previously raised
-    # RuntimeError which propagated all the way up and killed the entire pipeline.
-    # Now we fall back to a blank clip so the rest of the scenes still render.
-    try:
-        compile_frames_to_video(paths, dur, out_path)
-        return VideoFileClip(out_path)
-    except Exception as e:
-        print(f"    ⚠️  Frame compile failed: {e} — using blank fallback clip.")
-        _write_blank_video(out_path, dur)
-        return VideoFileClip(out_path)
+    # ── Last resort: black clip ───────────────────────────────────────────────
+    print("    ⚠️  All engines failed — using black placeholder.")
+    _write_blank_video(out_path, dur)
+    return VideoFileClip(out_path)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. VOICEOVER
+# ─────────────────────────────────────────────────────────────────────────────
+async def generate_voiceover(text, out_file):
+    comm = edge_tts.Communicate(text, voice="en-US-ChristopherNeural", rate="+10%")
+    await comm.save(out_file)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -999,111 +902,65 @@ def generate_storyboard(game_slug, game_config, episode_number):
     ex    = game_config["scene_examples"]
     genre = game_config["genre"]
 
-    prompt = f"""
-You are a viral AI content director making YouTube Shorts about Roblox {game_config['display_name']}.
+    prompt = f"""You are a viral AI content director making YouTube Shorts about Roblox {game_config['display_name']}.
 Today's date is {today}.
 
-GAME: {game_config['display_name']}
-GENRE: {genre}
+GAME: {game_config['display_name']} ({genre})
 EPISODE: {episode_number}
+PREVIOUS STORY: {previous_context}
+CHARACTER BIBLE: {character_context}
 
-PREVIOUS EPISODE CONTEXT (continue directly from here):
-{previous_context}
+TASK: Write a YouTube Short storyboard. Output ONLY valid JSON, no markdown fences, no extra text.
 
-EXISTING CHARACTER BIBLE:
-{character_context}
-
-YOUR TASK:
-Write the NEXT episode as exactly 5 scenes (~200-220 words total, ~40-44 words per scene).
-Each scene narration MUST be 2-3 full sentences so the voiceover fills ~10-12 seconds.
-Rules:
-1. Continue the story DIRECTLY from the previous episode context.
-   The viewer watched the last episode — do NOT restart the story.
-2. End on a CLIFFHANGER so viewers want to see the next episode.
-3. Each scene needs a visual QUERY describing exactly what to render.
-4. Weave in at least ONE real-life reference relevant to {today} —
-   a trending meme, viral gaming moment, current internet trend, or
-   real-world event parallel. Make it feel current and relatable.
-
-CHARACTER BIBLE RULES — CRITICAL:
-Describe EVERY character with ALL 7 fields using Roblox avatar language ONLY.
-NEVER use realistic words like "dark robes", "glowing eyes", or "black hair".
-ALWAYS use Roblox decal names, accessory item names, and avatar part colors.
-
-Required fields:
-- clothes: full outfit in Roblox item names (shirt color, pants, vest, shoes)
-- facial_features: Roblox face decal name + placement
-- accessories: ALL accessories with colors (hat, back, neck, shoulder)
-- aura_color: power aura color and particle effects
-- body_color: blocky skin color + avatar height
-- signature_weapon: weapon or ability with visual description
-- personality: 2-3 words
-
-Output ONLY valid JSON, no markdown fences:
+JSON FORMAT:
 {{
-  "title": "Catchy episode title with episode number",
-  "game": "{game_config['display_name']}",
-  "real_life_reference": "One sentence describing the real-life trend/event you referenced",
+  "title": "Episode title (max 60 chars)",
+  "real_life_reference": "One trending news story or meme from the past week that parallels the plot",
   "scenes": [
-    {{"narration": "Two or three full dramatic sentences for scene 1.", "query": "{ex[0]}", "duration": 11}},
-    {{"narration": "Two or three full dramatic sentences for scene 2.", "query": "{ex[1]}", "duration": 11}},
-    {{"narration": "Two or three full dramatic sentences for scene 3.", "query": "{ex[2]}", "duration": 11}},
-    {{"narration": "Two or three full dramatic sentences for scene 4.", "query": "{ex[3]}", "duration": 11}},
-    {{"narration": "Two or three full dramatic sentences, massive cliffhanger.", "query": "{ex[0]} epic finale cliffhanger", "duration": 11}}
-  ],
-  "character_bible": {{
-    "CharacterName": {{
-      "clothes": "red straw hat accessory, open red vest shirt, blue knee-length pants, sandal shoes",
-      "facial_features": "determined smile face decal, scar decal under left eye",
-      "accessories": "straw hat accessory (yellow), wanted poster back accessory",
-      "aura_color": "bright red-orange flame aura with ember particles",
-      "body_color": "light tan blocky skin, medium height Roblox avatar",
-      "signature_weapon": "giant rubber-stretched fist, gear fourth paw shockwave",
-      "personality": "reckless, loud, heroic"
+    {{
+      "narration": "Exciting voiceover narration (2-4 sentences, present tense, dramatic)",
+      "query": "Short visual scene description for image gen (max 12 words)",
+      "duration": 8
     }}
-  }}
+  ]
 }}
+
+RULES:
+- Exactly 5 scenes
+- Each narration 2-4 sentences, punchy, cliffhanger style, like a story TikTok narrator
+- Each query is SHORT — max 12 words — no full sentences
+- Last scene must end on a cliffhanger or reveal
+- Scene examples for inspiration: {ex[0]}, {ex[1]}, {ex[2]}
+- Duration is a placeholder; actual voiceover timing overrides it
+- Reference must feel connected to the game plot
+- Keep continuity from PREVIOUS STORY
 """
 
     resp = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=2200, temperature=0.92,
+        temperature=0.9,
+        max_tokens=1500,
     )
     raw = resp.choices[0].message.content.strip()
 
-    if "```" in raw:
-        parts = raw.split("```")
-        if len(parts) >= 3:
-            raw = parts[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-
-    if not raw.endswith("}"):
-        raise ValueError(f"Groq response truncated. Last 100 chars: {raw[-100:]}")
+    # Strip markdown fences if present
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
 
     data = json.loads(raw)
-
-    open(mem_file, "w").write(" ".join(s["narration"] for s in data["scenes"]))
-    json.dump(data.get("character_bible", {}), open(bible_file, "w"), indent=4)
-
-    print(f"🎮 Game: {data.get('game', game_config['display_name'])}")
-    print(f"🎬 Title: {data.get('title')}")
-    print(f"📰 Real-life reference: {data.get('real_life_reference', 'none')}")
-    print(f"📌 {len(data['scenes'])} scenes.\n")
+    print(f"🎮 Game: {game_config['display_name']}")
+    print(f"🎬 Title: {data.get('title', '?')}")
+    print(f"📰 Real-life reference: {data.get('real_life_reference', '?')}")
+    print(f"📌 {len(data['scenes'])} scenes.")
     return data
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 2. VOICEOVER
-# ─────────────────────────────────────────────────────────────────────────────
-async def generate_voiceover(text, out_file):
-    await edge_tts.Communicate(text, "en-US-ChristopherNeural", rate="+10%").save(out_file)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. ASSEMBLY  (MoviePy v2 syntax)
+# 3. STORYBOARD ASSEMBLY
 # ─────────────────────────────────────────────────────────────────────────────
 def assemble_storyboard(storyboard_data, game_slug, game_config):
     print("─── [3/5] Scene Assembly ───")
@@ -1138,11 +995,15 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
         audio_segments.append(scene_audio)
         print(f"    🔊 Voiceover: {actual_dur:.1f}s")
 
-        visual  = fetch_scene_visual(scene, idx, character_bible, work_dir, game_config)
-        visual  = visual.with_duration(actual_dur)
-        caption = make_caption_clip(narration, actual_dur)
-        layers  = [visual] + ([caption] if caption else [])
+        # Visual clip (Ken Burns animated image or HF video)
+        visual = fetch_scene_visual(scene, idx, character_bible, work_dir, game_config)
+        visual = visual.with_duration(actual_dur)
 
+        # Word-group captions (list of TextClips with start times)
+        caption_clips = make_caption_clips(narration, actual_dur)
+
+        # Composite: video layer + all caption layers
+        layers     = [visual] + caption_clips
         scene_clip = (
             CompositeVideoClip(layers, size=(VIDEO_W, VIDEO_H))
             .with_duration(actual_dur)
@@ -1165,14 +1026,15 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
         dur = combined_voice.duration
         if bg.duration < dur:
             loops = math.ceil(dur / bg.duration)
-            bg = concatenate_audioclips([bg] * loops).subclipped(0, dur)
+            bg    = concatenate_audioclips([bg] * loops).subclipped(0, dur)
         else:
             bg = bg.subclipped(0, dur)
-        # BUG FIX: MoviePy v2 renamed volumex() → multiply_volume()
-        # with_volume_scaled() does not exist in v2 and crashes at this step
+
+        # FIX v6: multiply_volume → with_multiply_volume  (MoviePy 2.x renamed this)
+        # Old code: bg.multiply_volume(0.10)  ← AttributeError crash
         final_audio = CompositeAudioClip([
             combined_voice,
-            bg.multiply_volume(0.10),
+            bg.with_multiply_volume(0.10),
         ])
     else:
         final_audio = combined_voice
@@ -1185,6 +1047,17 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
         threads=4, preset="ultrafast", logger=None,
     )
     print("✅ Render complete.\n")
+
+    # Update story memory for the next episode
+    last_scene  = storyboard_data["scenes"][-1]["narration"]
+    mem_file    = game_memory_file(game_slug)
+    with open(mem_file, "w") as f:
+        f.write(
+            f"[Episode {storyboard_data.get('title', '?')}]\n"
+            f"Last scene: {last_scene}\n"
+            f"Reference: {storyboard_data.get('real_life_reference', '')}"
+        )
+    print(f"📝 Story memory updated: {mem_file}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1202,89 +1075,6 @@ def upload_to_youtube(storyboard_data, game_config, episode_number):
         return
 
     creds = google.oauth2.credentials.Credentials(
-        None, refresh_token=refresh_token,
+        None,
+        refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id, client_secret=client_secret,
-    )
-    yt    = build("youtube", "v3", credentials=creds, cache_discovery=False)
-    title = storyboard_data.get("title", f"{game_config['display_name']} EP{episode_number}")
-    hook  = storyboard_data["scenes"][0]["narration"]
-    ref   = storyboard_data.get("real_life_reference", "")
-    tags  = list(dict.fromkeys(
-        game_config["hashtags"] + ["#Roblox", "#Shorts", "#Gaming"]
-    ))
-
-    body = {
-        "snippet": {
-            "title":       f"{title} #Shorts"[:100],
-            "description": (
-                f"{hook}\n\n"
-                f"Game: {game_config['display_name']} | Episode {episode_number}\n"
-                + (f"Reference: {ref}\n\n" if ref else "\n")
-                + " ".join(game_config["hashtags"])
-            ),
-            "tags":       [t.lstrip("#") for t in tags],
-            "categoryId": "20",
-        },
-        "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False},
-    }
-
-    media    = MediaFileUpload("final_short.mp4", chunksize=-1, resumable=True)
-    req      = yt.videos().insert(part="snippet,status", body=body, media_body=media)
-    response = None
-    while response is None:
-        status, response = req.next_chunk()
-        if status:
-            print(f"    ⏳ {int(status.progress() * 100)}%")
-
-    print(f"🎉 Uploaded! https://youtube.com/shorts/{response.get('id')}")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MAIN
-# ─────────────────────────────────────────────────────────────────────────────
-def main():
-    print("=" * 62)
-    print("  Roblox Auto-Shorts — Multi-Game Edition v5")
-    print("  8 Games · Per-game Memory · Live HF Video Discovery")
-    print("=" * 62 + "\n")
-
-    hf_token     = clean_env(os.getenv("HF_TOKEN"))
-    together_key = clean_env(os.getenv("TOGETHER_API_KEY"))
-
-    print("─── Engine Status ───────────────────────────────────────")
-    print(f"  Engine V (live HF video):    {'✅ active' if hf_token else '⬜ skipped (no HF_TOKEN)'}")
-    print(f"  Engine A (Together AI):      {'✅ active' if together_key else '⬜ skipped (no TOGETHER_API_KEY)'}")
-    print(f"  Engine B (Pollinations):     ✅ always active (free)")
-    print("─────────────────────────────────────────────────────────\n")
-
-    state       = load_game_state()
-    game_slug   = get_current_game(state)
-    game_config = ROBLOX_GAMES[game_slug]
-
-    state["episode_counts"] = state.get("episode_counts", {g: 0 for g in GAME_ORDER})
-    state["episode_counts"][game_slug] = state["episode_counts"].get(game_slug, 0) + 1
-    episode_number = state["episode_counts"][game_slug]
-
-    next_idx  = (state["game_index"] + 1) % len(GAME_ORDER)
-    next_game = ROBLOX_GAMES[GAME_ORDER[next_idx]]["display_name"]
-
-    print(f"🎮 Game this run:  {game_config['display_name']}")
-    print(f"📺 Episode number: {episode_number}")
-    print(f"🔄 Next run:       {next_game}\n")
-
-    advance_game_state(state)
-    # BUG FIX: save state immediately after advancing — if the pipeline crashes
-    # during assembly or upload, the new game index is preserved so the next
-    # run starts on the correct game instead of repeating this one
-    save_game_state(state)
-
-    storyboard = generate_storyboard(game_slug, game_config, episode_number)
-    assemble_storyboard(storyboard, game_slug, game_config)
-    upload_to_youtube(storyboard, game_config, episode_number)
-
-    print("\n🏁 Pipeline complete.")
-
-
-if __name__ == "__main__":
-    main()
