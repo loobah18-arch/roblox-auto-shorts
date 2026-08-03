@@ -1,5 +1,5 @@
 """
-Roblox Auto-Shorts — Agnes 2.0 Edition (v7.1)
+Roblox Auto-Shorts — Agnes 2.0 Edition (v7.2)
 Powered by Agnes AI (Gemini Free Tier)
 ===============================================
 NO PAID APIs REQUIRED. Works entirely on free services:
