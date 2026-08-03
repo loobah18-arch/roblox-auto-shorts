@@ -1,22 +1,20 @@
-name: Generate Roblox Short
+name: Generate Automated Roblox Short
 
 on:
   workflow_dispatch:
   schedule:
+    # Runs automatically every day at 12:30 PM UTC (6:00 PM IST)
     - cron: '30 12 * * *'
-
-# Serialize scheduled and manual runs. The Python guard below still blocks a
-# second upload on the same UTC date after a queued run starts.
-concurrency:
-  group: roblox-auto-shorts-daily
-  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    # Grants permission for the workflow to write/push changes back to the repository
     permissions:
       contents: write
-    timeout-minutes: 90
+
+    timeout-minutes: 15
 
     steps:
       - name: Checkout Repository
@@ -28,48 +26,40 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            ffmpeg \
-            imagemagick \
-            fonts-liberation \
-            fonts-noto \
-            fonts-noto-color-emoji \
-            libmagic1 || sudo apt-get install -y libmagic1t64
+      - name: Cache Rembg u2net Model
+        uses: actions/cache@v4
+        with:
+          path: ~/.u2net
+          key: u2net-model-v1
+          restore-keys: |
+            u2net-model-
 
-      - name: Configure ImageMagick
+      - name: Install System Dependencies (ImageMagick)
         run: |
-          sudo sed -i '/pattern="@*"/d' /etc/ImageMagick-6/policy.xml
-          sudo sed -i 's#rights="none" pattern="PDF"#rights="read|write" pattern="PDF"#g' /etc/ImageMagick-6/policy.xml
-          sudo sed -i 's/name="memory" value="256MiB"/name="memory" value="2GiB"/' /etc/ImageMagick-6/policy.xml
-          sudo sed -i 's/name="disk" value="1GiB"/name="disk" value="8GiB"/' /etc/ImageMagick-6/policy.xml
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
+      - name: Modify ImageMagick Security Policy for MoviePy
+        run: |
+          sudo sed -i '/pattern="@\*"/d' /etc/ImageMagick-6/policy.xml
 
       - name: Install Python Dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Run Pipeline
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
         run: python main.py
 
-      - name: Upload Video Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: roblox-short-${{ github.run_number }}
-          path: final_short_v*.mp4
-          retention-days: 5
-
-      - name: Commit and Push
+      - name: Commit and Push Story Memory
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add game_state.json
-          git add story_memory_*.txt || true
-          git add thumbnail.jpg || true
-          git commit -m "Auto: Generated short $(date -u +%Y-%m-%d)" || echo "No changes to commit"
+          git config --global user.name "Story Bot"
+          git config --global user.email "bot@users.noreply.github.com"
+          git add story_memory.txt
+          git commit -m "Auto-update infinite story memory for next episode" || exit 0
           git push
