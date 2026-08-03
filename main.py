@@ -168,8 +168,6 @@ Rules:
 - Scene 5 must end on a cliffhanger
 - Keep story continuity from PREVIOUS
 """
-    # Try gemini-2.5-flash-lite first (highest quota for new users: 15 RPM, 1000/day)
-    # Fallback to gemini-2.5-pro if needed (5 RPM, 100/day)
     for model_name in ["gemini-2.5-flash-lite", "gemini-2.5-pro"]:
         try:
             response = _AGNES_CLIENT.models.generate_content(
@@ -223,7 +221,7 @@ def upload_to_youtube(video_path, title, description, tags, thumbnail_path=None)
                 "title": title[:100],
                 "description": description[:5000],
                 "tags": tags,
-                "categoryId": "20",  # Gaming
+                "categoryId": "20",
             },
             "status": {
                 "privacyStatus": "public",
@@ -249,7 +247,6 @@ def upload_to_youtube(video_path, title, description, tags, thumbnail_path=None)
         print(f" ✅ YouTube upload complete! Video ID: {video_id}")
         print(f"   URL: https://youtube.com/shorts/{video_id}")
 
-        # Upload thumbnail if available
         if thumbnail_path and os.path.exists(thumbnail_path) and video_id:
             try:
                 youtube.thumbnails().set(
@@ -344,7 +341,6 @@ ROBLOX_GAMES = {
             "world record pet damage cliffhanger PSX boss",
         ],
         "starter_context": (
-            "A new collector enters Pet (
             "A new collector enters Pet Simulator X with a basic dog pet. "
             "Rumors of a Titanic Dark Matter cat spread."
         ),
@@ -683,7 +679,7 @@ def fetch_agnes_image(base_query, game_config, out_dir, prefix):
     return out_path
 
 def fetch_scene_visual(scene, idx, game_config, work_dir):
-    """Free-only visual cascade: Gemini → Pollinations → Local."""
+    """Free-only visual cascade: Gemini -> Pollinations -> Local."""
     base_query = scene["query"]
     dur = scene.get("duration", 10)
     prefix = f"scene_{idx + 1}"
