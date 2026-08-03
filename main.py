@@ -1,16 +1,17 @@
 """
-Roblox Auto-Shorts — Multi-Game Edition (v3)
+Roblox Auto-Shorts — Multi-Game Edition (v4)
 ============================================
-What's new in v3:
-  • 8 popular Roblox games — rotates each run so every game gets coverage
-  • Per-game story memory & character bible — each game continues its own saga
-  • Real-life references baked into every episode (current date sent to Groq)
-  • game_state.json tracks rotation index + episode count per game
-  • Together AI FLUX.1-schnell PRIMARY | Pollinations fallback (free)
-  • MoviePy v2.0 syntax throughout
-  • Cinematic UE5 prompts, 10 frames per scene, 6-step crossfade
+What's new in v4:
+  • Engine V: HuggingFace text-to-video (damo-vilab/text-to-video-ms-1.7b)
+              Completely FREE with a free HF_TOKEN.
+              When it succeeds, real AI-generated video is used per scene.
+  • All previous engines kept in cascade:
+      V → text-to-video (HF, free)
+      A → FLUX.1-schnell images (Together AI, optional/paid)
+      B → Pollinations AI images (free, no key needed)
+      L → local asset images (last resort)
 
-Games in rotation (cycles in order, one per daily run):
+Games in rotation (one per daily run, 8-game cycle):
   1. Blox Fruits        5. Doors
   2. Adopt Me!          6. Arsenal
   3. Murder Mystery 2   7. Anime Adventures
@@ -36,23 +37,29 @@ from googleapiclient.http import MediaFileUpload
 # ─────────────────────────────────────────────────────────────────────────────
 # VIDEO CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
-VIDEO_W, VIDEO_H  = 1080, 1920
-FPS               = 24
-CAPTION_Y_FRAC    = 0.82
-CAPTION_FONTSIZE  = 58
-FRAMES_PER_SCENE  = 10
-BLEND_STEPS       = 6
+VIDEO_W, VIDEO_H = 1080, 1920
+FPS              = 24
+CAPTION_Y_FRAC   = 0.82
+CAPTION_FONTSIZE = 58
+FRAMES_PER_SCENE = 10
+BLEND_STEPS      = 6
 
-TOGETHER_API_URL  = "https://api.together.ai/v1/images/generations"
-TOGETHER_MODEL    = "black-forest-labs/FLUX.1-schnell"
-TOGETHER_STEPS    = 4
+# HuggingFace text-to-video (Engine V)
+HF_VIDEO_MODEL   = "damo-vilab/text-to-video-ms-1.7b"
+HF_API_BASE      = "https://api-inference.huggingface.co/models"
 
-POLL_DELAY_OK     = 2
-POLL_DELAY_429    = 20
-POLL_MAX_RETRY    = 3
-POLL_TIMEOUT      = 90
+# Together AI (Engine A)
+TOGETHER_API_URL = "https://api.together.ai/v1/images/generations"
+TOGETHER_MODEL   = "black-forest-labs/FLUX.1-schnell"
+TOGETHER_STEPS   = 4
 
-GAME_STATE_FILE   = "game_state.json"
+# Pollinations (Engine B)
+POLL_DELAY_OK    = 2
+POLL_DELAY_429   = 20
+POLL_MAX_RETRY   = 3
+POLL_TIMEOUT     = 90
+
+GAME_STATE_FILE  = "game_state.json"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ROBLOX GAME CATALOG
@@ -287,33 +294,42 @@ def load_game_state():
         "episode_counts": {g: 0 for g in GAME_ORDER},
     }
 
+
 def save_game_state(state):
     with open(GAME_STATE_FILE, "w") as f:
         json.dump(state, f, indent=4)
 
+
 def advance_game_state(state):
     state["game_index"] = (state["game_index"] + 1) % len(GAME_ORDER)
+
 
 def get_current_game(state):
     return GAME_ORDER[state["game_index"] % len(GAME_ORDER)]
 
+
 def game_memory_file(game_slug):
     return f"story_memory_{game_slug}.txt"
 
+
 def game_bible_file(game_slug):
     return f"character_bible_{game_slug}.json"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # UTILITIES
 # ─────────────────────────────────────────────────────────────────────────────
 def clean_env(val):
-    if not val: return ""
+    if not val:
+        return ""
     val = val.strip()
     if val.startswith("[") and "]" in val:
         val = val.split("]")[0].lstrip("[")
     return val.strip("'\"")
 
+
 def find_font():
+    """Locate an available .ttf font path for MoviePy v2."""
     candidates = [
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -331,6 +347,7 @@ def find_font():
     fonts = [l.strip() for l in result.stdout.splitlines() if l.strip()]
     return fonts[0] if fonts else None
 
+
 def pick_local_assets(count=FRAMES_PER_SCENE):
     pool = [os.path.join(ASSET_DIR, f) for f in ALL_ASSETS
             if os.path.exists(os.path.join(ASSET_DIR, f))]
@@ -340,6 +357,7 @@ def pick_local_assets(count=FRAMES_PER_SCENE):
     while len(pool) < count:
         pool *= 2
     return pool[:count]
+
 
 def load_and_fit(path):
     pil   = Image.open(path).convert("RGB")
@@ -353,8 +371,9 @@ def load_and_fit(path):
     pil   = ImageEnhance.Color(pil).enhance(1.20)
     return np.array(pil)
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# FRAME COMPILER
+# FRAME COMPILER  (image sequence → mp4)
 # ─────────────────────────────────────────────────────────────────────────────
 def compile_frames_to_video(img_paths, duration, out_path):
     if not img_paths:
@@ -401,10 +420,9 @@ def compile_frames_to_video(img_paths, duration, out_path):
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed:\n{res.stderr}")
-
+        raise RuntimeError(f"ffmpeg compile failed:\n{res.stderr}")
     shutil.rmtree(frame_dir)
-    print(f"    ✅ Scene video compiled: {out_path}")
+    print(f"    ✅ Scene compiled: {out_path}")
 
 
 def _write_blank_video(out_path, duration):
@@ -419,6 +437,7 @@ def _write_blank_video(out_path, duration):
         "-t", str(duration), "-r", str(FPS), out_path,
     ], capture_output=True)
     shutil.rmtree(frame_dir)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PROMPT BUILDER
@@ -445,8 +464,109 @@ def build_image_prompt(query, narration, character_bible, frame_stage, game_conf
         "9:16 vertical portrait, no watermarks, no UI overlay"
     )
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# ENGINE A — TOGETHER AI
+# ENGINE V — HUGGINGFACE TEXT-TO-VIDEO  (free with free HF_TOKEN)
+# Model: damo-vilab/text-to-video-ms-1.7b
+# Returns True if a usable mp4 was written to out_path, else False.
+# ─────────────────────────────────────────────────────────────────────────────
+def fetch_hf_video(prompt, duration, out_path, hf_token):
+    url     = f"{HF_API_BASE}/{HF_VIDEO_MODEL}"
+    headers = {
+        "Authorization": f"Bearer {hf_token}",
+        "Content-Type":  "application/json",
+        "x-wait-for-model": "true",
+    }
+    # Truncate prompt — model handles ~100 tokens best
+    short_prompt = prompt[:300]
+
+    print(f"    🎬 [Engine V] HuggingFace text-to-video → {HF_VIDEO_MODEL}")
+    print(f"    📝 Prompt snippet: {short_prompt[:80]}...")
+
+    for attempt in range(1, 4):
+        try:
+            resp = requests.post(
+                url,
+                headers=headers,
+                json={"inputs": short_prompt},
+                timeout=240,
+            )
+
+            if resp.status_code in (503, 500):
+                wait = 40 * attempt
+                print(f"    ⏳ Model loading / server error (attempt {attempt}/3) — sleeping {wait}s...")
+                time.sleep(wait)
+                continue
+
+            if resp.status_code == 429:
+                print(f"    ⏳ Rate limited (attempt {attempt}/3) — sleeping 60s...")
+                time.sleep(60)
+                continue
+
+            if resp.status_code == 200:
+                content_type = resp.headers.get("content-type", "")
+                # Accept video/* or large binary blobs (some HF models omit content-type)
+                if "video" in content_type or len(resp.content) > 50_000:
+                    raw_path = out_path.replace(".mp4", "_hf_raw.mp4")
+                    with open(raw_path, "wb") as f:
+                        f.write(resp.content)
+
+                    # Scale raw video (usually 256x256) up to 1080x1920,
+                    # crop to exact 9:16, then loop to match narration duration.
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-stream_loop", "-1",
+                        "-i", raw_path,
+                        "-vf", (
+                            f"scale=1080:1920:force_original_aspect_ratio=increase,"
+                            f"crop=1080:1920"
+                        ),
+                        "-t", str(duration),
+                        "-r", str(FPS),
+                        "-c:v", "libx264",
+                        "-pix_fmt", "yuv420p",
+                        "-preset", "fast",
+                        "-crf", "22",
+                        out_path,
+                    ]
+                    res = subprocess.run(cmd, capture_output=True, text=True)
+                    try:
+                        os.remove(raw_path)
+                    except OSError:
+                        pass
+
+                    if res.returncode == 0 and os.path.exists(out_path) \
+                            and os.path.getsize(out_path) > 10_000:
+                        print(f"    ✅ Engine V success — AI video generated ({duration:.1f}s)")
+                        return True
+                    else:
+                        print(f"    ⚠️  ffmpeg post-process failed: {res.stderr[:200]}")
+                        return False
+                else:
+                    print(f"    ⚠️  HF returned unexpected content-type: {content_type}")
+                    return False
+
+            # Non-200, non-handled status
+            try:
+                err_msg = resp.json().get("error", resp.text[:200])
+            except Exception:
+                err_msg = resp.text[:200]
+            print(f"    ⚠️  Engine V attempt {attempt} — HTTP {resp.status_code}: {err_msg}")
+            time.sleep(20)
+
+        except requests.exceptions.Timeout:
+            print(f"    ⚠️  Engine V timeout (attempt {attempt}/3) — sleeping 30s...")
+            time.sleep(30)
+        except Exception as e:
+            print(f"    ⚠️  Engine V error (attempt {attempt}/3): {e}")
+            time.sleep(15)
+
+    print("    ❌ Engine V gave up after 3 attempts — falling back to image engines.")
+    return False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ENGINE A — TOGETHER AI FLUX.1-schnell  (optional, paid)
 # ─────────────────────────────────────────────────────────────────────────────
 def fetch_together_frames(base_query, narration, character_bible,
                           count, out_dir, prefix, api_key, game_config):
@@ -517,14 +637,15 @@ def fetch_together_frames(base_query, narration, character_bible,
 
     return paths
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# ENGINE B — POLLINATIONS AI  (free fallback)
+# ENGINE B — POLLINATIONS AI  (free, no key needed)
 # ─────────────────────────────────────────────────────────────────────────────
 def fetch_pollinations_frames(base_query, narration, character_bible,
                               count, out_dir, prefix, game_config):
     scene_seed = random.randint(10_000, 9_999_999)
     neg_enc    = requests.utils.quote(NEGATIVE_PROMPT)
-    print(f"    🌸 [Engine B] Pollinations — {count} frames  |  seed: {scene_seed}")
+    print(f"    🌸 [Engine B] Pollinations AI — {count} frames  |  seed: {scene_seed}")
 
     headers = {
         "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -581,10 +702,12 @@ def fetch_pollinations_frames(base_query, narration, character_bible,
 
     return paths
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# CAPTION  (MoviePy v2)
+# CAPTION  (MoviePy v2 — font must be a file path)
 # ─────────────────────────────────────────────────────────────────────────────
 _FONT_PATH = None
+
 
 def make_caption_clip(text, duration):
     global _FONT_PATH
@@ -606,8 +729,9 @@ def make_caption_clip(text, duration):
         print(f"    ⚠️  Caption failed: {e}")
         return None
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# SCENE VISUAL — engine cascade
+# SCENE VISUAL — full engine cascade  V → A → B → local
 # ─────────────────────────────────────────────────────────────────────────────
 def fetch_scene_visual(scene, scene_idx, character_bible, work_dir, game_config):
     query     = scene["query"]
@@ -615,11 +739,29 @@ def fetch_scene_visual(scene, scene_idx, character_bible, work_dir, game_config)
     dur       = scene.get("duration", 10)
     out_path  = os.path.join(work_dir, f"scene_{scene_idx}_visual.mp4")
 
+    hf_token     = clean_env(os.getenv("HF_TOKEN"))
     together_key = clean_env(os.getenv("TOGETHER_API_KEY"))
-    paths = []
 
+    # ── Engine V: HuggingFace text-to-video ──────────────────────────────────
+    if hf_token:
+        print(f"\n    ▶ Engine V: HuggingFace text-to-video...")
+        # Build a short natural-language video prompt from the query + game style
+        video_prompt = (
+            f"Roblox Shorts cinematic scene: {query}. "
+            f"{game_config['image_style']}. "
+            "Blocky avatar characters, vivid neon colors, dramatic action, "
+            "vertical 9:16 frame, no text overlays."
+        )
+        if fetch_hf_video(video_prompt, dur, out_path, hf_token):
+            return VideoFileClip(out_path)
+        print("    ↩  Engine V failed — trying Engine A/B...")
+    else:
+        print("    ℹ️  HF_TOKEN not set — skipping Engine V (text-to-video).")
+
+    # ── Engine A: Together AI images ─────────────────────────────────────────
+    paths = []
     if together_key:
-        print(f"\n    ▶ Engine A: Together AI — {FRAMES_PER_SCENE} frames for {dur:.1f}s scene...")
+        print(f"\n    ▶ Engine A: Together AI — {FRAMES_PER_SCENE} frames for {dur:.1f}s...")
         paths = fetch_together_frames(
             query, narration, character_bible,
             FRAMES_PER_SCENE, work_dir, f"s{scene_idx}",
@@ -628,25 +770,29 @@ def fetch_scene_visual(scene, scene_idx, character_bible, work_dir, game_config)
     else:
         print("    ℹ️  TOGETHER_API_KEY not set — skipping Engine A.")
 
+    # ── Engine B: Pollinations images ────────────────────────────────────────
     if not paths:
-        print(f"\n    ▶ Engine B: Pollinations fallback — {FRAMES_PER_SCENE} frames...")
+        print(f"\n    ▶ Engine B: Pollinations AI — {FRAMES_PER_SCENE} frames...")
         paths = fetch_pollinations_frames(
             query, narration, character_bible,
             FRAMES_PER_SCENE, work_dir, f"s{scene_idx}", game_config,
         )
 
+    # ── Local assets: last resort ────────────────────────────────────────────
     if not paths:
-        print("    📁 All engines failed — using local assets.")
+        print("    📁 All image engines failed — using local assets.")
         paths = pick_local_assets(count=FRAMES_PER_SCENE)
 
     compile_frames_to_video(paths, dur, out_path)
     return VideoFileClip(out_path)
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. GROQ STORYBOARD
 # ─────────────────────────────────────────────────────────────────────────────
 def generate_storyboard(game_slug, game_config, episode_number):
-    print(f"─── [1/5] Groq Story Director ({game_config['display_name']} — Episode {episode_number}) ───")
+    print(f"─── [1/5] Groq Story Director "
+          f"({game_config['display_name']} — Episode {episode_number}) ───")
 
     api_key = clean_env(os.getenv("GROQ_API_KEY"))
     if not api_key:
@@ -662,10 +808,12 @@ def generate_storyboard(game_slug, game_config, episode_number):
 
     if os.path.exists(mem_file):
         c = open(mem_file).read().strip()
-        if c: previous_context = c
+        if c:
+            previous_context = c
     if os.path.exists(bible_file):
         b = open(bible_file).read().strip()
-        if b: character_context = b
+        if b:
+            character_context = b
 
     today = datetime.utcnow().strftime("%B %d, %Y")
     ex    = game_config["scene_examples"]
@@ -746,7 +894,8 @@ Output ONLY valid JSON, no markdown fences:
         parts = raw.split("```")
         if len(parts) >= 3:
             raw = parts[1]
-            if raw.startswith("json"): raw = raw[4:]
+            if raw.startswith("json"):
+                raw = raw[4:]
             raw = raw.strip()
 
     if not raw.endswith("}"):
@@ -763,11 +912,13 @@ Output ONLY valid JSON, no markdown fences:
     print(f"📌 {len(data['scenes'])} scenes.\n")
     return data
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. VOICEOVER
 # ─────────────────────────────────────────────────────────────────────────────
 async def generate_voiceover(text, out_file):
     await edge_tts.Communicate(text, "en-US-ChristopherNeural", rate="+10%").save(out_file)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. ASSEMBLY  (MoviePy v2 syntax)
@@ -778,14 +929,18 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
     work_dir = "motion_templates"
     os.makedirs(work_dir, exist_ok=True)
     for f in glob.glob(os.path.join(work_dir, "*")):
-        try: os.remove(f)
-        except: pass
+        try:
+            os.remove(f)
+        except OSError:
+            pass
 
     character_bible = {}
     bible_file = game_bible_file(game_slug)
     if os.path.exists(bible_file):
-        try: character_bible = json.load(open(bible_file))
-        except: pass
+        try:
+            character_bible = json.load(open(bible_file))
+        except Exception:
+            pass
 
     video_segments, audio_segments = [], []
 
@@ -847,6 +1002,7 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
     )
     print("✅ Render complete.\n")
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. YOUTUBE UPLOAD
 # ─────────────────────────────────────────────────────────────────────────────
@@ -870,7 +1026,9 @@ def upload_to_youtube(storyboard_data, game_config, episode_number):
     title = storyboard_data.get("title", f"{game_config['display_name']} EP{episode_number}")
     hook  = storyboard_data["scenes"][0]["narration"]
     ref   = storyboard_data.get("real_life_reference", "")
-    tags  = list(dict.fromkeys(game_config["hashtags"] + ["#Roblox", "#Shorts", "#Gaming"]))
+    tags  = list(dict.fromkeys(
+        game_config["hashtags"] + ["#Roblox", "#Shorts", "#Gaming"]
+    ))
 
     body = {
         "snippet": {
@@ -892,24 +1050,29 @@ def upload_to_youtube(storyboard_data, game_config, episode_number):
     response = None
     while response is None:
         status, response = req.next_chunk()
-        if status: print(f"    ⏳ {int(status.progress()*100)}%")
+        if status:
+            print(f"    ⏳ {int(status.progress() * 100)}%")
 
     print(f"🎉 Uploaded! https://youtube.com/shorts/{response.get('id')}")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
-    print("="*62)
-    print("  Roblox Auto-Shorts — Multi-Game Edition v3")
-    print("  8 Games · Per-game Memory · Real-life References")
-    print("="*62 + "\n")
+    print("=" * 62)
+    print("  Roblox Auto-Shorts — Multi-Game Edition v4")
+    print("  8 Games · Per-game Memory · Text-to-Video Engine")
+    print("=" * 62 + "\n")
 
+    hf_token     = clean_env(os.getenv("HF_TOKEN"))
     together_key = clean_env(os.getenv("TOGETHER_API_KEY"))
-    if together_key:
-        print("🔑 TOGETHER_API_KEY found — Engine A (Together AI) active.\n")
-    else:
-        print("ℹ️  No TOGETHER_API_KEY — using Engine B (Pollinations, free) only.\n")
+
+    print("─── Engine Status ───────────────────────────────────────")
+    print(f"  Engine V (HF text-to-video): {'✅ active' if hf_token else '⬜ skipped (no HF_TOKEN)'}")
+    print(f"  Engine A (Together AI):      {'✅ active' if together_key else '⬜ skipped (no TOGETHER_API_KEY)'}")
+    print(f"  Engine B (Pollinations):     ✅ always active (free)")
+    print("─────────────────────────────────────────────────────────\n")
 
     state       = load_game_state()
     game_slug   = get_current_game(state)
@@ -924,7 +1087,7 @@ def main():
 
     print(f"🎮 Game this run:  {game_config['display_name']}")
     print(f"📺 Episode number: {episode_number}")
-    print(f"🔄 Next run will play: {next_game}\n")
+    print(f"🔄 Next run:       {next_game}\n")
 
     advance_game_state(state)
 
