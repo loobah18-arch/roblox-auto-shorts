@@ -758,7 +758,6 @@ def fetch_scene_visual(scene, idx, game_config, work_dir):
 async def generate_voiceover(text, out_file):
     comm = edge_tts.Communicate(text, voice="en-US-BrianNeural", rate="+15%")
     timings = []
-    submaker = edge_tts.SubMaker()
     with open(out_file, "wb") as f:
         async for chunk in comm.stream():
             if chunk["type"] == "audio":
@@ -864,7 +863,7 @@ def make_caption_clips(timings, duration):
         print(" ⚠️ No font found or no timings — captions skipped")
         return []
 
-    # Group words into chunks of up to 3 words
+    # Group words into chunks
     chunks = []
     current_chunk = []
     for i, t in enumerate(timings):
@@ -872,8 +871,15 @@ def make_caption_clips(timings, duration):
         if len(current_chunk) >= 2 or i == len(timings) - 1:
             start = current_chunk[0]["start"]
             end = current_chunk[-1]["end"]
-            # Add a little padding to the end of the last word
-            end = min(end + 0.1, duration)
+            
+            # Prevent overlap by clamping to the next word's start
+            if i < len(timings) - 1:
+                next_start = timings[i+1]["start"]
+                # Give a tiny pause between subtitles if possible, but don't overlap
+                end = min(end + 0.05, next_start - 0.01)
+            else:
+                end = min(end + 0.2, duration)
+
             text = " ".join([w["word"] for w in current_chunk])
             chunks.append({"text": text, "start": start, "end": end})
             current_chunk = []
@@ -894,10 +900,11 @@ def make_caption_clips(timings, duration):
                 method="caption",
                 text_align="center",
             )
+            dur = max(0.1, chunk["end"] - chunk["start"])
             clips.append(
                 txt
                 .with_start(chunk["start"])
-                .with_duration(chunk["end"] - chunk["start"])
+                .with_duration(dur)
                 .with_position(("center", int(VIDEO_H * CAPTION_Y_FRAC)))
             )
         except Exception as e:
@@ -971,7 +978,8 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
         temp_audio_files.append(audio_file)
 
         print(" 🔊 Generating voiceover...")
-        asyncio.run(generate_voiceover(narration, audio_file))
+        timings = asyncio.run(generate_voiceover(narration, audio_file))
+
         scene_audio = AudioFileClip(audio_file)
         actual_dur = scene_audio.duration
         scene["duration"] = actual_dur
@@ -982,7 +990,44 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
         visual = fetch_scene_visual(scene, idx, game_config, work_dir)
         visual = visual.with_duration(actual_dur)
 
-        caption_clips = make_caption_clips(narration, actual_dur)
+        # Check for split screen gameplay loop
+        gameplay_path = os.path.join("assets", "gameplay.mp4")
+        if os.path.exists(gameplay_path):
+            try:
+                # Top 60% is visual, bottom 40% is gameplay
+                gameplay = VideoFileClip(gameplay_path)
+                # Pick a random start time if the loop is longer than our scene
+                if gameplay.duration > actual_dur:
+                    start_time = random.uniform(0, gameplay.duration - actual_dur)
+                    gameplay = gameplay.subclipped(start_time, start_time + actual_dur)
+                else:
+                    gameplay = gameplay.with_duration(actual_dur)
+                
+                visual = visual.resized(height=int(VIDEO_H * 0.6))
+                
+                # Resize gameplay safely for 16:9 inputs (e.g. Minecraft/GTA)
+                target_h = int(VIDEO_H * 0.4)
+                
+                # Calculate aspect ratios to resize appropriately without black bars
+                gameplay_ratio = gameplay.size[0] / gameplay.size[1]
+                target_ratio = VIDEO_W / target_h
+                
+                if gameplay_ratio > target_ratio:
+                    # Gameplay is wider than target area (e.g. 16:9)
+                    gameplay = gameplay.resized(height=target_h)
+                    gameplay = gameplay.cropped(width=VIDEO_W, x_center=gameplay.size[0]/2)
+                else:
+                    # Gameplay is narrower than target area (e.g. 9:16)
+                    gameplay = gameplay.resized(width=VIDEO_W)
+                    gameplay = gameplay.cropped(height=target_h, y_center=gameplay.size[1]/2)
+                    
+                visual = visual.with_position(("center", "top"))
+                gameplay = gameplay.with_position(("center", "bottom"))
+                visual = CompositeVideoClip([visual, gameplay], size=(VIDEO_W, VIDEO_H)).with_duration(actual_dur)
+            except Exception as e:
+                print(f" ⚠️ Gameplay split-screen failed: {e}")
+
+        caption_clips = make_caption_clips(timings, actual_dur)
 
         layers = [visual] + caption_clips
         scene_clip = (
