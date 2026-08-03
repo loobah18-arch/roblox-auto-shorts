@@ -1,12 +1,12 @@
 {
-    "game_index": 5,
+    "game_index": 6,
     "episode_counts": {
         "blox_fruits": 1,
         "adopt_me": 1,
         "murder_mystery_2": 1,
         "pet_simulator_x": 1,
         "doors": 1,
-        "arsenal": 0,
+        "arsenal": 1,
         "anime_adventures": 0,
         "brookhaven": 0
     }
