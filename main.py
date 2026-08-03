@@ -1,14 +1,15 @@
 """
-Roblox Auto-Shorts — Agnes 2.0 Edition (v7.3)
-Powered by Agnes AI (Gemini Free Tier)
-===============================================
+Roblox Auto-Shorts — Agnes 2.0 Edition (v7.4)
+Powered by Agnes AI (Gemini Free Tier) + Auto YouTube Upload
+================================================================
 NO PAID APIs REQUIRED. Works entirely on free services:
  • Gemini Free Tier (image + story generation)
  • Pollinations AI (free images, no key)
  • Edge-TTS (free voiceover)
  • Local assets (your own images)
+ • YouTube Data API v3 (auto-upload via OAuth refresh token)
 
-Paid engines (HF, Together) are disabled by default.
+Paid engines (HF, Together, FAL, Groq, Pexels) are disabled by default.
 """
 
 import os, time, random, json, math, requests, asyncio, edge_tts
@@ -38,6 +39,17 @@ try:
 except ImportError:
     GEMINI_AVAILABLE = False
     print("⚠️ google-genai not installed. Run: pip install google-genai")
+
+# YouTube upload imports
+try:
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
+    YOUTUBE_AVAILABLE = True
+except ImportError:
+    YOUTUBE_AVAILABLE = False
+    print("⚠️ YouTube upload libs not installed.")
 
 # ─── VIDEO CONFIG ───────────────────────────────────────────────────────────
 VIDEO_W, VIDEO_H = 1080, 1920
@@ -71,7 +83,6 @@ def init_agnes():
         return False
     if GEMINI_AVAILABLE:
         try:
-            # New SDK: auto-picks up GEMINI_API_KEY from environment
             _AGNES_CLIENT = genai.Client()
             return True
         except Exception as e:
@@ -79,27 +90,40 @@ def init_agnes():
             return False
     return False
 
+def _extract_image_bytes(response):
+    """Safely extract image bytes from Gemini response."""
+    if hasattr(response, 'parts') and response.parts:
+        for part in response.parts:
+            if hasattr(part, 'inline_data') and part.inline_data:
+                return part.inline_data.data
+    if hasattr(response, 'candidates') and response.candidates:
+        for candidate in response.candidates:
+            if hasattr(candidate, 'content') and candidate.content:
+                if hasattr(candidate.content, 'parts') and candidate.content.parts:
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'inline_data') and part.inline_data:
+                            return part.inline_data.data
+    return None
+
 def agnes_generate_image(prompt: str) -> bytes:
-    """Generate image using Gemini Imagen via new google-genai SDK."""
+    """Generate image using Gemini 2.5 Flash Image (free tier for new users)."""
     if not init_agnes():
         return None
     try:
         response = _AGNES_CLIENT.models.generate_content(
-            model="gemini-2.0-flash-exp-image-generation",
+            model="gemini-2.5-flash-image",
             contents=prompt,
             config=types.GenerateContentConfig(
-                response_modalities=["image", "text"]
+                response_modalities=["TEXT", "IMAGE"]
             )
         )
-        for part in response.parts:
-            if part.inline_data:
-                return part.inline_data.data
+        return _extract_image_bytes(response)
     except Exception as e:
         print(f" ⚠️ Agnes 2.0 image error: {e}")
     return None
 
 def agnes_generate_story(game_config, episode_number, previous_context, character_bible):
-    """Generate story using Gemini 2.0 Flash free tier via new SDK."""
+    """Generate story using Gemini 2.5 Flash Lite (free tier for new users)."""
     if not init_agnes():
         return None
 
@@ -144,20 +168,102 @@ Rules:
 - Scene 5 must end on a cliffhanger
 - Keep story continuity from PREVIOUS
 """
-    try:
-        response = _AGNES_CLIENT.models.generate_content(
-            model="gemini-2.0-flash",  # ← FIXED: was gemini-2.5-flash (404 error)
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.7,
-                max_output_tokens=8192,
+    # Try gemini-2.5-flash-lite first (highest quota for new users: 15 RPM, 1000/day)
+    # Fallback to gemini-2.5-pro if needed (5 RPM, 100/day)
+    for model_name in ["gemini-2.5-flash-lite", "gemini-2.5-pro"]:
+        try:
+            response = _AGNES_CLIENT.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.7,
+                    max_output_tokens=8192,
+                )
             )
+            raw = response.text.strip()
+            result = safe_json_loads(raw)
+            if result and "scenes" in result:
+                print(f" ✅ Agnes 2.0 story ({model_name}): {result.get('title', '?')}")
+                return result
+        except Exception as e:
+            print(f" ⚠️ Gemini story error with {model_name}: {e}")
+    return None
+
+# ─── YOUTUBE UPLOAD ──────────────────────────────────────────────────────────
+def upload_to_youtube(video_path, title, description, tags, thumbnail_path=None):
+    """Upload video to YouTube using OAuth2 refresh token (headless/GitHub Actions)."""
+    if not YOUTUBE_AVAILABLE:
+        print(" ⚠️ YouTube upload skipped (libs not installed)")
+        return None
+
+    client_id = os.getenv("CLIENT_ID", "").strip()
+    client_secret = os.getenv("CLIENT_SECRET", "").strip()
+    refresh_token = os.getenv("REFRESH_TOKEN", "").strip()
+
+    if not client_id or not client_secret or not refresh_token:
+        print(" ⚠️ YouTube upload skipped (missing CLIENT_ID, CLIENT_SECRET, or REFRESH_TOKEN)")
+        return None
+
+    try:
+        creds = Credentials(
+            token=None,
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=["https://www.googleapis.com/auth/youtube.upload"]
         )
-        raw = response.text.strip()
-        return safe_json_loads(raw)
+        creds.refresh(Request())
+
+        youtube = build("youtube", "v3", credentials=creds)
+
+        body = {
+            "snippet": {
+                "title": title[:100],
+                "description": description[:5000],
+                "tags": tags,
+                "categoryId": "20",  # Gaming
+            },
+            "status": {
+                "privacyStatus": "public",
+                "selfDeclaredMadeForKids": False,
+            }
+        }
+
+        media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
+        request = youtube.videos().insert(
+            part=",".join(body.keys()),
+            body=body,
+            media_body=media
+        )
+
+        print(" 📤 Uploading to YouTube...")
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                print(f"   Upload progress: {int(status.progress() * 100)}%")
+
+        video_id = response.get("id")
+        print(f" ✅ YouTube upload complete! Video ID: {video_id}")
+        print(f"   URL: https://youtube.com/shorts/{video_id}")
+
+        # Upload thumbnail if available
+        if thumbnail_path and os.path.exists(thumbnail_path) and video_id:
+            try:
+                youtube.thumbnails().set(
+                    videoId=video_id,
+                    media_body=MediaFileUpload(thumbnail_path)
+                ).execute()
+                print(" ✅ Thumbnail uploaded")
+            except Exception as e:
+                print(f" ⚠️ Thumbnail upload failed: {e}")
+
+        return video_id
+
     except Exception as e:
-        print(f" ⚠️ Gemini story error: {e}")
+        print(f" ❌ YouTube upload failed: {e}")
         return None
 
 # ─── ROBLOX GAME CATALOG ────────────────────────────────────────────────────
@@ -238,6 +344,7 @@ ROBLOX_GAMES = {
             "world record pet damage cliffhanger PSX boss",
         ],
         "starter_context": (
+            "A new collector enters Pet (
             "A new collector enters Pet Simulator X with a basic dog pet. "
             "Rumors of a Titanic Dark Matter cat spread."
         ),
@@ -559,7 +666,7 @@ def fetch_pollinations_image(base_query, game_config, out_dir, prefix):
     return None
 
 def fetch_agnes_image(base_query, game_config, out_dir, prefix):
-    """Free image generation via Gemini Imagen 3."""
+    """Free image generation via Gemini 2.5 Flash Image."""
     print(" 🎨 Agnes 2.0 Imagen Engine...")
     style = game_config["image_style"]
     prompt = f"High quality digital art: {style}, {base_query}. Cinematic lighting, vibrant colors, 9:16 vertical format, game screenshot style."
@@ -665,7 +772,6 @@ def generate_storyboard(game_slug, game_config, episode_number):
             print(" 🤖 Agnes 2.0 Story Director (free tier) for story...")
             result = agnes_generate_story(game_config, episode_number, previous_context, character_bible)
             if result and "scenes" in result:
-                print(f" ✅ Agnes 2.0 story: {result.get('title', '?')}")
                 return result
         except Exception as e:
             print(f" ⚠️ Agnes 2.0 story failed: {e}")
@@ -880,7 +986,7 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
     print(f" ✅ Done: {output_file}")
 
     # Thumbnail
-    generate_thumbnail(output_file, storyboard_data)
+    thumbnail_path = generate_thumbnail(output_file, storyboard_data)
 
     # Update memory
     mem_file = game_memory_file(game_slug)
@@ -904,24 +1010,26 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
             pass
     print(" 🧹 Cleaned up temp files")
 
-    return output_file
+    return output_file, thumbnail_path
 
 # ─── MAIN ───────────────────────────────────────────────────────────────────
 def main():
     print("=" * 60)
-    print(" Roblox Auto-Shorts — Agnes 2.0 Edition v7.3")
-    print(" Powered by Agnes AI (Gemini Free Tier)")
+    print(" Roblox Auto-Shorts — Agnes 2.0 Edition v7.4")
+    print(" Powered by Agnes AI (Gemini Free Tier) + Auto YouTube")
     print("=" * 60)
 
     # Check what's available
     has_gemini = init_agnes()
     has_assets = os.path.exists(ASSET_DIR) and any(os.path.exists(os.path.join(ASSET_DIR, f)) for f in ALL_ASSETS)
     has_bgm = os.path.exists("bgm") and any(f.endswith(".mp3") for f in os.listdir("bgm") if os.path.exists("bgm"))
+    has_youtube = YOUTUBE_AVAILABLE and os.getenv("CLIENT_ID", "").strip() and os.getenv("REFRESH_TOKEN", "").strip()
 
     print(f"\n 💎 Agnes 2.0 AI Engine (Gemini Free Tier): {'YES' if has_gemini else 'NO — set GEMINI_API_KEY'}")
     print(f" 🖼 Local assets: {'YES' if has_assets else 'NO — add images to assets/ folder'}")
     print(f" 🎵 Background music: {'YES' if has_bgm else 'NO — add MP3s to bgm/ folder'}")
     print(f" 🌸 Pollinations (free images): ALWAYS AVAILABLE")
+    print(f" 📤 YouTube auto-upload: {'YES' if has_youtube else 'NO — set CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN'}")
     print()
 
     if not has_gemini and not has_assets:
@@ -946,13 +1054,31 @@ def main():
     print(f"📰 Reference: {storyboard.get('real_life_reference', '?')}")
     print(f"📌 {len(storyboard['scenes'])} scenes\n")
 
-    output_file = assemble_storyboard(storyboard, game_slug, game_config)
+    output_file, thumbnail_path = assemble_storyboard(storyboard, game_slug, game_config)
+
+    # YouTube upload
+    if has_youtube:
+        print("\n─── [5/4] YouTube Upload ───")
+        title = storyboard.get("title", f"Roblox {game_config['display_name']} Short")
+        description = (
+            f"{storyboard.get('real_life_reference', 'Roblox gameplay short!')}\n\n"
+            f"{' '.join(game_config['hashtags'])}\n\n"
+            f"Generated by Agnes 2.0 AI Engine"
+        )
+        upload_to_youtube(
+            video_path=output_file,
+            title=title,
+            description=description,
+            tags=game_config["hashtags"],
+            thumbnail_path=thumbnail_path,
+        )
 
     advance_game_state(state)
     save_game_state(state)
 
     print(f"\n🏁 Complete! Video: {output_file}")
-    print("📤 Upload manually to YouTube, or set YouTube OAuth credentials for auto-upload.")
+    if not has_youtube:
+        print("📤 Upload manually to YouTube, or set CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN for auto-upload.")
 
 if __name__ == "__main__":
     main()
