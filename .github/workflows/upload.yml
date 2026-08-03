@@ -48,6 +48,13 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python main.py
 
+      - name: Upload Video Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: roblox-short-${{ github.run_number }}
+          path: final_short_v*.mp4
+          retention-days: 5
+
       - name: Commit and Push
         run: |
           git config user.name "github-actions[bot]"
