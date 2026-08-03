@@ -11,7 +11,7 @@ Changes in v6:
               reliable, and looks more cinematic.
   • Captions: word-group style — 4 words at a time, 78px bold white text with
               5px black stroke, timed across the voiceover duration.
-  • Bug fix:  bg.multiply_volume(0.10) → bg.with_multiply_volume(0.10)
+  • Bug fix:  bg.multiply_volume(0.10) → bg.with_effects([afx.MultiplyVolume(factor=0.10)])
               (MoviePy 2.x renamed this method — caused the crash at line 1175)
 """
 
@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
 import numpy as np
 
+import moviepy.audio.fx as afx
 from moviepy import (
     CompositeVideoClip, AudioFileClip, CompositeAudioClip,
     TextClip, concatenate_videoclips, concatenate_audioclips,
@@ -1034,7 +1035,7 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
         # Old code: bg.multiply_volume(0.10)  ← AttributeError crash
         final_audio = CompositeAudioClip([
             combined_voice,
-            bg.with_multiply_volume(0.10),
+            bg.with_effects([afx.MultiplyVolume(factor=0.10)]),
         ])
     else:
         final_audio = combined_voice
