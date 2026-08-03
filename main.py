@@ -1,12 +1,12 @@
 """
-Roblox Auto-Shorts — Agnes 2.0 Edition (v7.2)
+Roblox Auto-Shorts — Agnes 2.0 Edition (v7.3)
 Powered by Agnes AI (Gemini Free Tier)
 ===============================================
 NO PAID APIs REQUIRED. Works entirely on free services:
-  • Gemini Free Tier (image + story generation)
-  • Pollinations AI (free images, no key)
-  • Edge-TTS (free voiceover)
-  • Local assets (your own images)
+ • Gemini Free Tier (image + story generation)
+ • Pollinations AI (free images, no key)
+ • Edge-TTS (free voiceover)
+ • Local assets (your own images)
 
 Paid engines (HF, Together) are disabled by default.
 """
@@ -30,13 +30,14 @@ from PIL import Image, ImageEnhance, ImageDraw, ImageFont
 # ─── FREE MODE CONFIG ───────────────────────────────────────────────────────
 FREE_MODE = True  # Set False only if you have paid API keys
 
-# Try to import Gemini, but don't crash if not installed
+# Try to import Gemini new SDK, but don't crash if not installed
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
-    print("⚠️ google-generativeai not installed. Run: pip install google-generativeai")
+    print("⚠️ google-genai not installed. Run: pip install google-genai")
 
 # ─── VIDEO CONFIG ───────────────────────────────────────────────────────────
 VIDEO_W, VIDEO_H = 1080, 1920
@@ -58,38 +59,47 @@ POLL_TIMEOUT = 90
 GAME_STATE_FILE = "game_state.json"
 
 # ─── GEMINI FREE TIER SETUP ─────────────────────────────────────────────────
+_AGNES_CLIENT = None
+
 def init_agnes():
-    """Initialize Agnes 2.0 AI Engine."""
-    """Initialize Gemini free tier. Google gives generous free credits."""
+    """Initialize Agnes 2.0 AI Engine using new google-genai SDK."""
+    global _AGNES_CLIENT
+    if _AGNES_CLIENT is not None:
+        return True
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not gemini_key or gemini_key.startswith("["):
         return False
     if GEMINI_AVAILABLE:
-        genai.configure(api_key=gemini_key)
-        return True
+        try:
+            # New SDK: auto-picks up GEMINI_API_KEY from environment
+            _AGNES_CLIENT = genai.Client()
+            return True
+        except Exception as e:
+            print(f"⚠️ Gemini client init failed: {e}")
+            return False
     return False
 
 def agnes_generate_image(prompt: str) -> bytes:
-    """Generate image using Gemini Imagen 3 free tier."""
+    """Generate image using Gemini Imagen via new google-genai SDK."""
     if not init_agnes():
         return None
     try:
-        model = genai.GenerativeModel("gemini-2.0-flash-exp-image-generation")
-        response = model.generate_content(
-            prompt,
-            generation_config={"response_modalities": ["image", "text"]}
+        response = _AGNES_CLIENT.models.generate_content(
+            model="gemini-2.0-flash-exp-image-generation",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["image", "text"]
+            )
         )
         for part in response.parts:
-            if hasattr(part, 'inline_data') and part.inline_data:
+            if part.inline_data:
                 return part.inline_data.data
-            if hasattr(part, 'blob') and part.blob:
-                return part.blob.data
     except Exception as e:
-        print(f"   ⚠️ Agnes 2.0 image error: {e}")
+        print(f" ⚠️ Agnes 2.0 image error: {e}")
     return None
 
 def agnes_generate_story(game_config, episode_number, previous_context, character_bible):
-    """Generate story using Gemini 2.5 Flash free tier."""
+    """Generate story using Gemini 2.0 Flash free tier via new SDK."""
     if not init_agnes():
         return None
 
@@ -101,15 +111,18 @@ def agnes_generate_story(game_config, episode_number, previous_context, characte
     if character_bible:
         char_desc = json.dumps(character_bible, indent=2)
 
-    prompt = f"""You are a viral TikTok/YouTube Shorts writer for Roblox {game_config['display_name']}.
-Today's date is {today}.
+    system_instruction = (
+        f"You are a viral TikTok/YouTube Shorts writer for Roblox {game_config['display_name']}. "
+        f"Today's date is {today}. Write exactly 5 scenes. Scene 5 must end on a cliffhanger. "
+        f"Output ONLY valid JSON — no markdown, no explanations."
+    )
 
-GAME: {game_config['display_name']} ({genre})
+    prompt = f"""GAME: {game_config['display_name']} ({genre})
 EPISODE: {episode_number}
 PREVIOUS: {previous_context}
 CHARACTERS: {char_desc}
 
-Write a 5-scene storyboard. Output ONLY valid JSON — no markdown, no explanations.
+Write a 5-scene storyboard.
 
 Format:
 {{
@@ -132,13 +145,20 @@ Rules:
 - Keep story continuity from PREVIOUS
 """
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        response = model.generate_content(prompt)
+        response = _AGNES_CLIENT.models.generate_content(
+            model="gemini-2.0-flash",  # ← FIXED: was gemini-2.5-flash (404 error)
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.7,
+                max_output_tokens=8192,
+            )
+        )
         raw = response.text.strip()
         return safe_json_loads(raw)
     except Exception as e:
-        print(f"   ⚠️ Gemini story error: {e}")
-    return None
+        print(f" ⚠️ Gemini story error: {e}")
+        return None
 
 # ─── ROBLOX GAME CATALOG ────────────────────────────────────────────────────
 ROBLOX_GAMES = {
@@ -391,9 +411,9 @@ def safe_json_loads(raw_text, default=None):
         parts = text.split("```")
         if len(parts) >= 3:
             text = parts[1]
-    if text.startswith("json"):
-        text = text[4:]
-    text = text.strip()
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
     try:
         return json.loads(text)
     except json.JSONDecodeError:
@@ -469,7 +489,7 @@ def compile_ken_burns_video(img_path, duration, out_path, zoom="in", pan="center
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Ken Burns ffmpeg failed:\n{result.stderr[:400]}")
-    print(f"   ✅ Ken Burns done: {out_path}")
+    print(f" ✅ Ken Burns done: {out_path}")
 
 def _write_blank_video(out_path, duration):
     cmd = [
@@ -507,12 +527,12 @@ def fetch_pollinations_image(base_query, game_config, out_dir, prefix):
 
     for attempt in range(1, POLL_MAX_RETRY + 1):
         try:
-            print(f"   🌸 Pollinations attempt {attempt}/{POLL_MAX_RETRY}...")
+            print(f" 🌸 Pollinations attempt {attempt}/{POLL_MAX_RETRY}...")
             resp = requests.get(url, headers=headers, timeout=POLL_TIMEOUT, stream=True)
 
             if resp.status_code == 429:
                 wait = POLL_DELAY_429 * attempt
-                print(f"   ⏳ Rate limited — waiting {wait}s...")
+                print(f" ⏳ Rate limited — waiting {wait}s...")
                 time.sleep(wait)
                 continue
 
@@ -522,25 +542,25 @@ def fetch_pollinations_image(base_query, game_config, out_dir, prefix):
                         f.write(chunk)
                 size_kb = os.path.getsize(out_path) // 1024
                 if size_kb > 5:
-                    print(f"   ✅ Pollinations: {size_kb} KB")
+                    print(f" ✅ Pollinations: {size_kb} KB")
                     time.sleep(POLL_DELAY_OK)
                     return out_path
-                print(f"   ⚠️ Tiny response ({size_kb} KB) — retrying...")
+                print(f" ⚠️ Tiny response ({size_kb} KB) — retrying...")
 
             time.sleep(8)
         except requests.exceptions.Timeout:
-            print(f"   ⏳ Timeout — waiting 30s...")
+            print(f" ⏳ Timeout — waiting 30s...")
             time.sleep(30)
         except Exception as e:
-            print(f"   ⚠️ Error: {e}")
+            print(f" ⚠️ Error: {e}")
             time.sleep(5)
 
-    print("   ❌ Pollinations failed")
+    print(" ❌ Pollinations failed")
     return None
 
 def fetch_agnes_image(base_query, game_config, out_dir, prefix):
     """Free image generation via Gemini Imagen 3."""
-    print("   🎨 Agnes 2.0 Imagen Engine...")
+    print(" 🎨 Agnes 2.0 Imagen Engine...")
     style = game_config["image_style"]
     prompt = f"High quality digital art: {style}, {base_query}. Cinematic lighting, vibrant colors, 9:16 vertical format, game screenshot style."
 
@@ -552,7 +572,7 @@ def fetch_agnes_image(base_query, game_config, out_dir, prefix):
     with open(out_path, "wb") as f:
         f.write(img_bytes)
     size_kb = os.path.getsize(out_path) // 1024
-    print(f"   ✅ Agnes 2.0: {size_kb} KB")
+    print(f" ✅ Agnes 2.0: {size_kb} KB")
     return out_path
 
 def fetch_scene_visual(scene, idx, game_config, work_dir):
@@ -571,10 +591,12 @@ def fetch_scene_visual(scene, idx, game_config, work_dir):
                 compile_ken_burns_video(img_path, dur, out_path, **kb)
                 return VideoFileClip(out_path)
             except Exception as e:
-                print(f"   ⚠️ Ken Burns failed on Gemini image: {e}")
-        print("   ↩ Gemini failed — trying Pollinations...")
+                print(f" ⚠️ Ken Burns failed on Gemini image: {e}")
+                print(" ↩ Gemini failed — trying Pollinations...")
+        else:
+            print(" ⏭️ Agnes 2.0 image not available")
     else:
-        print("   ⏭️ Agnes 2.0 not available (no API key)")
+        print(" ⏭️ Agnes 2.0 not available (no API key)")
 
     # Engine 2: Pollinations (always free)
     img_path = fetch_pollinations_image(base_query, game_config, work_dir, prefix)
@@ -583,8 +605,8 @@ def fetch_scene_visual(scene, idx, game_config, work_dir):
             compile_ken_burns_video(img_path, dur, out_path, **kb)
             return VideoFileClip(out_path)
         except Exception as e:
-            print(f"   ⚠️ Ken Burns failed on Pollinations: {e}")
-    print("   ↩ Pollinations failed — using local assets...")
+            print(f" ⚠️ Ken Burns failed on Pollinations: {e}")
+            print(" ↩ Pollinations failed — using local assets...")
 
     # Engine 3: Local assets (guaranteed free)
     local_path = pick_local_asset()
@@ -593,10 +615,10 @@ def fetch_scene_visual(scene, idx, game_config, work_dir):
             compile_ken_burns_video(local_path, dur, out_path, **kb)
             return VideoFileClip(out_path)
         except Exception as e:
-            print(f"   ⚠️ Ken Burns failed on local: {e}")
+            print(f" ⚠️ Ken Burns failed on local: {e}")
 
     # Last resort: black
-    print("   ⚠️ All engines failed — black placeholder")
+    print(" ⚠️ All engines failed — black placeholder")
     _write_blank_video(out_path, dur)
     return VideoFileClip(out_path)
 
@@ -640,18 +662,18 @@ def generate_storyboard(game_slug, game_config, episode_number):
     # Try Gemini first (free tier)
     if init_agnes():
         try:
-            print("   🤖 Agnes 2.0 Story Director (free tier) for story...")
+            print(" 🤖 Agnes 2.0 Story Director (free tier) for story...")
             result = agnes_generate_story(game_config, episode_number, previous_context, character_bible)
             if result and "scenes" in result:
-                print(f"   ✅ Agnes 2.0 story: {result.get('title', '?')}")
+                print(f" ✅ Agnes 2.0 story: {result.get('title', '?')}")
                 return result
         except Exception as e:
-            print(f"   ⚠️ Agnes 2.0 story failed: {e}")
+            print(f" ⚠️ Agnes 2.0 story failed: {e}")
     else:
-        print("   ⏭️ Agnes 2.0 not available (set GEMINI_API_KEY for AI stories)")
+        print(" ⏭️ Agnes 2.0 not available (set GEMINI_API_KEY for AI stories)")
 
     # Template fallback (always works, 100% free)
-    print("   📋 Using template storyboard (free, no AI needed)")
+    print(" 📋 Using template storyboard (free, no AI needed)")
     ex = game_config["scene_examples"]
     return {
         "title": f"{game_config['display_name']} Adventure Ep {episode_number}",
@@ -693,7 +715,7 @@ def make_caption_clips(text, duration):
     if _FONT_PATH is None:
         _FONT_PATH = find_font()
     if _FONT_PATH is None:
-        print("   ⚠️ No font found — captions skipped")
+        print(" ⚠️ No font found — captions skipped")
         return []
 
     words = text.split()
@@ -728,9 +750,9 @@ def make_caption_clips(text, duration):
                 .with_position(("center", int(VIDEO_H * CAPTION_Y_FRAC)))
             )
         except Exception as e:
-            print(f"   ⚠️ Caption error: {e}")
+            print(f" ⚠️ Caption error: {e}")
 
-    print(f"   💬 {len(clips)} caption chunks")
+    print(f" 💬 {len(clips)} caption chunks")
     return clips
 
 # ─── THUMBNAIL ──────────────────────────────────────────────────────────────
@@ -770,10 +792,10 @@ def generate_thumbnail(video_path, storyboard_data, out_path="thumbnail.jpg"):
         draw.text((x, y), text, font=font, fill="white", anchor="mm")
 
         img.save(out_path, quality=95)
-        print(f"   ✅ Thumbnail: {out_path}")
+        print(f" ✅ Thumbnail: {out_path}")
         return out_path
     except Exception as e:
-        print(f"   ⚠️ Thumbnail failed: {e}")
+        print(f" ⚠️ Thumbnail failed: {e}")
         return None
 
 # ─── ASSEMBLY ───────────────────────────────────────────────────────────────
@@ -798,15 +820,15 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
         audio_file = f"scene_{idx+1}.mp3"
         temp_audio_files.append(audio_file)
 
-        print("   🔊 Generating voiceover...")
+        print(" 🔊 Generating voiceover...")
         asyncio.run(generate_voiceover(narration, audio_file))
         scene_audio = AudioFileClip(audio_file)
         actual_dur = scene_audio.duration
         scene["duration"] = actual_dur
         audio_segments.append(scene_audio)
-        print(f"   ✅ Voiceover: {actual_dur:.1f}s")
+        print(f" ✅ Voiceover: {actual_dur:.1f}s")
 
-        print("   🎨 Generating visual...")
+        print(" 🎨 Generating visual...")
         visual = fetch_scene_visual(scene, idx, game_config, work_dir)
         visual = visual.with_duration(actual_dur)
 
@@ -849,13 +871,13 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
     final_video = final_video.with_audio(final_audio)
 
     output_file = get_next_version_filename("final_short", "mp4")
-    print(f"   🎞 Rendering {output_file}...")
+    print(f" 🎞 Rendering {output_file}...")
     final_video.write_videofile(
         output_file, fps=FPS,
         codec="libx264", audio_codec="aac",
         threads=4, preset="ultrafast", logger=None,
     )
-    print(f"   ✅ Done: {output_file}")
+    print(f" ✅ Done: {output_file}")
 
     # Thumbnail
     generate_thumbnail(output_file, storyboard_data)
@@ -863,7 +885,7 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
     # Update memory
     mem_file = game_memory_file(game_slug)
     episode_title = storyboard_data.get('title', f'Episode {len(storyboard_data["scenes"])}')
-    all_scenes = "\n".join([f"Scene {i+1}: {s['narration'][:80]}..." 
+    all_scenes = "\n".join([f"Scene {i+1}: {s['narration'][:80]}..."
                             for i, s in enumerate(storyboard_data["scenes"])])
     with open(mem_file, "w") as f:
         f.write(
@@ -871,7 +893,7 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
             f"Ref: {storyboard_data.get('real_life_reference', '')}\n"
             f"{all_scenes}\n"
         )
-    print(f"   📝 Memory saved")
+    print(f" 📝 Memory saved")
 
     # Cleanup
     for audio_file in temp_audio_files:
@@ -880,14 +902,14 @@ def assemble_storyboard(storyboard_data, game_slug, game_config):
                 os.remove(audio_file)
         except OSError:
             pass
-    print("   🧹 Cleaned up temp files")
+    print(" 🧹 Cleaned up temp files")
 
     return output_file
 
 # ─── MAIN ───────────────────────────────────────────────────────────────────
 def main():
     print("=" * 60)
-    print(" Roblox Auto-Shorts — Agnes 2.0 Edition v7.1")
+    print(" Roblox Auto-Shorts — Agnes 2.0 Edition v7.3")
     print(" Powered by Agnes AI (Gemini Free Tier)")
     print("=" * 60)
 
@@ -904,8 +926,8 @@ def main():
 
     if not has_gemini and not has_assets:
         print("⚠️ WARNING: No Gemini key AND no local assets.")
-        print("   Pollinations will be used, but quality may vary.")
-        print("   For best results: set GEMINI_API_KEY or add images to assets/")
+        print(" Pollinations will be used, but quality may vary.")
+        print(" For best results: set GEMINI_API_KEY or add images to assets/")
         print()
 
     state = load_game_state()
