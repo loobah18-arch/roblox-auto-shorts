@@ -1,1195 +1,324 @@
-"""
-Roblox Auto-Shorts — Agnes 2.0 Edition (v7.4)
-Powered by Agnes AI (Gemini Free Tier) + Auto YouTube Upload
-================================================================
-NO PAID APIs REQUIRED. Works entirely on free services:
- • Gemini Free Tier (image + story generation)
- • Pollinations AI (free images, no key)
- • Edge-TTS (free voiceover)
- • Local assets (your own images)
- • YouTube Data API v3 (auto-upload via OAuth refresh token)
-
-Paid engines (HF, Together, FAL, Groq, Pexels) are disabled by default.
-"""
-
-import os, time, random, json, math, requests, asyncio, edge_tts, urllib.parse
-import glob, subprocess, shutil, re
-from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
-import numpy as np
-
-import moviepy.audio.fx as afx
-from moviepy import (
-    CompositeVideoClip, AudioFileClip, CompositeAudioClip,
-    TextClip, concatenate_videoclips, concatenate_audioclips,
-    ColorClip, VideoFileClip, ImageClip,
-)
-from PIL import Image, ImageEnhance, ImageDraw, ImageFont
-
-# ─── FREE MODE CONFIG ───────────────────────────────────────────────────────
-FREE_MODE = True  # Set False only if you have paid API keys
-
-# Try to import Gemini new SDK, but don't crash if not installed
-try:
-    from google import genai
-    from google.genai import types
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
-    print("⚠️ google-genai not installed. Run: pip install google-genai")
-
-# YouTube upload imports
-try:
-    from googleapiclient.discovery import build
-    from googleapiclient.http import MediaFileUpload
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
-    YOUTUBE_AVAILABLE = True
-except ImportError:
-    YOUTUBE_AVAILABLE = False
-    print("⚠️ YouTube upload libs not installed.")
-
-# ─── VIDEO CONFIG ───────────────────────────────────────────────────────────
-VIDEO_W, VIDEO_H = 1080, 1920
-FPS = 24
-CAPTION_Y_FRAC = 0.70
-CAPTION_FONTSIZE = 78
-WORDS_PER_CHUNK = 4
-KEN_BURNS_ZOOM = 0.30
-
-# Free image engines (in order of preference)
-FREE_IMAGE_ENGINES = ["agnes", "pollinations", "local"]
-
-# Pollinations (completely free, no key)
-POLL_DELAY_OK = 2
-POLL_DELAY_429 = 25
-POLL_MAX_RETRY = 4
-POLL_TIMEOUT = 90
-
-GAME_STATE_FILE = "game_state.json"
-
-# ─── GEMINI FREE TIER SETUP ─────────────────────────────────────────────────
-_AGNES_CLIENT = None
-
-def init_agnes():
-    """Initialize Agnes 2.0 AI Engine using new google-genai SDK."""
-    global _AGNES_CLIENT
-    if _AGNES_CLIENT is not None:
-        return True
-    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not gemini_key or gemini_key.startswith("["):
-        return False
-    if GEMINI_AVAILABLE:
-        try:
-            _AGNES_CLIENT = genai.Client()
-            return True
-        except Exception as e:
-            print(f"⚠️ Gemini client init failed: {e}")
-            return False
-    return False
-
-def _extract_image_bytes(response):
-    """Safely extract image bytes from Gemini response."""
-    if hasattr(response, 'parts') and response.parts:
-        for part in response.candidates[0].content.parts:
-            if hasattr(part, 'inline_data') and part.inline_data:
-                return part.inline_data.data
-    if hasattr(response, 'candidates') and response.candidates:
-        for candidate in response.candidates:
-            if hasattr(candidate, 'content') and candidate.content:
-                if hasattr(candidate.content, 'parts') and candidate.content.parts:
-                    for part in candidate.content.parts:
-                        if hasattr(part, 'inline_data') and part.inline_data:
-                            return part.inline_data.data
-    return None
-
-def agnes_generate_image(prompt: str) -> bytes | None:
-    """Generate image using Gemini 2.5 Flash Image (free tier for new users)."""
-    if not init_agnes():
-        return None
-    try:
-        response = _AGNES_CLIENT.models.generate_content(
-            model="gemini-2.5-flash-image",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["TEXT", "IMAGE"]
-            )
-        )
-        return _extract_image_bytes(response)
-    except Exception as e:
-        print(f" ⚠️ Agnes 2.0 image error: {e}")
-    return None
-
-def agnes_generate_story(game_config, episode_number, previous_context, character_bible):
-    """Generate story using Gemini 2.5 Flash Lite (free tier for new users)."""
-    if not init_agnes():
-        return None
-
-    today = datetime.utcnow().strftime("%B %d, %Y")
-    ex = game_config["scene_examples"]
-    genre = game_config["genre"]
-
-    char_desc = ""
-    if character_bible:
-        char_desc = json.dumps(character_bible, indent=2)
-
-    system_instruction = (
-        f"You are a viral TikTok/YouTube Shorts writer for Roblox {game_config['display_name']}. "
-        f"Today's date is {today}. Write exactly 5 scenes. Scene 5 must end on a cliffhanger. "
-        f"Output ONLY valid JSON — no markdown, no explanations."
-    )
-
-    prompt = f"""GAME: {game_config['display_name']} ({genre})
-EPISODE: {episode_number}
-PREVIOUS: {previous_context}
-CHARACTERS: {char_desc}
-
-Write a 5-scene storyboard.
-
-Format:
-{{
-  "title": "Catchy episode title (max 50 chars)",
-  "real_life_reference": "A trending meme or news story that fits the plot",
-  "scenes": [
-    {{
-      "narration": "2-3 dramatic sentences. Present tense. Cliffhanger energy.",
-      "query": "Short image prompt, max 10 words, no full sentences",
-      "duration": 8
-    }}
-  ]
-}}
-
-Rules:
-- Exactly 5 scenes
-- Narration sounds like a viral TikTok storyteller
-- Each query is SHORT (max 10 words) for image generation
-- Scene 5 must end on a cliffhanger
-- Keep story continuity from PREVIOUS
-"""
-    # Try gemini-2.5-flash-lite first (highest quota for new users: 15 RPM, 1000/day)
-    # Fallback to gemini-2.5-pro if needed (5 RPM, 100/day)
-    for model_name in ["gemini-2.5-flash-lite", "gemini-2.5-pro"]:
-        try:
-            response = _AGNES_CLIENT.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    temperature=0.7,
-                    max_output_tokens=8192,
-                )
-            )
-            raw = response.text.strip()
-            result = safe_json_loads(raw)
-            if result and "scenes" in result:
-                print(f" ✅ Agnes 2.0 story ({model_name}): {result.get('title', '?')}")
-                return result
-        except Exception as e:
-            print(f" ⚠️ Gemini story error with {model_name}: {e}")
-    return None
-
-# ─── YOUTUBE UPLOAD ──────────────────────────────────────────────────────────
-def upload_to_youtube(video_path, title, description, tags, thumbnail_path=None):
-    """Upload video to YouTube using OAuth2 refresh token (headless/GitHub Actions)."""
-    if not YOUTUBE_AVAILABLE:
-        print(" ⚠️ YouTube upload skipped (libs not installed)")
-        return None
-
-    client_id = os.getenv("CLIENT_ID", "").strip()
-    client_secret = os.getenv("CLIENT_SECRET", "").strip()
-    refresh_token = os.getenv("REFRESH_TOKEN", "").strip()
-
-    if not client_id or not client_secret or not refresh_token:
-        print(" ⚠️ YouTube upload skipped (missing CLIENT_ID, CLIENT_SECRET, or REFRESH_TOKEN)")
-        return None
-
-    try:
-        creds = Credentials(
-            token=None,
-            refresh_token=refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=["https://www.googleapis.com/auth/youtube.upload"]
-        )
-        creds.refresh(Request())
-
-        youtube = build("youtube", "v3", credentials=creds)
-
-        body = {
-            "snippet": {
-                "title": title[:100],
-                "description": description[:5000],
-                "tags": tags,
-                "categoryId": "20",  # Gaming
-            },
-            "status": {
-                "privacyStatus": "public",
-                "selfDeclaredMadeForKids": False,
-            }
-        }
-
-        media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
-        request = youtube.videos().insert(
-            part=",".join(body.keys()),
-            body=body,
-            media_body=media
-        )
-
-        print(" 📤 Uploading to YouTube...")
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                print(f"   Upload progress: {int(status.progress() * 100)}%")
-
-        video_id = response.get("id")
-        print(f" ✅ YouTube upload complete! Video ID: {video_id}")
-        print(f"   URL: https://youtube.com/shorts/{video_id}")
-
-        # Upload thumbnail if available
-        if thumbnail_path and os.path.exists(thumbnail_path) and video_id:
-            try:
-                youtube.thumbnails().set(
-                    videoId=video_id,
-                    media_body=MediaFileUpload(thumbnail_path)
-                ).execute()
-                print(" ✅ Thumbnail uploaded")
-            except Exception as e:
-                print(f" ⚠️ Thumbnail upload failed: {e}")
-
-        return video_id
-
-    except Exception as e:
-        print(f" ❌ YouTube upload failed: {e}")
-        return None
-
-# ─── ROBLOX GAME CATALOG ────────────────────────────────────────────────────
-ROBLOX_GAMES = {
-    "blox_fruits": {
-        "display_name": "Blox Fruits",
-        "genre": "action RPG, open-world sea adventure",
-        "image_style": (
-            "Roblox Blox Fruits game, blocky low-poly 3D avatar, "
-            "tropical colorful sea island world, vivid neon fruit powers, "
-            "plastic shiny textures, dramatic ocean background"
-        ),
-        "hashtags": ["#BloxFruits", "#Roblox", "#Shorts", "#Gaming"],
-        "scene_examples": [
-            "Luffy blox fruits dough awakening sea battle",
-            "Shanks blox fruits sword clash island boss",
-            "Mysterious Figure blox fruits aura reveal",
-            "max level pvp fruit showdown cliffhanger",
-        ],
-        "starter_context": (
-            "A new pirate wakes up on Starter Island with no fruit power. "
-            "Legendary Devil Fruits wait in the sea."
-        ),
-    },
-    "adopt_me": {
-        "display_name": "Adopt Me!",
-        "genre": "trading, pet collecting, family roleplay",
-        "image_style": (
-            "Roblox Adopt Me! game, blocky cute 3D avatar, "
-            "colorful pastel Adoption Island world, adorable pixel pets, "
-            "bright cheerful neighborhood, neon trade signs"
-        ),
-        "hashtags": ["#AdoptMe", "#Roblox", "#Shorts", "#Gaming"],
-        "scene_examples": [
-            "rare neon unicorn pet trade Adopt Me island",
-            "shadow dragon scam drama Adopt Me school",
-            "legendary pet hatch egg reveal Adopt Me",
-            "mega neon fly ride pet auction cliffhanger",
-        ],
-        "starter_context": (
-            "A new player joins Adopt Me with a starter egg. "
-            "The Neon Shadow Dragon is rumored at the trading plaza."
-        ),
-    },
-    "murder_mystery_2": {
-        "display_name": "Murder Mystery 2",
-        "genre": "thriller, whodunit, survival horror",
-        "image_style": (
-            "Roblox Murder Mystery 2 game, blocky detective avatar, "
-            "dark moody map with neon lighting, knife glint effects, "
-            "sheriff badge glow, dramatic shadows, tense atmosphere"
-        ),
-        "hashtags": ["#MM2", "#MurderMystery2", "#Roblox", "#Shorts"],
-        "scene_examples": [
-            "sheriff chasing murderer MM2 dark warehouse",
-            "innocent discovers body MM2 haunted mansion",
-            "murderer reveal plot twist MM2 school map",
-            "last survivor sheriff showdown MM2 cliffhanger",
-        ],
-        "starter_context": (
-            "A new Murder Mystery 2 game starts on a dark stormy map. "
-            "Nobody knows who the murderer is yet."
-        ),
-    },
-    "pet_simulator_x": {
-        "display_name": "Pet Simulator X",
-        "genre": "idle collecting, pet evolution, trading battles",
-        "image_style": (
-            "Roblox Pet Simulator X game, blocky avatar, "
-            "colorful floating islands coin world, giant glowing pets, "
-            "rainbow explosion effects, huge coin stacks, vivid neon background"
-        ),
-        "hashtags": ["#PetSimX", "#PetSimulatorX", "#Roblox", "#Shorts"],
-        "scene_examples": [
-            "giant rainbow unicorn pet destroy coins PSX island",
-            "exclusive titanic cat unboxing surprise PSX",
-            "dark matter pet reveal trading arena PSX",
-            "world record pet damage cliffhanger PSX boss",
-        ],
-        "starter_context": (
-            
-            "A new collector enters Pet Simulator X with a basic dog pet. "
-            "Rumors of a Titanic Dark Matter cat spread."
-        ),
-    },
-    "doors": {
-        "display_name": "Doors",
-        "genre": "horror survival, puzzle escape",
-        "image_style": (
-            "Roblox Doors game, blocky horror avatar, "
-            "dark eerie hotel corridor, flickering neon lights, "
-            "glowing red entity eyes, dramatic shadow horror atmosphere"
-        ),
-        "hashtags": ["#RobloxDoors", "#Doors", "#Roblox", "#Shorts"],
-        "scene_examples": [
-            "Rush entity sprint Door 50 Doors horror hotel",
-            "Seek floor chase escape Doors dark corridor",
-            "Figure encounter library Door 100 Doors survival",
-            "Ambush entity jumpscare Doors cliffhanger finale",
-        ],
-        "starter_context": (
-            "Players enter the haunted Hotel in Roblox Doors. "
-            "The lights flicker at Door 1. Something watches."
-        ),
-    },
-    "arsenal": {
-        "display_name": "Arsenal",
-        "genre": "FPS action, kill streaks, weapon unlocks",
-        "image_style": (
-            "Roblox Arsenal FPS game, blocky soldier avatar, "
-            "colorful fast-paced arena map, neon gun effects, "
-            "kill streak explosion, bright vivid game arena"
-        ),
-        "hashtags": ["#RobloxArsenal", "#Arsenal", "#Roblox", "#Shorts"],
-        "scene_examples": [
-            "insane 360 no-scope Arsenal FPS arena final kill",
-            "golden knife unlock Arsenal locker room reveal",
-            "juggernaut last kill Arsenal rooftop showdown",
-            "clutch 1v5 win Arsenal tournament finals cliffhanger",
-        ],
-        "starter_context": (
-            "A new soldier joins their first Arsenal ranked match. "
-            "The Golden Knife kill is 1 point away."
-        ),
-    },
-    "anime_adventures": {
-        "display_name": "Anime Adventures",
-        "genre": "tower defense, anime crossover, wave survival",
-        "image_style": (
-            "Roblox Anime Adventures game, blocky anime-style 3D avatar, "
-            "colorful tower defense map, glowing anime unit effects, "
-            "massive energy beam attacks, vivid neon skill explosions"
-        ),
-        "hashtags": ["#AnimeAdventures", "#Roblox", "#Shorts", "#Gaming"],
-        "scene_examples": [
-            "secret 6-star unit summon Anime Adventures reveal",
-            "final wave boss destroy Anime Adventures tower map",
-            "ultra instinct unit evolution Anime Adventures arena",
-            "legendary crossover unit unlocked cliffhanger Anime Adventures",
-        ],
-        "starter_context": (
-            "A new commander places first units in Anime Adventures. "
-            "Wave 50 is incoming. A secret 6-star summon appears."
-        ),
-    },
-    "brookhaven": {
-        "display_name": "Brookhaven RP",
-        "genre": "social roleplay, drama, life simulation",
-        "image_style": (
-            "Roblox Brookhaven RP game, blocky avatar, "
-            "colorful suburban neighborhood world, luxury mansion background, "
-            "sports cars, school setting, bright cheerful town atmosphere"
-        ),
-        "hashtags": ["#Brookhaven", "#BrookhavenRP", "#Roblox", "#Shorts"],
-        "scene_examples": [
-            "secret millionaire reveal Brookhaven luxury mansion",
-            "high school drama rivalry Brookhaven school hallway",
-            "undercover agent mission Brookhaven town bank",
-            "shocking plot twist family reunion Brookhaven cliffhanger",
-        ],
-        "starter_context": (
-            "A mysterious resident moves into the most expensive house "
-            "in Brookhaven. Their secret past is unknown."
-        ),
-    },
-}
-
-GAME_ORDER = list(ROBLOX_GAMES.keys())
-
-NEGATIVE_PROMPT = (
-    "flat lighting,dull colors,2D,anime lineart,realistic human proportions,"
-    "photograph,ugly,pixelated,low resolution,dark background,monochrome,horror faces,"
-    "sketch,watermark,text overlay,blurry,realistic skin,detailed human anatomy"
+import os
+import time
+import random
+import requests
+import urllib.parse
+import asyncio
+import edge_tts
+from rembg import remove
+from moviepy.editor import (
+    ImageClip, AudioFileClip, CompositeVideoClip, 
+    CompositeAudioClip, TextClip, concatenate_videoclips
 )
 
-ASSET_DIR = "assets"
-ALL_ASSETS = [
-    "roblox_landscape.jpg", "ancient_island.jpg", "jungle_island.jpg",
-    "ocean_battle.jpg", "fortress.jpg", "volcano_island.jpg",
-    "underwater_city.jpg", "sea.jpg", "monster_mutation.jpg",
-]
+# Groq API Import
+from groq import Groq
 
-KEN_BURNS_CONFIGS = [
-    {"zoom": "in", "pan": "center"},
-    {"zoom": "out", "pan": "center"},
-    {"zoom": "in", "pan": "top"},
-    {"zoom": "in", "pan": "bottom"},
-    {"zoom": "out", "pan": "center"},
-]
+# Google API Imports for YouTube Upload
+import google.auth.transport.requests
+import google.oauth2.credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
-# ─── GAME STATE ─────────────────────────────────────────────────────────────
-def load_game_state():
-    default_state = {
-        "game_index": 0,
-        "episode_counts": {g: 0 for g in GAME_ORDER},
-        "last_upload_date": "",
-        "last_upload_game": "",
-        "last_upload_episode": 0,
-        "last_upload_video_id": "",
-    }
-    if os.path.exists(GAME_STATE_FILE):
-        try:
-            with open(GAME_STATE_FILE) as f:
-                state = json.load(f)
-            if not isinstance(state, dict):
-                return default_state
-            state.setdefault("game_index", 0)
-            state.setdefault("episode_counts", {})
-            state["episode_counts"] = {
-                game: int(state["episode_counts"].get(game, 0) or 0)
-                for game in GAME_ORDER
-            }
-            for key, value in default_state.items():
-                state.setdefault(key, value)
-            return state
-        except Exception:
-            pass
-    return default_state
+# ==========================================
+# 1. INFINITE STORY & SCENE GENERATION
+# ==========================================
 
-def save_game_state(state):
-    with open(GAME_STATE_FILE, "w") as f:
-        json.dump(state, f, indent=4)
+def generate_infinite_script():
+    """Generates an infinite story script and dynamic visual scene prompts using Groq's 70B model."""
+    print("Generating next chapter and visual scenes using Groq Llama 3.3 70B...")
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise Exception("Missing GROQ_API_KEY environment variable!")
+        
+    client = Groq(api_key=api_key)
+    
+    history_file = "story_memory.txt"
+    previous_context = "This is Episode 1 of the saga. Start with a massive, mind-blowing hook about Roblox Blox Fruits."
+    
+    if os.path.exists(history_file):
+        with open(history_file, "r") as f:
+            content = f.read().strip()
+            if content:
+                previous_context = content
 
-def utc_date_string():
-    return datetime.utcnow().strftime("%Y-%m-%d")
-
-def uploaded_today(state):
-    return state.get("last_upload_date") == utc_date_string()
-
-def advance_game_state(state):
-    state["game_index"] = (state["game_index"] + 1) % len(GAME_ORDER)
-
-def get_current_game(state):
-    return GAME_ORDER[state["game_index"] % len(GAME_ORDER)]
-
-def game_memory_file(game_slug):
-    return f"story_memory_{game_slug}.txt"
-
-def game_bible_file(game_slug):
-    return f"character_bible_{game_slug}.json"
-
-# ─── UTILITIES ──────────────────────────────────────────────────────────────
-def clean_env(val):
-    if not val:
-        return ""
-    val = val.strip()
-    if val.startswith("[") and "]" in val:
-        val = val.split("]")[0].lstrip("[")
-    return val.strip("'\"")
-
-def find_font():
-    candidates = [
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
-        "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-    ]
-    for path in candidates:
-        if os.path.exists(path):
-            return path
-    result = subprocess.run(
-        ["find", "/usr/share/fonts", "-name", "*.ttf", "-type", "f"],
-        capture_output=True, text=True,
+    prompt = f"""
+    You are an unhinged, viral AI director creating an infinite, serialized epic saga about Roblox Blox Fruits for YouTube Shorts.
+    
+    PREVIOUS EPISODE CONTEXT:
+    {previous_context}
+    
+    YOUR TASK:
+    Write the NEXT immediate part of this story. It must continue EXACTLY where the previous episode left off.
+    
+    You must output your response in TWO sections separated strictly by "---VISUALS---":
+    
+    Section 1: The spoken script. Keep it between 130 and 150 words (50+ seconds). Absurd, catchy, meme energy, ending on a jaw-dropping cliffhanger. Pure spoken text only, no labels or sound effects.
+    
+    ---VISUALS---
+    
+    Section 2: Provide **5 distinct**, highly detailed image generation prompts separated by semicolons (;) that visually match the progression of this specific script from start to finish. Make them cinematic, vertical 9:16 anime style.
+    """
+    
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=500,
+        temperature=0.9
     )
-    fonts = [l.strip() for l in result.stdout.splitlines() if l.strip()]
-    return fonts[0] if fonts else None
-
-def pick_local_asset():
-    pool = [os.path.join(ASSET_DIR, f) for f in ALL_ASSETS
-            if os.path.exists(os.path.join(ASSET_DIR, f))]
-    return random.choice(pool) if pool else None
-
-def safe_json_loads(raw_text, default=None):
-    text = raw_text.strip()
-    if text.startswith("```"):
-        parts = text.split("```")
-        if len(parts) >= 3:
-            text = parts[1]
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r'\{[\s\S]*\}', text)
-        if match:
-            try:
-                return json.loads(match.group(0))
-            except json.JSONDecodeError:
-                pass
-        fixed = text.replace("'", '"').replace("\n", " ")
-        try:
-            return json.loads(fixed)
-        except json.JSONDecodeError:
-            pass
-    return default
-
-def get_next_version_filename(base_name="final_short", ext=".mp4"):
-    existing = glob.glob(f"{base_name}_v*.{ext}")
-    if not existing:
-        return f"{base_name}_v1.{ext}"
-    nums = []
-    for f in existing:
-        match = re.search(rf'{base_name}_v(\d+)\.{ext}$', f)
-        if match:
-            nums.append(int(match.group(1)))
-    next_num = max(nums, default=0) + 1
-    return f"{base_name}_v{next_num}.{ext}"
-
-# ─── KEN BURNS ──────────────────────────────────────────────────────────────
-def compile_ken_burns_video(img_path, duration, out_path, zoom="in", pan="center"):
-    total_frames = max(int(duration * FPS), 1)
-    zoom_range = KEN_BURNS_ZOOM
-    delta = zoom_range / total_frames
-
-    if zoom == "in":
-        z_expr = f"min(zoom+{delta:.8f},1.{int(zoom_range*100):02d})"
+    
+    full_response = response.choices[0].message.content.strip()
+    
+    if "---VISUALS---" in full_response:
+        parts = full_response.split("---VISUALS---")
+        script = parts[0].strip()
+        visual_prompts_text = parts[1].strip()
+        visual_prompts = [p.strip() for p in visual_prompts_text.split(";") if p.strip()]
     else:
-        z_expr = f"if(eq(on,1),1.{int(zoom_range*100):02d},max(zoom-{delta:.8f},1.0))"
-
-    if pan == "center":
-        x_expr = "iw/2-(iw/zoom/2)"
-        y_expr = "ih/2-(ih/zoom/2)"
-    elif pan == "top":
-        x_expr = "iw/2-(iw/zoom/2)"
-        y_expr = f"max(ih*0.05,ih/2-(ih/zoom/2)-ih*0.25*(1-on/{total_frames}))"
-    else:
-        x_expr = "iw/2-(iw/zoom/2)"
-        y_expr = f"min(ih*0.70,ih/2-(ih/zoom/2)+ih*0.20*(1-on/{total_frames}))"
-
-    vf = (
-        f"scale={VIDEO_W * 2}:{VIDEO_H * 2},"
-        f"zoompan="
-        f"z='{z_expr}':"
-        f"x='{x_expr}':"
-        f"y='{y_expr}':"
-        f"d={total_frames}:"
-        f"s={VIDEO_W}x{VIDEO_H}:"
-        f"fps={FPS}"
-    )
-
-    cmd = [
-        "ffmpeg", "-y",
-        "-loop", "1",
-        "-i", img_path,
-        "-vf", vf,
-        "-t", str(duration),
-        "-c:v", "libx264",
-        "-pix_fmt", "yuv420p",
-        "-preset", "fast",
-        "-crf", "20",
-        out_path,
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"Ken Burns ffmpeg failed:\n{result.stderr[:400]}")
-    print(f" ✅ Ken Burns done: {out_path}")
-
-def _write_blank_video(out_path, duration):
-    cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi",
-        "-i", f"color=c=black:s={VIDEO_W}x{VIDEO_H}:r={FPS}",
-        "-t", str(duration),
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        out_path,
-    ]
-    subprocess.run(cmd, capture_output=True)
-
-# ─── FREE IMAGE ENGINES ─────────────────────────────────────────────────────
-def fetch_pollinations_image(base_query, game_config, out_dir, prefix):
-    """100% free image generation via Pollinations AI."""
-    scene_seed = random.randint(10_000, 9_999_999)
-    neg_enc = urllib.parse.quote(NEGATIVE_PROMPT)
-    style = game_config["image_style"]
-    prompt = f"{style}, {base_query}, ultra high quality, cinematic lighting, masterpiece, vibrant colors, 9:16 portrait"
-    encoded = urllib.parse.quote(prompt[:400])
-    url = (
-        f"https://image.pollinations.ai/prompt/{encoded}"
-        f"?width=1080&height=1920&nologo=true"
-        f"&seed={scene_seed}&model=flux&negative={neg_enc}"
-    )
-    out_path = os.path.join(out_dir, f"{prefix}_pol.jpg")
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"
-        ),
-        "Referer": "https://pollinations.ai/",
-        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-    }
-
-    for attempt in range(1, POLL_MAX_RETRY + 1):
-        try:
-            print(f" 🌸 Pollinations attempt {attempt}/{POLL_MAX_RETRY}...")
-            resp = requests.get(url, headers=headers, timeout=POLL_TIMEOUT, stream=True)
-
-            if resp.status_code == 429:
-                wait = POLL_DELAY_429 * attempt
-                print(f" ⏳ Rate limited — waiting {wait}s...")
-                time.sleep(wait)
-                continue
-
-            if resp.status_code == 200 and "image" in resp.headers.get("content-type", ""):
-                with open(out_path, "wb") as f:
-                    for chunk in resp.iter_content(8192):
-                        f.write(chunk)
-                size_kb = os.path.getsize(out_path) // 1024
-                if size_kb > 5:
-                    print(f" ✅ Pollinations: {size_kb} KB")
-                    time.sleep(POLL_DELAY_OK)
-                    return out_path
-                print(f" ⚠️ Tiny response ({size_kb} KB) — retrying...")
-
-            time.sleep(8)
-        except requests.exceptions.Timeout:
-            print(f" ⏳ Timeout — waiting 30s...")
-            time.sleep(30)
-        except Exception as e:
-            print(f" ⚠️ Error: {e}")
-            time.sleep(5)
-
-    print(" ❌ Pollinations failed")
-    return None
-
-def fetch_agnes_image(base_query, game_config, out_dir, prefix):
-    """Free image generation via Gemini 2.5 Flash Image."""
-    print(" 🎨 Agnes 2.0 Imagen Engine...")
-    style = game_config["image_style"]
-    prompt = f"High quality digital art: {style}, {base_query}. Cinematic lighting, vibrant colors, 9:16 vertical format, game screenshot style."
-
-    img_bytes = agnes_generate_image(prompt)
-    if not img_bytes:
-        return None
-
-    out_path = os.path.join(out_dir, f"{prefix}_gemini.jpg")
-    with open(out_path, "wb") as f:
-        f.write(img_bytes)
-    size_kb = os.path.getsize(out_path) // 1024
-    print(f" ✅ Agnes 2.0: {size_kb} KB")
-    return out_path
-
-def fetch_scene_visual(scene, idx, game_config, work_dir):
-    """Free-only visual cascade: Gemini → Pollinations → Local."""
-    base_query = scene["query"]
-    dur = scene.get("duration", 10)
-    prefix = f"scene_{idx + 1}"
-    out_path = os.path.join(work_dir, f"{prefix}_visual.mp4")
-    kb = KEN_BURNS_CONFIGS[idx % len(KEN_BURNS_CONFIGS)]
-
-    # Engine 1: Gemini (free tier)
-    if not FREE_MODE or init_agnes():
-        img_path = fetch_agnes_image(base_query, game_config, work_dir, prefix)
-        if img_path:
-            try:
-                compile_ken_burns_video(img_path, dur, out_path, **kb)
-                return VideoFileClip(out_path)
-            except Exception as e:
-                print(f" ⚠️ Ken Burns failed on Gemini image: {e}")
-                print(" ↩ Gemini failed — trying Pollinations...")
-        else:
-            print(" ⏭️ Agnes 2.0 image not available")
-    else:
-        print(" ⏭️ Agnes 2.0 not available (no API key)")
-
-    # Engine 2: Pollinations (always free)
-    img_path = fetch_pollinations_image(base_query, game_config, work_dir, prefix)
-    if img_path:
-        try:
-            compile_ken_burns_video(img_path, dur, out_path, **kb)
-            return VideoFileClip(out_path)
-        except Exception as e:
-            print(f" ⚠️ Ken Burns failed on Pollinations: {e}")
-            print(" ↩ Pollinations failed — using local assets...")
-
-    # Engine 3: Local assets (guaranteed free)
-    local_path = pick_local_asset()
-    if local_path:
-        try:
-            compile_ken_burns_video(local_path, dur, out_path, **kb)
-            return VideoFileClip(out_path)
-        except Exception as e:
-            print(f" ⚠️ Ken Burns failed on local: {e}")
-
-    # Last resort: black
-    print(" ⚠️ All engines failed — black placeholder")
-    _write_blank_video(out_path, dur)
-    return VideoFileClip(out_path)
-
-# ─── VOICEOVER (FREE) ───────────────────────────────────────────────────────
-async def generate_voiceover(text, out_file):
-    comm = edge_tts.Communicate(text, voice="en-US-BrianNeural", rate="+15%")
-    timings = []
-    with open(out_file, "wb") as f:
-        async for chunk in comm.stream():
-            if chunk["type"] == "audio":
-                f.write(chunk["data"])
-            elif chunk["type"] == "WordBoundary":
-                # offset and duration are in 100-nanosecond units.
-                start = chunk["offset"] / 10000000.0
-                duration = chunk["duration"] / 10000000.0
-                timings.append({
-                    "word": chunk["text"],
-                    "start": start,
-                    "end": start + duration
-                })
-    return timings
-
-# ─── STORYBOARD (FREE) ──────────────────────────────────────────────────────
-def generate_storyboard(game_slug, game_config, episode_number):
-    """Generate storyboard using free APIs only."""
-
-    mem_file = game_memory_file(game_slug)
-    bible_file = game_bible_file(game_slug)
-
-    previous_context = game_config["starter_context"]
-    character_bible = {}
-
-    if os.path.exists(mem_file):
-        try:
-            with open(mem_file) as f:
-                c = f.read().strip()
-                if c:
-                    previous_context = c
-        except Exception:
-            pass
-
-    if os.path.exists(bible_file):
-        try:
-            with open(bible_file) as f:
-                character_bible = json.load(f)
-        except Exception:
-            try:
-                with open(bible_file) as f:
-                    raw = f.read().strip()
-                    if raw:
-                        character_bible = {"description": raw}
-            except Exception:
-                pass
-
-    # Try Gemini first (free tier)
-    if init_agnes():
-        try:
-            print(" 🤖 Agnes 2.0 Story Director (free tier) for story...")
-            result = agnes_generate_story(game_config, episode_number, previous_context, character_bible)
-            if result and "scenes" in result:
-                return result
-        except Exception as e:
-            print(f" ⚠️ Agnes 2.0 story failed: {e}")
-    else:
-        print(" ⏭️ Agnes 2.0 not available (set GEMINI_API_KEY for AI stories)")
-
-    # Template fallback (always works, 100% free)
-    print(" 📋 Using template storyboard (free, no AI needed)")
-    ex = game_config["scene_examples"]
-    return {
-        "title": f"{game_config['display_name']} Adventure Ep {episode_number}",
-        "real_life_reference": "A mysterious new challenge appears",
-        "scenes": [
-            {
-                "narration": f"Welcome back to {game_config['display_name']}! Something incredible is about to happen that nobody saw coming.",
-                "query": ex[0] if len(ex) > 0 else f"{game_config['display_name']} action scene",
-                "duration": 8
-            },
-            {
-                "narration": "The adventure continues with unexpected twists and turns that keep everyone on the edge of their seat.",
-                "query": ex[1] if len(ex) > 1 else f"{game_config['display_name']} dramatic scene",
-                "duration": 8
-            },
-            {
-                "narration": "Things are getting intense. Can our hero survive this impossible challenge? The odds are stacked against them.",
-                "query": ex[2] if len(ex) > 2 else f"{game_config['display_name']} intense scene",
-                "duration": 8
-            },
-            {
-                "narration": "A shocking revelation changes everything we thought we knew. The truth is finally revealed.",
-                "query": ex[3] if len(ex) > 3 else ex[0] if len(ex) > 0 else f"{game_config['display_name']} reveal scene",
-                "duration": 8
-            },
-            {
-                "narration": "The cliffhanger ending leaves everyone speechless. What happens next? Subscribe to find out in the next episode!",
-                "query": ex[0] if len(ex) > 0 else f"{game_config['display_name']} cliffhanger",
-                "duration": 8
-            },
+        script = full_response
+        visual_prompts = [
+            "A chaotic Blox Fruits ocean battle, vibrant anime style, vertical",
+            "A wild monster mutation in Roblox style, neon lighting, vertical",
+            "A surreal sci-fi dimension with floating islands, vertical 8k",
+            "An intense anime sword fight in Roblox, dynamic action, vertical",
+            "A massive explosion of energy on a Roblox island, epic lighting, vertical"
         ]
-    }
+        
+    # Fallback if prompts are missing
+    while len(visual_prompts) < 5:
+        visual_prompts.append("A surreal Roblox anime landscape, vertical 8k")
+        
+    # Save script back to memory for tomorrow's run
+    with open(history_file, "w") as f:
+        f.write(script)
+        
+    print(f"Generated Script: {script}")
+    print(f"Generated Visual Prompts: {visual_prompts[:5]}")
+    return script, visual_prompts[:5]
 
-# ─── CAPTIONS ───────────────────────────────────────────────────────────────
-_FONT_PATH = None
-
-def make_caption_clips(timings, duration):
-    global _FONT_PATH
-    if _FONT_PATH is None:
-        _FONT_PATH = find_font()
-    if _FONT_PATH is None or not timings:
-        print(" ⚠️ No font found or no timings — captions skipped")
-        return []
-
-    # Group words into chunks
-    chunks = []
-    current_chunk = []
-    for i, t in enumerate(timings):
-        current_chunk.append(t)
-        if len(current_chunk) >= 2 or i == len(timings) - 1:
-            start = current_chunk[0]["start"]
-            end = current_chunk[-1]["end"]
-            
-            # Prevent overlap by clamping to the next word's start
-            if i < len(timings) - 1:
-                next_start = timings[i+1]["start"]
-                # Give a tiny pause between subtitles if possible, but don't overlap
-                end = min(end + 0.05, next_start - 0.01)
+def generate_image(prompt, filename, retries=3):
+    """Fetches an image from Pollinations.ai with a retry loop."""
+    print(f"Generating: {filename} with prompt: {prompt}")
+    encoded_prompt = urllib.parse.quote(prompt)
+    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1080&height=1920&nologo=true"
+    
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, timeout=30)
+            if response.status_code == 200:
+                with open(filename, 'wb') as f:
+                    f.write(response.content)
+                print(f"Success: Saved {filename}")
+                return
             else:
-                end = min(end + 0.2, duration)
-
-            text = " ".join([w["word"] for w in current_chunk])
-            chunks.append({"text": text, "start": start, "end": end})
-            current_chunk = []
-
-    clips = []
-    for chunk in chunks:
-        # Alternate colors for pop
-        color = "yellow" if len(clips) % 2 == 0 else "white"
-        try:
-            txt = TextClip(
-                text=chunk["text"].upper(),
-                font=_FONT_PATH,
-                font_size=CAPTION_FONTSIZE + 20,  # Make it bigger!
-                color=color,
-                stroke_color="black",
-                stroke_width=8,
-                size=(VIDEO_W - 60, None),
-                method="caption",
-                text_align="center",
-            )
-            dur = max(0.1, chunk["end"] - chunk["start"])
-            clips.append(
-                txt
-                .with_start(chunk["start"])
-                .with_duration(dur)
-                .with_position(("center", int(VIDEO_H * CAPTION_Y_FRAC)))
-            )
+                print(f"Attempt {attempt + 1} failed. Server returned {response.status_code}.")
         except Exception as e:
-            print(f" ⚠️ TextClip error: {e}")
-    print(f" 💬 {len(clips)} dynamic subtitle chunks")
-    return clips
+            print(f"Attempt {attempt + 1} failed with error: {e}")
+        
+        time.sleep(10)
+        
+    raise Exception(f"Fatal Error: Failed to generate {filename} after {retries} attempts.")
 
-# ─── THUMBNAIL ──────────────────────────────────────────────────────────────
-def generate_thumbnail(video_path, storyboard_data, out_path="thumbnail.jpg"):
-    try:
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", video_path,
-            "-ss", "00:00:01",
-            "-vframes", "1",
-            "-q:v", "2",
-            out_path,
-        ]
-        subprocess.run(cmd, capture_output=True)
+async def generate_voiceover(text, output_filename):
+    """Generates an Edge-TTS voiceover file."""
+    print("Generating voiceover...")
+    communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural", rate="+10%")
+    await communicate.save(output_filename)
+    print("Voiceover saved successfully.")
 
-        if not os.path.exists(out_path):
-            return None
+def create_transparent_sprite(input_filename, output_filename):
+    """Uses local CPU rembg to strip the background from the character."""
+    print("Stripping background from character sprite...")
+    with open(input_filename, "rb") as input_file:
+        transparent_data = remove(input_file.read())
+        
+    with open(output_filename, "wb") as out_file:
+        out_file.write(transparent_data)
+    print("Transparent sprite created.")
 
-        img = Image.open(out_path).convert("RGB")
-        draw = ImageDraw.Draw(img)
+# ==========================================
+# 2. VIDEO ASSEMBLY WITH MULTI-SCENE & CAPTIONS
+# ==========================================
 
-        title = storyboard_data.get("title", "Roblox Short!")
-        font_path = find_font()
-        if font_path:
-            try:
-                font = ImageFont.truetype(font_path, 60)
-            except:
-                font = ImageFont.load_default()
-        else:
-            font = ImageFont.load_default()
-
-        text = f"{title} #Shorts"
-        x, y = VIDEO_W // 2, VIDEO_H // 3
-
-        for dx, dy in [(-2,-2), (-2,2), (2,-2), (2,2), (0,-2), (0,2), (-2,0), (2,0)]:
-            draw.text((x+dx, y+dy), text, font=font, fill="black", anchor="mm")
-        draw.text((x, y), text, font=font, fill="white", anchor="mm")
-
-        img.save(out_path, quality=95)
-        print(f" ✅ Thumbnail: {out_path}")
-        return out_path
-    except Exception as e:
-        print(f" ⚠️ Thumbnail failed: {e}")
-        return None
-
-# ─── ASSEMBLY ───────────────────────────────────────────────────────────────
-def assemble_storyboard(storyboard_data, game_slug, game_config):
-    print("─── [3/4] Scene Assembly ───")
-
-    work_dir = "motion_templates"
-    os.makedirs(work_dir, exist_ok=True)
-    for f in glob.glob(os.path.join(work_dir, "*")):
-        try:
-            os.remove(f)
-        except OSError:
-            pass
-
-    video_segments, audio_segments = [], []
-    temp_audio_files = []
-
-    for idx, scene in enumerate(storyboard_data["scenes"]):
-        narration = scene["narration"]
-        print(f"\n 🎬 Scene {idx+1}/{len(storyboard_data['scenes'])}")
-
-        audio_file = f"scene_{idx+1}.mp3"
-        temp_audio_files.append(audio_file)
-
-        print(" 🔊 Generating voiceover...")
-        timings = asyncio.run(generate_voiceover(narration, audio_file))
-
-        scene_audio = AudioFileClip(audio_file)
-        actual_dur = scene_audio.duration
-        scene["duration"] = actual_dur
-        audio_segments.append(scene_audio)
-        print(f" ✅ Voiceover: {actual_dur:.1f}s")
-
-        print(" 🎨 Generating visual...")
-        visual = fetch_scene_visual(scene, idx, game_config, work_dir)
-        visual = visual.with_duration(actual_dur)
-
-        # Check for split screen gameplay loop
-        gameplay_path = os.path.join("assets", "gameplay.mp4")
-        if os.path.exists(gameplay_path):
-            try:
-                # Top 60% is visual, bottom 40% is gameplay
-                gameplay = VideoFileClip(gameplay_path)
-                # Pick a random start time if the loop is longer than our scene
-                if gameplay.duration > actual_dur:
-                    start_time = random.uniform(0, gameplay.duration - actual_dur)
-                    gameplay = gameplay.subclipped(start_time, start_time + actual_dur)
-                else:
-                    gameplay = gameplay.with_duration(actual_dur)
-                
-                target_visual_h = int(VIDEO_H * 0.6)
-                target_gameplay_h = int(VIDEO_H * 0.4)
-                
-                # Visual is originally 1080x1920. We crop the center vertically to avoid black bars.
-                visual = visual.cropped(height=target_visual_h, y_center=visual.size[1]/2)
-                
-                # Calculate aspect ratios to resize appropriately without black bars
-                gameplay_ratio = gameplay.size[0] / gameplay.size[1]
-                target_ratio = VIDEO_W / target_gameplay_h
-                
-                if gameplay_ratio > target_ratio:
-                    # Gameplay is wider than target area (e.g. 16:9)
-                    gameplay = gameplay.resized(height=target_gameplay_h)
-                    gameplay = gameplay.cropped(width=VIDEO_W, x_center=gameplay.size[0]/2)
-                else:
-                    # Gameplay is narrower than target area (e.g. 9:16)
-                    gameplay = gameplay.resized(width=VIDEO_W)
-                    gameplay = gameplay.cropped(height=target_gameplay_h, y_center=gameplay.size[1]/2)
-                    
-                visual = visual.with_position(("center", "top"))
-                gameplay = gameplay.with_position(("center", "bottom"))
-                visual = CompositeVideoClip([visual, gameplay], size=(VIDEO_W, VIDEO_H)).with_duration(actual_dur)
-            except Exception as e:
-                print(f" ⚠️ Gameplay split-screen failed: {e}")
-
-        caption_clips = make_caption_clips(timings, actual_dur)
-
-        layers = [visual] + caption_clips
-        scene_clip = (
-            CompositeVideoClip(layers, size=(VIDEO_W, VIDEO_H))
-            .with_duration(actual_dur)
-            .with_audio(scene_audio)
-        )
-        video_segments.append(scene_clip)
-
-    print("\n─── [4/4] Final Render ───")
-    final_video = concatenate_videoclips(video_segments, method="compose")
-
+def assemble_video(script, num_scenes=5):
+    """Builds a dynamic multi-scene video based on background images and burns captions."""
+    print(f"--- Assembling Multi-Scene Video with {num_scenes} Scenes & Captions ---")
+    
+    voice_clip = AudioFileClip("voiceover.mp3")
+    video_duration = voice_clip.duration
+    
+    # 1. Background Music Mixing
     bgm_folder = "bgm"
-    os.makedirs(bgm_folder, exist_ok=True)
-    mp3_files = [f for f in os.listdir(bgm_folder) if f.endswith(".mp3")]
-
-    combined_voice = (concatenate_audioclips(audio_segments)
-                      if len(audio_segments) > 1 else audio_segments[0])
-
-    if mp3_files:
-        bg = AudioFileClip(os.path.join(bgm_folder, random.choice(mp3_files)))
-        dur = combined_voice.duration
-        if bg.duration < dur:
-            loops = math.ceil(dur / bg.duration)
-            bg = concatenate_audioclips([bg] * loops).subclipped(0, dur)
-        else:
-            bg = bg.subclipped(0, dur)
-
-        final_audio = CompositeAudioClip([
-            combined_voice,
-            bg.with_effects([afx.MultiplyVolume(factor=0.10)]),
-        ])
+    if not os.path.exists(bgm_folder):
+        raise Exception("Missing 'bgm' folder in your repository root!")
+        
+    mp3_files = [f for f in os.listdir(bgm_folder) if f.endswith('.mp3')]
+    if not mp3_files:
+        raise Exception("No .mp3 files found inside the 'bgm' folder!")
+        
+    random_track = random.choice(mp3_files)
+    bgm_path = os.path.join(bgm_folder, random_track)
+    print(f"Selected background music: {random_track}")
+    
+    bg_music = AudioFileClip(bgm_path)
+    if bg_music.duration < video_duration:
+        bg_music = bg_music.loop(duration=video_duration)
     else:
-        final_audio = combined_voice
+        bg_music = bg_music.subclip(0, video_duration)
+        
+    bg_music = bg_music.volumex(0.1)
+    final_audio = CompositeAudioClip([voice_clip, bg_music])
 
-    final_video = final_video.with_audio(final_audio)
+    # 2. Dynamic Background Assembly (Splits duration across available background images)
+    scene_duration = video_duration / float(num_scenes)
+    scene_clips = []
+    
+    for i in range(1, num_scenes + 1):
+        img_path = f"background_{i}.jpg"
+        if os.path.exists(img_path):
+            clip = ImageClip(img_path).set_duration(scene_duration).resize(width=1080, height=1920)
+            scene_clips.append(clip)
+        else:
+            if scene_clips:
+                scene_clips.append(scene_clips[-1].set_duration(scene_duration))
+            else:
+                dummy = ImageClip("background_1.jpg").set_duration(scene_duration).resize(width=1080, height=1920)
+                scene_clips.append(dummy)
+            
+    animated_background = concatenate_videoclips(scene_clips)
 
-    output_file = get_next_version_filename("final_short", "mp4")
-    print(f" 🎞 Rendering {output_file}...")
-    final_video.write_videofile(
-        output_file, fps=FPS,
-        codec="libx264", audio_codec="aac",
-        threads=4, preset="ultrafast", logger=None,
-    )
-    print(f" ✅ Done: {output_file}")
+    # 3. Character Animation Layer
+    character = ImageClip("character_sprite.png").set_duration(video_duration)
+    character = character.resize(width=700) 
+    
+    def animate_character(t):
+        x_position = 100 + (t * 15)       
+        y_position = 1000 - (t * 8)      
+        return (x_position, y_position)
+        
+    animated_character = character.set_position(animate_character)
 
-    # Thumbnail
-    thumbnail_path = generate_thumbnail(output_file, storyboard_data)
-
-    # Update memory
-    mem_file = game_memory_file(game_slug)
-    episode_title = storyboard_data.get('title', f'Episode {len(storyboard_data["scenes"])}')
-    all_scenes = "\n".join([f"Scene {i+1}: {s['narration'][:80]}..."
-                            for i, s in enumerate(storyboard_data["scenes"])])
-    with open(mem_file, "w") as f:
-        f.write(
-            f"[{episode_title}]\n"
-            f"Ref: {storyboard_data.get('real_life_reference', '')}\n"
-            f"{all_scenes}\n"
-        )
-    print(f" 📝 Memory saved")
-
-    # Cleanup
-    for audio_file in temp_audio_files:
+    # 4. Dynamic Subtitles / Captions Generation
+    sentences = [s.strip() for s in script.replace("!", ".").replace("?", ".").split(".") if s.strip()]
+    chunk_duration = video_duration / max(len(sentences), 1)
+    
+    caption_clips = []
+    for i, sentence in enumerate(sentences):
+        start_t = i * chunk_duration
+        end_t = min((i + 1) * chunk_duration, video_duration)
+        dur = max(end_t - start_t, 1.0)
+        
         try:
-            if os.path.exists(audio_file):
-                os.remove(audio_file)
-        except OSError:
-            pass
-    print(" 🧹 Cleaned up temp files")
+            txt_clip = TextClip(
+                sentence, 
+                fontsize=50, 
+                color='yellow', 
+                font='Arial-Bold', 
+                stroke_color='black', 
+                stroke_width=3, 
+                size=(950, None), 
+                method='caption'
+            )
+            txt_clip = txt_clip.set_start(start_t).set_duration(dur).set_position(('center', 1450))
+            caption_clips.append(txt_clip)
+        except Exception as e:
+            print(f"Warning: Could not create caption clip: {e}")
 
-    return output_file, thumbnail_path
+    # 5. Composite and Render
+    elements = [animated_background, animated_character] + caption_clips
+    final_video = CompositeVideoClip(elements)
+    final_video = final_video.set_audio(final_audio)
+    
+    print("Rendering final MP4 on CPU...")
+    final_video.write_videofile(
+        "final_short.mp4", 
+        fps=24, 
+        codec="libx264", 
+        audio_codec="aac",
+        threads=2, 
+        preset="ultrafast" 
+    )
 
-# ─── MAIN ───────────────────────────────────────────────────────────────────
-def main():
-    print("=" * 60)
-    print(" Roblox Auto-Shorts — Agnes 2.0 Edition v7.4")
-    print(" Powered by Agnes AI (Gemini Free Tier) + Auto YouTube")
-    print("=" * 60)
+# ==========================================
+# 3. YOUTUBE UPLOAD FUNCTION
+# ==========================================
 
-    # Check what's available
-    has_gemini = init_agnes()
-    has_assets = os.path.exists(ASSET_DIR) and any(os.path.exists(os.path.join(ASSET_DIR, f)) for f in ALL_ASSETS)
-    has_bgm = os.path.exists("bgm") and any(f.endswith(".mp3") for f in os.listdir("bgm") if os.path.exists("bgm"))
-    has_youtube = YOUTUBE_AVAILABLE and os.getenv("CLIENT_ID", "").strip() and os.getenv("REFRESH_TOKEN", "").strip()
-
-    print(f"\n 💎 Agnes 2.0 AI Engine (Gemini Free Tier): {'YES' if has_gemini else 'NO — set GEMINI_API_KEY'}")
-    print(f" 🖼 Local assets: {'YES' if has_assets else 'NO — add images to assets/ folder'}")
-    print(f" 🎵 Background music: {'YES' if has_bgm else 'NO — add MP3s to bgm/ folder'}")
-    print(f" 🌸 Pollinations (free images): ALWAYS AVAILABLE")
-    print(f" 📤 YouTube auto-upload: {'YES' if has_youtube else 'NO — set CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN'}")
-    print()
-
-    if not has_gemini and not has_assets:
-        print("⚠️ WARNING: No Gemini key AND no local assets.")
-        print(" Pollinations will be used, but quality may vary.")
-        print(" For best results: set GEMINI_API_KEY or add images to assets/")
-        print()
-
-    state = load_game_state()
-
-    # This guard covers scheduled and manual runs.
-    if uploaded_today(state):
-        print(
-            f"⏭️  One-upload-per-day guard: already uploaded "
-            f"{state.get('last_upload_game', 'a short')} "
-            f"Episode {state.get('last_upload_episode', '?')} today "
-            f"({utc_date_string()} UTC)."
-        )
+def upload_to_youtube():
+    print("--- Uploading to YouTube as a Short ---")
+    
+    client_id = os.getenv("CLIENT_ID")
+    client_secret = os.getenv("CLIENT_SECRET")
+    refresh_token = os.getenv("REFRESH_TOKEN")
+    
+    if not client_id or not client_secret or not refresh_token:
+        print("Warning: YouTube API secrets not fully configured. Skipping upload step.")
         return
 
-    game_slug = get_current_game(state)
-    game_config = ROBLOX_GAMES[game_slug]
-
-    # Don't mutate state immediately
-    episode_number = state.get("episode_counts", {}).get(game_slug, 0) + 1
-
-    print(f"🎮 Game: {game_config['display_name']} | Episode {episode_number}\n")
-
-    print("─── [1/4] Story Generation ───")
-    storyboard = generate_storyboard(game_slug, game_config, episode_number)
+    credentials = google.oauth2.credentials.Credentials(
+        None,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=client_id,
+        client_secret=client_secret
+    )
     
-    print(f"🎬 Title: {storyboard.get('title', '?')}")
-    print(f"📰 Reference: {storyboard.get('real_life_reference', '?')}")
-    print(f"📌 {len(storyboard['scenes'])} scenes\n")
+    youtube = build("youtube", "v3", credentials=credentials)
+    
+    body = {
+        "snippet": {
+            "title": "The Infinite Blox Fruits Saga! #Shorts",
+            "description": "Continuing the wild, unhinged Blox Fruits journey daily with dynamic scenes and captions! #Shorts #Roblox #BloxFruits",
+            "tags": ["Roblox", "BloxFruits", "Shorts"],
+            "categoryId": "20"
+        },
+        "status": {
+            "privacyStatus": "public",
+            "selfDeclaredMadeForKids": False
+        }
+    }
+    
+    media = MediaFileUpload("final_short.mp4", chunksize=-1, resumable=True)
+    request = youtube.videos().insert(
+        part="snippet,status",
+        body=body,
+        media_body=media
+    )
+    
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status:
+            print(f"Uploading file: {int(status.progress() * 100)}%")
+            
+    print(f"Upload Complete! Video ID: {response.get('id')}")
 
-    output_file, thumbnail_path = assemble_storyboard(storyboard, game_slug, game_config)
+# ==========================================
+# 4. MAIN EXECUTION
+# ==========================================
 
-    video_id = None
-    # YouTube upload
-    if has_youtube:
-        print("\n─── [5/4] YouTube Upload ───")
-        title = storyboard.get("title", f"Roblox {game_config['display_name']} Short")
-        description = (
-            f"{storyboard.get('real_life_reference', 'Roblox gameplay short!')}\n\n"
-            f"{' '.join(game_config['hashtags'])}\n\n"
-            f"Generated by Agnes 2.0 AI Engine"
-        )
-        video_id = upload_to_youtube(
-            video_path=output_file,
-            title=title,
-            description=description,
-            tags=game_config["hashtags"],
-            thumbnail_path=thumbnail_path,
-        )
-        if not video_id:
-            print("🚨 YouTube upload failed. Aborting before advancing state.")
-            return
+def main():
+    # 1. Generate infinite story script and 5 visual scene prompts
+    script, visual_prompts = generate_infinite_script()
+    
+    # 2. Generate Voiceover (50+ seconds duration target)
+    asyncio.run(generate_voiceover(script, "voiceover.mp3"))
 
-    # Advance only after YouTube confirms success (or if YT is disabled).
-    state.setdefault("episode_counts", {})[game_slug] = episode_number
-    advance_game_state(state)
-    state["last_upload_date"] = utc_date_string()
-    state["last_upload_game"] = game_config["display_name"]
-    state["last_upload_episode"] = episode_number
-    state["last_upload_video_id"] = video_id or ""
-    save_game_state(state)
-
-    print(f"\n🏁 Complete! Video: {output_file}")
-    if not has_youtube:
-        print("📤 Upload manually to YouTube, or set CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN for auto-upload.")
+    # 3. Dynamically generate and save each background image for multi-scene switching
+    for i, prompt_text in enumerate(visual_prompts, start=1):
+        generate_image(prompt_text, f"background_{i}.jpg")
+    
+    # 4. Generate character sprite
+    char_prompt = "A classic blocky Roblox noob character, low-poly 3D game model, yellow skin, blue shirt, standing on a solid pure white background"
+    generate_image(char_prompt, "raw_character.jpg")
+    create_transparent_sprite("raw_character.jpg", "character_sprite.png")
+    
+    # 5. Assemble video with multi-scenes and dynamic captions
+    assemble_video(script, num_scenes=len(visual_prompts))
+    
+    # 6. Upload to YouTube
+    upload_to_youtube()
+    
+    print("Pipeline complete!")
 
 if __name__ == "__main__":
     main()
