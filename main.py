@@ -12,7 +12,7 @@ NO PAID APIs REQUIRED. Works entirely on free services:
 Paid engines (HF, Together, FAL, Groq, Pexels) are disabled by default.
 """
 
-import os, time, random, json, math, requests, asyncio, edge_tts
+import os, time, random, json, math, requests, asyncio, edge_tts, urllib.parse
 import glob, subprocess, shutil, re
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -93,7 +93,7 @@ def init_agnes():
 def _extract_image_bytes(response):
     """Safely extract image bytes from Gemini response."""
     if hasattr(response, 'parts') and response.parts:
-        for part in response.parts:
+        for part in response.candidates[0].content.parts:
             if hasattr(part, 'inline_data') and part.inline_data:
                 return part.inline_data.data
     if hasattr(response, 'candidates') and response.candidates:
@@ -105,7 +105,7 @@ def _extract_image_bytes(response):
                             return part.inline_data.data
     return None
 
-def agnes_generate_image(prompt: str) -> bytes:
+def agnes_generate_image(prompt: str) -> bytes | None:
     """Generate image using Gemini 2.5 Flash Image (free tier for new users)."""
     if not init_agnes():
         return None
@@ -168,6 +168,8 @@ Rules:
 - Scene 5 must end on a cliffhanger
 - Keep story continuity from PREVIOUS
 """
+    # Try gemini-2.5-flash-lite first (highest quota for new users: 15 RPM, 1000/day)
+    # Fallback to gemini-2.5-pro if needed (5 RPM, 100/day)
     for model_name in ["gemini-2.5-flash-lite", "gemini-2.5-pro"]:
         try:
             response = _AGNES_CLIENT.models.generate_content(
@@ -221,7 +223,7 @@ def upload_to_youtube(video_path, title, description, tags, thumbnail_path=None)
                 "title": title[:100],
                 "description": description[:5000],
                 "tags": tags,
-                "categoryId": "20",
+                "categoryId": "20",  # Gaming
             },
             "status": {
                 "privacyStatus": "public",
@@ -247,6 +249,7 @@ def upload_to_youtube(video_path, title, description, tags, thumbnail_path=None)
         print(f" ✅ YouTube upload complete! Video ID: {video_id}")
         print(f"   URL: https://youtube.com/shorts/{video_id}")
 
+        # Upload thumbnail if available
         if thumbnail_path and os.path.exists(thumbnail_path) and video_id:
             try:
                 youtube.thumbnails().set(
@@ -341,6 +344,7 @@ ROBLOX_GAMES = {
             "world record pet damage cliffhanger PSX boss",
         ],
         "starter_context": (
+            "A new collector enters Pet (
             "A new collector enters Pet Simulator X with a basic dog pet. "
             "Rumors of a Titanic Dark Matter cat spread."
         ),
@@ -452,17 +456,42 @@ KEN_BURNS_CONFIGS = [
 
 # ─── GAME STATE ─────────────────────────────────────────────────────────────
 def load_game_state():
+    default_state = {
+        "game_index": 0,
+        "episode_counts": {g: 0 for g in GAME_ORDER},
+        "last_upload_date": "",
+        "last_upload_game": "",
+        "last_upload_episode": 0,
+        "last_upload_video_id": "",
+    }
     if os.path.exists(GAME_STATE_FILE):
         try:
             with open(GAME_STATE_FILE) as f:
-                return json.load(f)
+                state = json.load(f)
+            if not isinstance(state, dict):
+                return default_state
+            state.setdefault("game_index", 0)
+            state.setdefault("episode_counts", {})
+            state["episode_counts"] = {
+                game: int(state["episode_counts"].get(game, 0) or 0)
+                for game in GAME_ORDER
+            }
+            for key, value in default_state.items():
+                state.setdefault(key, value)
+            return state
         except Exception:
             pass
-    return {"game_index": 0, "episode_counts": {g: 0 for g in GAME_ORDER}}
+    return default_state
 
 def save_game_state(state):
     with open(GAME_STATE_FILE, "w") as f:
         json.dump(state, f, indent=4)
+
+def utc_date_string():
+    return datetime.utcnow().strftime("%Y-%m-%d")
+
+def uploaded_today(state):
+    return state.get("last_upload_date") == utc_date_string()
 
 def advance_game_state(state):
     state["game_index"] = (state["game_index"] + 1) % len(GAME_ORDER)
@@ -609,10 +638,10 @@ def _write_blank_video(out_path, duration):
 def fetch_pollinations_image(base_query, game_config, out_dir, prefix):
     """100% free image generation via Pollinations AI."""
     scene_seed = random.randint(10_000, 9_999_999)
-    neg_enc = requests.utils.quote(NEGATIVE_PROMPT)
+    neg_enc = urllib.parse.quote(NEGATIVE_PROMPT)
     style = game_config["image_style"]
-    prompt = f"{style}, {base_query}, dramatic action scene, 9:16 portrait"
-    encoded = requests.utils.quote(prompt[:400])
+    prompt = f"{style}, {base_query}, ultra high quality, cinematic lighting, masterpiece, vibrant colors, 9:16 portrait"
+    encoded = urllib.parse.quote(prompt[:400])
     url = (
         f"https://image.pollinations.ai/prompt/{encoded}"
         f"?width=1080&height=1920&nologo=true"
@@ -679,7 +708,7 @@ def fetch_agnes_image(base_query, game_config, out_dir, prefix):
     return out_path
 
 def fetch_scene_visual(scene, idx, game_config, work_dir):
-    """Free-only visual cascade: Gemini -> Pollinations -> Local."""
+    """Free-only visual cascade: Gemini → Pollinations → Local."""
     base_query = scene["query"]
     dur = scene.get("duration", 10)
     prefix = f"scene_{idx + 1}"
@@ -727,8 +756,23 @@ def fetch_scene_visual(scene, idx, game_config, work_dir):
 
 # ─── VOICEOVER (FREE) ───────────────────────────────────────────────────────
 async def generate_voiceover(text, out_file):
-    comm = edge_tts.Communicate(text, voice="en-US-ChristopherNeural", rate="+10%")
-    await comm.save(out_file)
+    comm = edge_tts.Communicate(text, voice="en-US-BrianNeural", rate="+15%")
+    timings = []
+    submaker = edge_tts.SubMaker()
+    with open(out_file, "wb") as f:
+        async for chunk in comm.stream():
+            if chunk["type"] == "audio":
+                f.write(chunk["data"])
+            elif chunk["type"] == "WordBoundary":
+                # offset and duration are in 100-nanosecond units.
+                start = chunk["offset"] / 10000000.0
+                duration = chunk["duration"] / 10000000.0
+                timings.append({
+                    "word": chunk["text"],
+                    "start": start,
+                    "end": start + duration
+                })
+    return timings
 
 # ─── STORYBOARD (FREE) ──────────────────────────────────────────────────────
 def generate_storyboard(game_slug, game_config, episode_number):
@@ -812,49 +856,53 @@ def generate_storyboard(game_slug, game_config, episode_number):
 # ─── CAPTIONS ───────────────────────────────────────────────────────────────
 _FONT_PATH = None
 
-def make_caption_clips(text, duration):
+def make_caption_clips(timings, duration):
     global _FONT_PATH
     if _FONT_PATH is None:
         _FONT_PATH = find_font()
-    if _FONT_PATH is None:
-        print(" ⚠️ No font found — captions skipped")
+    if _FONT_PATH is None or not timings:
+        print(" ⚠️ No font found or no timings — captions skipped")
         return []
 
-    words = text.split()
-    chunks = [
-        " ".join(words[i: i + WORDS_PER_CHUNK])
-        for i in range(0, len(words), WORDS_PER_CHUNK)
-    ]
-    if not chunks:
-        return []
+    # Group words into chunks of up to 3 words
+    chunks = []
+    current_chunk = []
+    for i, t in enumerate(timings):
+        current_chunk.append(t)
+        if len(current_chunk) >= 2 or i == len(timings) - 1:
+            start = current_chunk[0]["start"]
+            end = current_chunk[-1]["end"]
+            # Add a little padding to the end of the last word
+            end = min(end + 0.1, duration)
+            text = " ".join([w["word"] for w in current_chunk])
+            chunks.append({"text": text, "start": start, "end": end})
+            current_chunk = []
 
-    time_per_chunk = duration / len(chunks)
     clips = []
-
-    for ci, chunk in enumerate(chunks):
-        start = ci * time_per_chunk
+    for chunk in chunks:
+        # Alternate colors for pop
+        color = "yellow" if len(clips) % 2 == 0 else "white"
         try:
             txt = TextClip(
-                text=chunk,
+                text=chunk["text"].upper(),
                 font=_FONT_PATH,
-                font_size=CAPTION_FONTSIZE,
-                color="white",
+                font_size=CAPTION_FONTSIZE + 20,  # Make it bigger!
+                color=color,
                 stroke_color="black",
-                stroke_width=5,
-                size=(VIDEO_W - 80, None),
+                stroke_width=8,
+                size=(VIDEO_W - 60, None),
                 method="caption",
                 text_align="center",
             )
             clips.append(
                 txt
-                .with_start(start)
-                .with_duration(time_per_chunk - 0.05)
+                .with_start(chunk["start"])
+                .with_duration(chunk["end"] - chunk["start"])
                 .with_position(("center", int(VIDEO_H * CAPTION_Y_FRAC)))
             )
         except Exception as e:
-            print(f" ⚠️ Caption error: {e}")
-
-    print(f" 💬 {len(clips)} caption chunks")
+            print(f" ⚠️ TextClip error: {e}")
+    print(f" 💬 {len(clips)} dynamic subtitle chunks")
     return clips
 
 # ─── THUMBNAIL ──────────────────────────────────────────────────────────────
