@@ -7,4 +7,4 @@ google-genai<3.0.0
 google-api-python-client
 google-auth-oauthlib
 google-auth-httplib2
-rembg
+groq
