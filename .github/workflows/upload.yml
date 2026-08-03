@@ -5,6 +5,12 @@ on:
   schedule:
     - cron: '30 12 * * *'
 
+# Serialize scheduled and manual runs. The Python guard below still blocks a
+# second upload on the same UTC date after a queued run starts.
+concurrency:
+  group: roblox-auto-shorts-daily
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
