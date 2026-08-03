@@ -1,10 +1,12 @@
 """
-Roblox Auto-Shorts — Multi-Game Edition (v4)
+Roblox Auto-Shorts — Multi-Game Edition (v5)
 ============================================
-What's new in v4:
-  • Engine V: HuggingFace text-to-video (damo-vilab/text-to-video-ms-1.7b)
-              Completely FREE with a free HF_TOKEN.
-              When it succeeds, real AI-generated video is used per scene.
+What's new in v5:
+  • Engine V: discovers current Hugging Face text-to-video models at runtime
+              and tries live provider-backed models through Hugging Face routing.
+              It uses only the HF_TOKEN and never requires a Wan/provider key.
+              When free monthly credits or provider access are unavailable, it
+              automatically falls back to the existing image engines.
   • All previous engines kept in cascade:
       V → text-to-video (HF, free)
       A → FLUX.1-schnell images (Together AI, optional/paid)
@@ -30,6 +32,7 @@ from moviepy import (
 )
 from PIL import Image, ImageEnhance
 from groq import Groq
+from huggingface_hub import InferenceClient
 import google.oauth2.credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -44,9 +47,21 @@ CAPTION_FONTSIZE = 58
 FRAMES_PER_SCENE = 10
 BLEND_STEPS      = 6
 
-# HuggingFace text-to-video (Engine V)
-HF_VIDEO_MODEL   = "damo-vilab/text-to-video-ms-1.7b"
-HF_API_BASE      = "https://api-inference.huggingface.co/models"
+# Hugging Face text-to-video (Engine V)
+# The catalog is discovered at runtime. These are only emergency fallbacks if
+# the public catalog is temporarily unavailable; each is still checked by the
+# Hugging Face router before use.
+HF_MODELS_API        = "https://huggingface.co/api/models"
+HF_MODEL_LIMIT       = 30
+HF_CATALOG_TIMEOUT   = 25
+HF_MODEL_STATE_FILE  = "hf_model_state.json"
+HF_VIDEO_MODELS_FALLBACK = [
+    "Wan-AI/Wan2.2-TI2V-5B",
+    "Wan-AI/Wan2.2-T2V-A14B",
+    "Wan-AI/Wan2.1-T2V-1.3B",
+    "Lightricks/LTX-Video-0.9.5",
+    "genmo/mochi-1-preview",
+]
 
 # Together AI (Engine A)
 TOGETHER_API_URL = "https://api.together.ai/v1/images/generations"
@@ -466,102 +481,211 @@ def build_image_prompt(query, narration, character_bible, frame_stage, game_conf
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ENGINE V — HUGGINGFACE TEXT-TO-VIDEO  (free with free HF_TOKEN)
-# Model: damo-vilab/text-to-video-ms-1.7b
-# Returns True if a usable mp4 was written to out_path, else False.
+# ENGINE V — HUGGING FACE ROUTED TEXT-TO-VIDEO
+# Models are discovered from the live Hub catalog and filtered to models with
+# live inference-provider mappings. The HF router may use monthly credits;
+# availability and pricing can change. A failed/empty credit response falls
+# through to the existing free image pipeline.
 # ─────────────────────────────────────────────────────────────────────────────
-def fetch_hf_video(prompt, duration, out_path, hf_token):
-    url     = f"{HF_API_BASE}/{HF_VIDEO_MODEL}"
-    headers = {
-        "Authorization": f"Bearer {hf_token}",
-        "Content-Type":  "application/json",
-        "x-wait-for-model": "true",
+_HF_MODEL_CACHE = None
+_HF_SEARCH_FAILED_THIS_RUN = False
+
+
+def load_hf_model_state():
+    """Load the last model that successfully generated a scene."""
+    if not os.path.exists(HF_MODEL_STATE_FILE):
+        return {}
+    try:
+        with open(HF_MODEL_STATE_FILE) as f:
+            state = json.load(f)
+        model_id = state.get("working_model")
+        return {"working_model": model_id} if isinstance(model_id, str) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def save_hf_model_state(model_id):
+    """Persist only a model that has just produced a valid video."""
+    with open(HF_MODEL_STATE_FILE, "w") as f:
+        json.dump({"working_model": model_id}, f, indent=4)
+
+
+def clear_hf_model_state():
+    """Forget a model after it stops working so the next attempt can search."""
+    save_hf_model_state("")
+
+
+def discover_hf_video_models(hf_token, exclude_model=None):
+    """Return live provider-backed text-to-video model IDs from the Hub.
+
+    The endpoint is public, but the token is sent when available so the
+    catalog request behaves consistently with the later inference request.
+    No provider API key is used here.
+    """
+    global _HF_MODEL_CACHE
+    if _HF_MODEL_CACHE is not None:
+        return [model for model in _HF_MODEL_CACHE if model != exclude_model]
+
+    headers = {"Accept": "application/json"}
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+    params = {
+        "inference_provider": "all",
+        "pipeline_tag": "text-to-video",
+        "expand": "inferenceProviderMapping",
+        "limit": HF_MODEL_LIMIT,
     }
-    # Truncate prompt — model handles ~100 tokens best
-    short_prompt = prompt[:300]
+    discovered = []
+    catalog_succeeded = False
 
-    print(f"    🎬 [Engine V] HuggingFace text-to-video → {HF_VIDEO_MODEL}")
-    print(f"    📝 Prompt snippet: {short_prompt[:80]}...")
+    try:
+        resp = requests.get(
+            HF_MODELS_API, params=params, headers=headers,
+            timeout=HF_CATALOG_TIMEOUT,
+        )
+        if resp.status_code == 200:
+            catalog_succeeded = True
+            for item in resp.json():
+                model_id = item.get("id") or item.get("modelId")
+                mappings = item.get("inferenceProviderMapping") or []
+                live = [
+                    mapping for mapping in mappings
+                    if mapping.get("status") == "live"
+                    and mapping.get("task") == "text-to-video"
+                    and mapping.get("type", "single-model") == "single-model"
+                ]
+                tags = {str(tag).lower() for tag in item.get("tags", [])}
+                if model_id and live and "lora" not in tags:
+                    discovered.append({
+                        "id": model_id,
+                        "trending": item.get("trendingScore", 0) or 0,
+                        "downloads": item.get("downloads", 0) or 0,
+                    })
+    except Exception as exc:
+        print(f"    ⚠️  Hugging Face catalog lookup failed: {exc}")
 
-    for attempt in range(1, 4):
-        try:
-            resp = requests.post(
-                url,
-                headers=headers,
-                json={"inputs": short_prompt},
-                timeout=240,
-            )
+    # Prefer lightweight/current candidates before very large models. The
+    # catalog still controls whether a model is eligible; this only prevents
+    # an expensive 14B/large model from being tried before a smaller option.
+    preferred = [
+        "Wan-AI/Wan2.1-T2V-1.3B",
+        "Lightricks/LTX-Video-0.9.5",
+        "Lightricks/LTX-Video-0.9.8-13B-distilled",
+        "Wan-AI/Wan2.2-TI2V-5B",
+        "Wan-AI/Wan2.2-T2V-A14B",
+        "genmo/mochi-1-preview",
+    ]
+    rank = {model_id: index for index, model_id in enumerate(preferred)}
+    discovered.sort(
+        key=lambda item: (
+            rank.get(item["id"], len(preferred)),
+            -float(item["trending"]),
+            -int(item["downloads"]),
+        )
+    )
+    models = [item["id"] for item in discovered]
 
-            if resp.status_code in (503, 500):
-                wait = 40 * attempt
-                print(f"    ⏳ Model loading / server error (attempt {attempt}/3) — sleeping {wait}s...")
-                time.sleep(wait)
-                continue
+    # Use the static list only during a catalog outage. If the live catalog
+    # successfully reports no eligible models, respect that result and skip
+    # video rather than trying stale models.
+    if not catalog_succeeded:
+        for model_id in HF_VIDEO_MODELS_FALLBACK:
+            if model_id not in models:
+                models.append(model_id)
 
-            if resp.status_code == 429:
-                print(f"    ⏳ Rate limited (attempt {attempt}/3) — sleeping 60s...")
-                time.sleep(60)
-                continue
+    _HF_MODEL_CACHE = models
+    print(f"    🔎 Hugging Face video candidates: {', '.join(models[:8]) or 'none'}")
+    return [model for model in models if model != exclude_model]
 
-            if resp.status_code == 200:
-                content_type = resp.headers.get("content-type", "")
-                # Accept video/* or large binary blobs (some HF models omit content-type)
-                if "video" in content_type or len(resp.content) > 50_000:
-                    raw_path = out_path.replace(".mp4", "_hf_raw.mp4")
-                    with open(raw_path, "wb") as f:
-                        f.write(resp.content)
 
-                    # Scale raw video (usually 256x256) up to 1080x1920,
-                    # crop to exact 9:16, then loop to match narration duration.
-                    cmd = [
-                        "ffmpeg", "-y",
-                        "-stream_loop", "-1",
-                        "-i", raw_path,
-                        "-vf", (
-                            f"scale=1080:1920:force_original_aspect_ratio=increase,"
-                            f"crop=1080:1920"
-                        ),
-                        "-t", str(duration),
-                        "-r", str(FPS),
-                        "-c:v", "libx264",
-                        "-pix_fmt", "yuv420p",
-                        "-preset", "fast",
-                        "-crf", "22",
-                        out_path,
-                    ]
-                    res = subprocess.run(cmd, capture_output=True, text=True)
-                    try:
-                        os.remove(raw_path)
-                    except OSError:
-                        pass
+def _save_hf_video_bytes(video_bytes, duration, out_path):
+    if not video_bytes or len(video_bytes) < 10_000:
+        return False
 
-                    if res.returncode == 0 and os.path.exists(out_path) \
-                            and os.path.getsize(out_path) > 10_000:
-                        print(f"    ✅ Engine V success — AI video generated ({duration:.1f}s)")
-                        return True
-                    else:
-                        print(f"    ⚠️  ffmpeg post-process failed: {res.stderr[:200]}")
-                        return False
-                else:
-                    print(f"    ⚠️  HF returned unexpected content-type: {content_type}")
-                    return False
+    raw_path = out_path.replace(".mp4", "_hf_raw.mp4")
+    with open(raw_path, "wb") as f:
+        f.write(video_bytes)
 
-            # Non-200, non-handled status
-            try:
-                err_msg = resp.json().get("error", resp.text[:200])
-            except Exception:
-                err_msg = resp.text[:200]
-            print(f"    ⚠️  Engine V attempt {attempt} — HTTP {resp.status_code}: {err_msg}")
-            time.sleep(20)
+    # Provider outputs vary in size/aspect ratio. Normalize every result to
+    # the vertical format used by the rest of the pipeline.
+    cmd = [
+        "ffmpeg", "-y",
+        "-stream_loop", "-1",
+        "-i", raw_path,
+        "-vf", (
+            "scale=1080:1920:force_original_aspect_ratio=increase,"
+            "crop=1080:1920"
+        ),
+        "-t", str(duration),
+        "-r", str(FPS),
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-preset", "fast",
+        "-crf", "22",
+        out_path,
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        os.remove(raw_path)
+    except OSError:
+        pass
+    if res.returncode != 0:
+        print(f"    ⚠️  Hugging Face video conversion failed: {res.stderr[:240]}")
+        return False
+    return os.path.exists(out_path) and os.path.getsize(out_path) > 10_000
 
-        except requests.exceptions.Timeout:
-            print(f"    ⚠️  Engine V timeout (attempt {attempt}/3) — sleeping 30s...")
-            time.sleep(30)
-        except Exception as e:
-            print(f"    ⚠️  Engine V error (attempt {attempt}/3): {e}")
-            time.sleep(15)
 
-    print("    ❌ Engine V gave up after 3 attempts — falling back to image engines.")
+def _try_hf_video_model(prompt, duration, out_path, hf_token, model_id):
+    """Try one routed model and return whether it produced a valid MP4."""
+    print(f"    🎬 [Engine V] HF routed video → {model_id}")
+    try:
+        client = InferenceClient(provider="auto", api_key=hf_token)
+        video_bytes = client.text_to_video(prompt[:500], model=model_id)
+        if hasattr(video_bytes, "read"):
+            video_bytes = video_bytes.read()
+        if _save_hf_video_bytes(video_bytes, duration, out_path):
+            print(f"    ✅ HF video success with {model_id} ({duration:.1f}s)")
+            return True
+        print(f"    ⚠️  {model_id} returned no usable video.")
+    except Exception as exc:
+        # This includes no-credit, unauthorized, unavailable-provider,
+        # unsupported-model, timeout, and rate-limit errors.
+        message = str(exc).replace("\n", " ")[:240]
+        print(f"    ⚠️  {model_id} unavailable: {message}")
+    return False
+
+
+def fetch_hf_video(prompt, duration, out_path, hf_token):
+    """Try the saved model first; search only after it stops working."""
+    global _HF_SEARCH_FAILED_THIS_RUN
+    if _HF_SEARCH_FAILED_THIS_RUN:
+        print("    ⏭️  Hugging Face unavailable for this run — using Pollinations.")
+        return False
+
+    saved_model = load_hf_model_state().get("working_model", "")
+    if saved_model:
+        print(f"    💾 Saved HF model: {saved_model} (no catalog search)")
+        if _try_hf_video_model(prompt, duration, out_path, hf_token, saved_model):
+            return True
+        print("    🔄 Saved HF model failed — searching for a replacement...")
+        clear_hf_model_state()
+    else:
+        print("    🔎 No saved HF model — searching the live catalog...")
+
+    models = discover_hf_video_models(hf_token, exclude_model=saved_model or None)
+    if not models:
+        _HF_SEARCH_FAILED_THIS_RUN = True
+        print("    ℹ️  No live Hugging Face text-to-video models were found.")
+        return False
+
+    for model_id in models[:8]:
+        if _try_hf_video_model(prompt, duration, out_path, hf_token, model_id):
+            save_hf_model_state(model_id)
+            return True
+
+    clear_hf_model_state()
+    _HF_SEARCH_FAILED_THIS_RUN = True
+    print("    ❌ All current HF video candidates failed; using Pollinations/image engines.")
     return False
 
 
@@ -1061,15 +1185,15 @@ def upload_to_youtube(storyboard_data, game_config, episode_number):
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
     print("=" * 62)
-    print("  Roblox Auto-Shorts — Multi-Game Edition v4")
-    print("  8 Games · Per-game Memory · Text-to-Video Engine")
+    print("  Roblox Auto-Shorts — Multi-Game Edition v5")
+    print("  8 Games · Per-game Memory · Live HF Video Discovery")
     print("=" * 62 + "\n")
 
     hf_token     = clean_env(os.getenv("HF_TOKEN"))
     together_key = clean_env(os.getenv("TOGETHER_API_KEY"))
 
     print("─── Engine Status ───────────────────────────────────────")
-    print(f"  Engine V (HF text-to-video): {'✅ active' if hf_token else '⬜ skipped (no HF_TOKEN)'}")
+    print(f"  Engine V (live HF video):    {'✅ active' if hf_token else '⬜ skipped (no HF_TOKEN)'}")
     print(f"  Engine A (Together AI):      {'✅ active' if together_key else '⬜ skipped (no TOGETHER_API_KEY)'}")
     print(f"  Engine B (Pollinations):     ✅ always active (free)")
     print("─────────────────────────────────────────────────────────\n")
