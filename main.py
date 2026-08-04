@@ -269,7 +269,7 @@ Episode Writing Guidelines:
         path = f"scene_{i}.jpg"
         # Spreading outgoing requests with human-mimicking delay to completely bypass 429 throttling limits
         if i > 0:
-            delay = random.uniform(2.5, 4.5)
+            delay = random.uniform(15.5, 17.5)
             print(f"Spreading API load. Sleeping for {delay:.2f} seconds before retrieving scene {i}...")
             time.sleep(delay)
 
@@ -277,9 +277,9 @@ Episode Writing Guidelines:
         for attempt in range(max_retries):
             try:
                 enhanced_prompt = f"{img_prompt}{style_modifier}"
-                safe_prompt = requests.utils.quote(enhanced_prompt)
-                url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&nologo=true"
-                response = requests.get(url, timeout=20)
+                safe_prompt = requests.utils.quote(enhanced_prompt, safe='')
+                url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920"
+                response = requests.get(url, timeout=40)
                 if response.status_code == 200:
                     with open(path, 'wb') as f:
                         f.write(response.content)
