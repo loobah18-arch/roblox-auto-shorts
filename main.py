@@ -78,6 +78,27 @@ def get_character_bible(safe_game_name):
             return f.read()
     return "No character bible found for this game."
 
+def load_active_model():
+    """Loads the last successfully used LLM model. Defaults to llama-3.3-70b-versatile."""
+    if os.path.exists("active_llm_model.txt"):
+        try:
+            with open("active_llm_model.txt", "r") as f:
+                model_name = f.read().strip()
+                if model_name:
+                    return model_name
+        except Exception:
+            pass
+    return "llama-3.3-70b-versatile"
+
+def save_active_model(model_name):
+    """Saves the successfully used LLM model name to persistent storage."""
+    try:
+        with open("active_llm_model.txt", "w") as f:
+            f.write(model_name.strip())
+        print(f"[+] Sticky model state updated: {model_name}")
+    except Exception as e:
+        print(f"Failed to save active model: {e}")
+
 # --- HELPER FUNCTIONS ---
 def extract_json(text):
     """Safely extracts and parses a JSON block from potentially conversational LLM output."""
@@ -115,60 +136,102 @@ def create_fallback_image(path, index):
 
 # --- PIPELINE FUNCTIONS ---
 def generate_script_and_images(game, memory, bible):
-    """Integrates with Groq and Pollinations AI with dynamic multi-image correlation and Unreal Engine 5 styling."""
+    """Integrates with Groq and Pollinations AI with dynamic multi-image correlation and Unreal Engine 5 styling.
+    Uses strict role separation (System and User prompts) to prevent prompt echoing and meta-instructions in voiceovers.
+    Dynamically loads the last successfully used model first as a sticky model, falling back only when quota is hit.
+    """
     print(f"Generating script for {game} using Groq...")
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-    prompt = f"""
-    Create an intense, cinematic Roblox {game} script (strictly between 135 to 160 words to achieve a 50+ second final duration at normal understandable speeds) told in a commanding, epic voice.
-    Previous Story Memory: {memory}
-    Character Bible: {bible}
-    Provide 8 distinct visual scene descriptions so the background imagery continuously correlates with the narrative progression of this longer story.
-    Output JSON strictly in this format:
-    {{
-      "voiceover": "Script text here (must be 135-160 words)",
-      "new_memory": "Cliffhanger for tomorrow here",
-      "image_prompts": ["Prompt 1", "Prompt 2", "Prompt 3", "Prompt 4", "Prompt 5", "Prompt 6", "Prompt 7", "Prompt 8"]
-    }}
-    """
+    
+    # System role enforces narrative formatting and output structure
+    system_prompt = """You are a professional cinematic story narrator and Roblox lore master. Your job is to output a single JSON object containing a high-energy spoken story narrative (the voiceover), a story progress cliffhanger memory, and image prompts.
+
+CRITICAL ROLE RULE:
+The 'voiceover' field MUST ONLY contain the actual spoken, theatrical, dramatic story narration. It must NEVER repeat prompt instructions, meta-commands, introduction headings, or variables like 'Create an intense, cinematic Roblox script...'. Jump directly into the cinematic storyline as if you are reading the final script.
+
+Output JSON format must match this schema EXACTLY:
+{
+  "voiceover": "Spoken dramatic narrative text (strictly between 135 to 160 words)",
+  "new_memory": "Summary of the story cliffhanger for tomorrow's continuation",
+  "image_prompts": ["Visual scene prompt 1", "Visual scene prompt 2", "Visual scene prompt 3", "Visual scene prompt 4", "Visual scene prompt 5", "Visual scene prompt 6", "Visual scene prompt 7", "Visual scene prompt 8"]
+}"""
+
+    # User role provides specific variables and length bounds
+    user_prompt = f"""Write an intense, cinematic Roblox {game} episode narrative.
+
+Variables:
+- Active Game: Roblox {game}
+- Previous Story Memory: {memory}
+- Character Bible: {bible}
+
+Episode Writing Guidelines:
+- Length: Strictly between 135 to 160 words to target a 50+ second video length at standard pacing.
+- Voice: Commanding, theatrical, high-stakes narration.
+- Visual pacing: Provide exactly 8 distinct visual scene descriptions in 'image_prompts' that progress chronologically with your voiceover story.
+- Output JSON strictly matching the system instructions."""
+
     # Priority ordered sequence of stable free-tier and fallback models
     fallback_models = [
-        "llama-3.3-70b-specdec",
         "llama-3.3-70b-versatile",
+        "llama-3.3-70b-specdec",
         "llama-3.1-8b-instant",
         "mixtral-8x7b-32768",
         "gemma2-9b-it",
         "llama3-70b-8192",
         "llama3-8b-8192"
     ]
+    
+    sticky_model = load_active_model()
+    print(f"Sticky model loaded: {sticky_model}")
+    
+    valid_models = []
+    if sticky_model:
+        valid_models.append(sticky_model)
+
     print("Fetching active models from Groq...")
     try:
         active_models_data = client.models.list().data
-        valid_models = [
+        fetched_models = [
             m.id for m in active_models_data
             if any(term in m.id.lower() for term in ["llama", "mixtral", "gemma", "qwen"])
             and not any(neg in m.id.lower() for neg in ["guard", "embed", "moderation", "whisper", "vision"])
         ]
         # Keep fallback list at the end of valid_models to preserve order of priority
-        for model in fallback_models:
+        for model in fetched_models:
             if model not in valid_models:
                 valid_models.append(model)
     except Exception as e:
         print(f"Failed to fetch model list, falling back to default list. Error: {e}")
-        valid_models = fallback_models
+        
+    for model in fallback_models:
+        if model not in valid_models:
+            valid_models.append(model)
+
+    print(f"Roster of models to attempt (ordered by sticky priority): {valid_models}")
 
     response_data = None
+    successful_model = None
     for model_id in valid_models:
         print(f"Attempting generation with model: {model_id}...")
         try:
             chat_completion = client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
                 model=model_id,
                 response_format={"type": "json_object"}
             )
             raw_text = chat_completion.choices[0].message.content
             response_data = extract_json(raw_text)
             if response_data and "voiceover" in response_data:
+                # Sanity check: Ensure it didn't echo prompt instructions
+                voiceover_clean = response_data["voiceover"].strip()
+                if "Create an intense" in voiceover_clean or " strictly between" in voiceover_clean:
+                    print(f"Model {model_id} returned prompt-echoed text. Rejecting schema.")
+                    continue
                 print(f"Success! Model {model_id} worked perfectly.")
+                successful_model = model_id
                 break
             else:
                 print(f"Model {model_id} returned invalid schema. Retrying next...")
@@ -184,6 +247,10 @@ def generate_script_and_images(game, memory, bible):
             "new_memory": "The ancient bunker door creaks open, revealing a blinding neon light as a mysterious shadow steps through.",
             "image_prompts": [f"Epic Roblox {game} landscape under heavy dark sky"] * 8
         }
+    else:
+        # Save successfully working sticky model to persistent memory
+        if successful_model:
+            save_active_model(successful_model)
 
     audio_text = response_data.get("voiceover", "The journey continues...")
     new_memory = response_data.get("new_memory", "To be continued...")
@@ -237,28 +304,30 @@ def evolve_character_bible(game_name, safe_game_name, script_text, current_bible
     print(f"Running self-evolution pass for {game_name} Character Bible...")
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     
-    prompt = f"""
-    You are the Lead Lore Master and Story Architect for our automated Roblox YouTube Shorts channel.
-    Your task is to update and evolve the Character Bible for the game '{game_name}' based on the events that occurred in the latest episode script.
+    system_prompt = """You are the Lead Lore Master and Story Architect for our automated Roblox YouTube Shorts channel.
+Your task is to update and evolve the Character Bible for the game based on the events that occurred in the latest episode script.
+
+Output the FULL updated Character Bible strictly as a single valid, parsable JSON object. Do not include any conversational prefix, suffix, or formatting codes in your output. Combine the current traits with newly discovered developments, inventory gains, or relationship changes."""
+
+    user_prompt = f"""Evolve the Character Bible for {game_name}.
+
+CURRENT BIBLE LORE:
+{current_bible_text}
+
+LATEST EPISODE SCRIPT:
+{script_text}
+
+Analyze the latest episode script for key updates (allies, stats, inventory fruit awakenings, etc.) and write the entire merged and updated Character Bible JSON."""
     
-    CURRENT CHARACTER BIBLE:
-    {current_bible_text}
-    
-    LATEST EPISODE SCRIPT:
-    {script_text}
-    
-    INSTRUCTIONS:
-    1. Analyze the latest episode script for character developments, new items obtained, level-ups, changes in relationship, or new lore details.
-    2. Merge these developments into the current Character Bible.
-    3. Keep the bible focused, engaging, and rich with niche Roblox terminology.
-    4. Output the FULL updated Character Bible strictly as a valid, parsable JSON object. No conversational prefix or suffix.
-    """
-    
-    fallback_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    # Try the loaded sticky model
+    model_id = load_active_model()
     try:
         chat_completion = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            model=model_id,
             response_format={"type": "json_object"}
         )
         raw_text = chat_completion.choices[0].message.content
@@ -272,7 +341,26 @@ def evolve_character_bible(game_name, safe_game_name, script_text, current_bible
         else:
             print("[-] Evolution pass returned invalid JSON. Leaving bible unchanged.")
     except Exception as e:
-        print(f"[-] Self-evolution pass failed: {e}. Falling back safely to unchanged lore.")
+        print(f"[-] Self-evolution pass failed with model {model_id}: {e}. Trying fallback 'llama-3.3-70b-versatile'...")
+        try:
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                model="llama-3.3-70b-versatile",
+                response_format={"type": "json_object"}
+            )
+            raw_text = chat_completion.choices[0].message.content
+            updated_bible_data = extract_json(raw_text)
+            if updated_bible_data:
+                filename = f"character_bible_{safe_game_name}.json"
+                with open(filename, "w") as f:
+                    json.dump(updated_bible_data, f, indent=4)
+                print(f"[+] Lore evolution successful! Updated character bible saved to {filename}")
+                return True
+        except Exception as ex:
+            print(f"[-] Fallback self-evolution pass failed: {ex}. Safely keeping current bible.")
     return False
 
 def split_text_for_captions(text, words_per_chunk=3):
@@ -546,7 +634,7 @@ async def main():
         
     except Exception as e:
         print(f"CRITICAL ERROR encountered during run: {e}")
-        print("Pipeline is executing Self-Healing Safe Recovery protocol to advance rotation safely...")
+        print("Pipeline is executing Safe Recovery protocol to advance rotation safely...")
         
     # Regardless of failure or success, advance game state indices to prevent a permanent blocking brick of the daily workflow
     next_index = (current_index + 1) % len(GAMES)
