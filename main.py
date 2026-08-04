@@ -8,6 +8,10 @@ import edge_tts
 from groq import Groq
 from moviepy.editor import *
 
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+
 # --- CONFIGURATION ---
 GAMES = [
     "Blox Fruits", 
@@ -53,7 +57,7 @@ def get_character_bible(safe_game_name):
 
 # --- PIPELINE FUNCTIONS ---
 def generate_script_and_images(game, memory, bible):
-    """Integrates with Groq and Pollinations AI with an auto-fallback model search."""
+    """Integrates with Groq and Pollinations AI with an auto-fallback model search and heavy Unreal Engine 5 graphics styling."""
     print(f"Generating script for {game} using Groq...")
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     
@@ -70,7 +74,7 @@ def generate_script_and_images(game, memory, bible):
     }}
     """
     
-    # 1. Dynamically fetch all active, supported models directly from Groq's API
+    # 1. Dynamically fetch all active, supported models directly from Groq's API to ensure zero hardcoded failures
     print("Fetching a list of active models from Groq...")
     try:
         active_models_data = client.models.list().data
@@ -80,7 +84,6 @@ def generate_script_and_images(game, memory, bible):
         ]
     except Exception as e:
         print(f"Failed to fetch model list, falling back to default. Error: {e}")
-        # Updated failsafe list targeting current active free-tier models 
         valid_models = ["llama-4-scout", "llama-3.1-8b-instant", "qwen3-32b"]
 
     response_data = None
@@ -110,10 +113,10 @@ def generate_script_and_images(game, memory, bible):
     prompts = response_data.get("image_prompts", ["Roblox landscape"])
     
     image_paths = []
-    print("Generating heavy AI images via Pollinations AI...")
+    print("Generating ultra-detailed Unreal Engine 5 visuals via Pollinations AI...")
     
-    # 3. Injecting high-end Unreal Engine styling into every prompt
-    style_modifier = ", Unreal Engine 5 render, highly detailed, photorealistic, 8k resolution, cinematic lighting, masterpiece, created by advanced AI"
+    # 3. Heavy AI & Unreal Engine 5 Graphics Modifiers injected into prompts
+    style_modifier = ", Unreal Engine 5 render, hyper-realistic lighting, ray tracing, 8k resolution, cinematic composition, high-end heavy AI visual masterpiece, octane render"
     
     for i, img_prompt in enumerate(prompts):
         enhanced_prompt = f"{img_prompt}{style_modifier}"
@@ -171,12 +174,59 @@ def render_video(audio_path, image_paths, text_chunks):
     return output_path
 
 def upload_to_youtube(video_path, game_name):
-    """Handles authenticated upload via GitHub Secrets."""
-    print(f"Uploading {video_path} to YouTube for game: {game_name}...")
+    """Handles authenticated upload using GitHub Secrets Refresh Token."""
+    print(f"Preparing to upload {video_path} to YouTube for: {game_name}...")
     
-    # You must implement your specific googleapiclient.discovery.build('youtube', 'v3', credentials=creds) logic here
+    client_id = os.environ.get("CLIENT_ID")
+    client_secret = os.environ.get("CLIENT_SECRET")
+    refresh_token = os.environ.get("REFRESH_TOKEN")
+
+    if not all([client_id, client_secret, refresh_token]):
+        raise Exception("CRITICAL: Missing YouTube API credentials in environment variables.")
+
+    creds = Credentials(
+        token=None,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=client_id,
+        client_secret=client_secret
+    )
+
+    youtube = build('youtube', 'v3', credentials=creds)
+
+    safe_name = get_safe_filename(game_name)
+    title = f"Epic {game_name} AI Story! 🤯 #roblox #shorts #{safe_name}"
+    description = f"What happens next in {game_name}? Drop a like and subscribe for tomorrow's episode! Generated entirely by AI."
     
-    print("Upload complete!")
+    body = {
+        'snippet': {
+            'title': title,
+            'description': description,
+            'tags': ['roblox', game_name, 'shorts', 'robloxedit', 'aigenerated', 'robloxshorts'],
+            'categoryId': '20' # Gaming Category ID
+        },
+        'status': {
+            'privacyStatus': 'public',
+            'selfDeclaredMadeForKids': False
+        }
+    }
+
+    print("Initiating YouTube upload stream...")
+    media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype='video/mp4')
+
+    request = youtube.videos().insert(
+        part=','.join(body.keys()),
+        body=body,
+        media_body=media
+    )
+
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status:
+            print(f"Uploaded {int(status.progress() * 100)}%...")
+
+    print(f"SUCCESS! Video uploaded perfectly. YouTube Video ID: {response['id']}")
 
 # --- MAIN EXECUTION ---
 async def main():
