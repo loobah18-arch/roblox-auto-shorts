@@ -47,6 +47,10 @@ def get_story_memory(safe_game_name):
     if os.path.exists(filename):
         with open(filename, "r") as f:
             return f.read()
+    # Safe fallback to global story memory
+    if os.path.exists("story_memory.txt"):
+        with open("story_memory.txt", "r") as f:
+            return f.read()
     return "No previous memory. Start a brand new epic adventure."
 
 def save_story_memory(safe_game_name, new_memory):
@@ -59,6 +63,10 @@ def get_character_bible(safe_game_name):
     if os.path.exists(filename):
         with open(filename, "r") as f:
             return f.read()
+    # Safe fallback to global character bible
+    if os.path.exists("character_bible.json"):
+        with open("character_bible.json", "r") as f:
+            return f.read()
     return "No character bible found for this game."
 
 # --- PIPELINE FUNCTIONS ---
@@ -66,16 +74,31 @@ def generate_script_and_images(game, memory, bible):
     """Integrates with Groq and Pollinations AI with dynamic multi-image correlation and Unreal Engine 5 styling."""
     print(f"Generating script for {game} using Groq...")
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    
+    # Tailor storytelling themes dynamically based on game types
+    style_prompts = {
+        "blox_fruits": "an anime action-adventure style filled with devil fruits (Leopard, Dough, Dragon), high-stakes boss battles, grinding levels, and bounty hunter showdowns.",
+        "brookhaven": "a suspense-filled roleplay style involving neighborhood mysteries, bank robberies, secret agent bunkers hidden under the map, and luxury mansion dramas.",
+        "adopt_me": "a dynamic roleplay style involving trading drama, hatching neon/mega legendary pets (Shadow Dragons, Owls), avoiding trust-trade scams, and showcase home decorations.",
+        "murder_mystery_2": "a psychological thriller style focused on the silent stalker (Murderer with a Godly knife), the heroic protector (Sheriff camping the gun), and the intense survival of the Innocents.",
+        "tower_of_hell": "a high-altitude rage obby style capturing the intense frustration of laser levels, gravity adjustments, buying invincibility powerups, and falling back to the beginning."
+    }
+    
+    safe_game = get_safe_filename(game)
+    game_theme = style_prompts.get(safe_game, "an intense, cinematic gaming adventure.")
+
     prompt = f"""
-    Create an intense, cinematic 30-second YouTube Short script for Roblox {game} told in a commanding, epic voice.
+    Create an intense, cinematic Roblox {game} script (strictly between 130 to 155 words to achieve a 50+ second final duration) told in a commanding, epic voiceover narrator tone.
+    The gameplay theme for this story should specifically reflect: {game_theme}
     Previous Story Memory: {memory}
     Character Bible: {bible}
-    Provide 5 distinct visual scene descriptions so the background imagery continuously correlates with the narrative progression.
+    
+    Provide 8 distinct, highly descriptive visual scene descriptions (Prompt 1 to 8) that correlate sequentially with the narrative arc.
     Output JSON strictly in this format:
     {{
-      "voiceover": "Script text here",
-      "new_memory": "Cliffhanger for tomorrow here",
-      "image_prompts": ["Prompt 1", "Prompt 2", "Prompt 3", "Prompt 4", "Prompt 5"]
+      "voiceover": "Script text here (must be 130-155 words)",
+      "new_memory": "Cliffhanger summary for tomorrow's episode here",
+      "image_prompts": ["Prompt 1", "Prompt 2", "Prompt 3", "Prompt 4", "Prompt 5", "Prompt 6", "Prompt 7", "Prompt 8"]
     }}
     """
     print("Fetching active models from Groq...")
@@ -110,7 +133,7 @@ def generate_script_and_images(game, memory, bible):
 
     audio_text = response_data.get("voiceover", "The journey continues...")
     new_memory = response_data.get("new_memory", "To be continued...")
-    prompts = response_data.get("image_prompts", ["Roblox landscape"] * 5)
+    prompts = response_data.get("image_prompts", ["Roblox landscape"] * 8)
     image_paths = []
     
     print(f"Generating {len(prompts)} correlated Unreal Engine 5 visual assets via Pollinations AI...")
@@ -356,12 +379,12 @@ async def main():
     communicate = edge_tts.Communicate(audio_text, "en-US-ChristopherNeural")
     await communicate.save(raw_audio_path)
     
-    # Apply voice effects, trimming dead spaces and speeding up to 1.3x with pitch adjustments
-    print("Optimizing voiceover pacing (1.3x speed & minor pitch adjustment)...")
+    # Apply voice effects, trimming dead spaces and speeding up to 1.15x with pitch adjustments (the chipmunk effect)
+    print("Optimizing voiceover pacing (1.15x speed & minor pitch adjustment)...")
     ffmpeg_cmd = [
         "ffmpeg", "-y",
         "-i", raw_audio_path,
-        "-af", "silenceremove=stop_periods=-1:stop_duration=0.1:stop_threshold=-40dB,atempo=1.3,asetrate=44100*1.1,aresample=44100",
+        "-af", "silenceremove=stop_periods=-1:stop_duration=0.3:stop_threshold=-45dB,asetrate=44100*1.1,aresample=44100,atempo=1.05",
         audio_path
     ]
     subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
