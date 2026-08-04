@@ -51,8 +51,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Use a wildcard to catch ANY generated story memory file, and include game_state.json
-          git add game_state.json story_memory_*.txt
+          # Use git add -A to safely stage all modified/created state files without wildcard errors
+          git add -A
           
           # Add [skip ci] to prevent this commit from triggering a duplicate workflow run
           git commit -m "chore: update game state and story memory [skip ci]" || echo "No changes to commit"
