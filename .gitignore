@@ -1,19 +1,63 @@
-# Generated video / audio (large files — never commit these)
+# =====================================================================
+# ROBLOX AUTO SHORTS ENGINE - OPTIMIZED .GITIGNORE
+# =====================================================================
+
+# 1. Ignore Temporary Media & Render Assets (CRITICAL)
+# Prevents GitHub Action bots from committing active video/audio files
+vo.mp3
+vo_raw.mp3
+subtitles.ass
+temp_unsubbed.mp4
 final_short.mp4
-final_short_v*.mp4
-scene_*.mp3
-motion_templates/
-thumbnail.jpg
-story_memory_*.txt
+scene_*.jpg
+*.jpg
+*.png
+*.mp3
+*.wav
+*.mp4
+*.ass
 
-# YouTube cookies (sensitive)
-cookies.txt
+# Exceptions: Allow your background music directory to be tracked
+!bgm/
+!bgm/*.mp3
 
-# Python
+# 2. Python System & Build Artifacts
 __pycache__/
-*.pyc
-.env
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# OS
+# 3. Virtual Environments
+venv/
+env/
+ENV/
+.env
+.venv
+
+# 4. OS & IDE Metadata
 .DS_Store
-Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
