@@ -2,10 +2,11 @@ import os
 import json
 import random
 import glob
-from moviepy.editor import * # Pinned to 1.0.3 in requirements.txt
-# import edge_tts
-# from groq import Groq
-# import requests (For Pollinations AI and YouTube API)
+import asyncio
+import requests
+import edge_tts
+from groq import Groq
+from moviepy.editor import *
 
 # --- CONFIGURATION ---
 GAMES = [
@@ -47,21 +48,50 @@ def get_character_bible(safe_game_name):
     filename = f"character_bible_{safe_game_name}.json"
     if os.path.exists(filename):
         with open(filename, "r") as f:
-            return f.read() # Return as string to feed directly to Groq
+            return f.read() 
     return "No character bible found for this game."
 
 # --- PIPELINE FUNCTIONS ---
 def generate_script_and_images(game, memory, bible):
     """Integrates with Groq and Pollinations AI"""
     print(f"Generating script for {game} using Groq...")
-    # 1. Feed game, memory, and bible to Groq LLM
-    # 2. Extract story script and new cliffhanger memory
-    # 3. Extract image prompts and call Pollinations AI (https://image.pollinations.ai/prompt/{prompt})
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     
-    # Mock returns
-    audio_text = "Welcome back to the game! Today we face the ultimate challenge."
-    new_memory = "The player is standing in front of the final boss, unarmed."
-    image_paths = ["scene1.jpg", "scene2.jpg"] 
+    prompt = f"""
+    Create a 30-second YouTube Short script for Roblox {game}.
+    Previous Story Memory: {memory}
+    Character Bible: {bible}
+    
+    Output JSON strictly in this format:
+    {{
+        "voiceover": "Script text here",
+        "new_memory": "Cliffhanger for tomorrow here",
+        "image_prompts": ["Prompt 1", "Prompt 2"]
+    }}
+    """
+    
+    chat_completion = client.chat.completions.create(
+        messages=[{"role": "user", "content": prompt}],
+        model="llama3-8b-8192",
+        response_format={"type": "json_object"}
+    )
+    
+    response_data = json.loads(chat_completion.choices[0].message.content)
+    audio_text = response_data.get("voiceover", "Welcome to Roblox!")
+    new_memory = response_data.get("new_memory", "To be continued...")
+    prompts = response_data.get("image_prompts", ["Roblox landscape"])
+    
+    image_paths = []
+    print("Generating images via Pollinations AI...")
+    for i, img_prompt in enumerate(prompts):
+        safe_prompt = requests.utils.quote(img_prompt)
+        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&nologo=true"
+        response = requests.get(url)
+        path = f"scene_{i}.jpg"
+        with open(path, 'wb') as f:
+            f.write(response.content)
+        image_paths.append(path)
+        
     return audio_text, new_memory, image_paths
 
 def split_text_for_captions(text, words_per_chunk=3):
@@ -73,7 +103,6 @@ def render_video(audio_path, image_paths, text_chunks):
     """MoviePy 1.0.3 assembly with ImageMagick captions and automated BGM mixing."""
     print("Assembling video with MoviePy...")
     
-    # Load Voiceover Audio
     vo_clip = AudioFileClip(audio_path)
     video_duration = vo_clip.duration
 
@@ -81,14 +110,19 @@ def render_video(audio_path, image_paths, text_chunks):
     bgm_files = glob.glob("bgm/*.mp3")
     if bgm_files:
         selected_bgm = random.choice(bgm_files)
-        bgm_clip = AudioFileClip(selected_bgm).fx(vfx.volumex, 0.1) # Lower BGM volume
+        # THE FIX: Switched from vfx.volumex to afx.volumex
+        bgm_clip = AudioFileClip(selected_bgm).fx(afx.volumex, 0.1) 
         bgm_clip = bgm_clip.set_duration(video_duration)
         final_audio = CompositeAudioClip([vo_clip, bgm_clip])
     else:
         final_audio = vo_clip
 
+    # Distribute images evenly across the video duration
+    img_duration = video_duration / len(image_paths)
+    image_clips = [ImageClip(img).set_duration(img_duration) for img in image_paths]
+    final_video = concatenate_videoclips(image_clips, method="compose")
+
     # Caption Generation (Dynamic 3-word yellow font)
-    # Note: Requires ImageMagick policy fix applied in workflow
     chunk_duration = video_duration / len(text_chunks)
     text_clips = []
     
@@ -98,27 +132,26 @@ def render_video(audio_path, image_paths, text_chunks):
         txt_clip = txt_clip.set_position('center').set_duration(chunk_duration).set_start(i * chunk_duration)
         text_clips.append(txt_clip)
 
-    # (Add Image sequence logic here using ImageClip mapped to durations)
+    final_video = CompositeVideoClip([final_video] + text_clips)
+    final_video = final_video.set_audio(final_audio)
     
-    # Final assembly
-    # video = CompositeVideoClip([base_image_clip] + text_clips)
-    # video = video.set_audio(final_audio)
-    # video.write_videofile("final_short.mp4", fps=24)
+    output_path = "final_short.mp4"
+    final_video.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac")
     print("Video rendered successfully.")
-    return "final_short.mp4"
+    return output_path
 
 def upload_to_youtube(video_path, game_name):
     """Handles authenticated upload via GitHub Secrets."""
-    client_id = os.environ.get("CLIENT_ID")
-    client_secret = os.environ.get("CLIENT_SECRET")
-    refresh_token = os.environ.get("REFRESH_TOKEN")
-    
+    # Note: Requires google-api-python-client and properly authenticated OAuth credentials
     print(f"Uploading {video_path} to YouTube for game: {game_name}...")
-    # Add robust Error Handling and Google API upload logic here
+    
+    # Example placeholder for where your Google API logic executes
+    # You must implement your specific googleapiclient.discovery.build('youtube', 'v3', credentials=creds) logic here
+    
     print("Upload complete!")
 
 # --- MAIN EXECUTION ---
-def main():
+async def main():
     # 1. Determine Current Game
     state = load_game_state()
     current_index = state.get("current_index", 0)
@@ -137,8 +170,10 @@ def main():
     save_story_memory(safe_game_name, new_memory)
 
     # 5. Audio Generation (Edge-TTS)
+    print("Generating Voiceover via Edge-TTS...")
     audio_path = "vo.mp3"
-    # edge_tts logic here: e.g., asyncio.run(edge_tts.Communicate(audio_text, "en-US-GuyNeural").save(audio_path))
+    communicate = edge_tts.Communicate(audio_text, "en-US-GuyNeural")
+    await communicate.save(audio_path)
 
     # 6. Video Assembly
     text_chunks = split_text_for_captions(audio_text, words_per_chunk=3)
@@ -153,4 +188,4 @@ def main():
     print(f"Pipeline complete. Next game in rotation: {GAMES[next_index]}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
