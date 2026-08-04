@@ -9,7 +9,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
-    # Required to allow GitHub Actions to push files back to the repo
     permissions:
       contents: write 
     
@@ -29,7 +28,6 @@ jobs:
 
       - name: Patch ImageMagick Security Policy
         run: |
-          # Finds the policy file and deletes the line blocking text rendering (@*)
           find /etc/ImageMagick-* -name "policy.xml" -exec sudo sed -i '/pattern="@\*"/d' {} \;
 
       - name: Install Python Dependencies
@@ -51,9 +49,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Use git add -A to safely stage all modified/created state files without wildcard errors
           git add -A
           
-          # Add [skip ci] to prevent this commit from triggering a duplicate workflow run
           git commit -m "chore: update game state and story memory [skip ci]" || echo "No changes to commit"
           git push
