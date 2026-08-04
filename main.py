@@ -53,7 +53,7 @@ def get_character_bible(safe_game_name):
 
 # --- PIPELINE FUNCTIONS ---
 def generate_script_and_images(game, memory, bible):
-    """Integrates with Groq and Pollinations AI"""
+    """Integrates with Groq and Pollinations AI with an auto-fallback model search."""
     print(f"Generating script for {game} using Groq...")
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     
@@ -70,22 +70,56 @@ def generate_script_and_images(game, memory, bible):
     }}
     """
     
-    chat_completion = client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
-        model="llama3-8b-8192",
-        response_format={"type": "json_object"}
-    )
+    # 1. Dynamically fetch all active, supported models directly from Groq's API
+    print("Fetching a list of active models from Groq...")
+    try:
+        active_models_data = client.models.list().data
+        valid_models = [
+            m.id for m in active_models_data 
+            if "llama" in m.id.lower() or "mixtral" in m.id.lower() or "qwen" in m.id.lower()
+        ]
+    except Exception as e:
+        print(f"Failed to fetch model list, falling back to default. Error: {e}")
+        # Updated failsafe list targeting current active free-tier models 
+        valid_models = ["llama-4-scout", "llama-3.1-8b-instant", "qwen3-32b"]
+
+    response_data = None
     
-    response_data = json.loads(chat_completion.choices[0].message.content)
+    # 2. Auto-search loop: Try models until we find a working one
+    for model_id in valid_models:
+        print(f"Attempting generation with model: {model_id}...")
+        try:
+            chat_completion = client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=model_id,
+                response_format={"type": "json_object"}
+            )
+            response_data = json.loads(chat_completion.choices[0].message.content)
+            print(f"Success! Model {model_id} worked perfectly.")
+            break  
+            
+        except Exception as e:
+            print(f"Model {model_id} failed. Searching next... Error: {e}")
+            continue  
+            
+    if not response_data:
+        raise Exception("Fatal Error: Could not find any working Groq models.")
+    
     audio_text = response_data.get("voiceover", "Welcome to Roblox!")
     new_memory = response_data.get("new_memory", "To be continued...")
     prompts = response_data.get("image_prompts", ["Roblox landscape"])
     
     image_paths = []
-    print("Generating images via Pollinations AI...")
+    print("Generating heavy AI images via Pollinations AI...")
+    
+    # 3. Injecting high-end Unreal Engine styling into every prompt
+    style_modifier = ", Unreal Engine 5 render, highly detailed, photorealistic, 8k resolution, cinematic lighting, masterpiece, created by advanced AI"
+    
     for i, img_prompt in enumerate(prompts):
-        safe_prompt = requests.utils.quote(img_prompt)
+        enhanced_prompt = f"{img_prompt}{style_modifier}"
+        safe_prompt = requests.utils.quote(enhanced_prompt)
         url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&nologo=true"
+        
         response = requests.get(url)
         path = f"scene_{i}.jpg"
         with open(path, 'wb') as f:
@@ -106,23 +140,19 @@ def render_video(audio_path, image_paths, text_chunks):
     vo_clip = AudioFileClip(audio_path)
     video_duration = vo_clip.duration
 
-    # Automated BGM Mixing from /bgm folder
     bgm_files = glob.glob("bgm/*.mp3")
     if bgm_files:
         selected_bgm = random.choice(bgm_files)
-        # THE FIX: Switched from vfx.volumex to afx.volumex
         bgm_clip = AudioFileClip(selected_bgm).fx(afx.volumex, 0.1) 
         bgm_clip = bgm_clip.set_duration(video_duration)
         final_audio = CompositeAudioClip([vo_clip, bgm_clip])
     else:
         final_audio = vo_clip
 
-    # Distribute images evenly across the video duration
     img_duration = video_duration / len(image_paths)
     image_clips = [ImageClip(img).set_duration(img_duration) for img in image_paths]
     final_video = concatenate_videoclips(image_clips, method="compose")
 
-    # Caption Generation (Dynamic 3-word yellow font)
     chunk_duration = video_duration / len(text_chunks)
     text_clips = []
     
@@ -142,47 +172,36 @@ def render_video(audio_path, image_paths, text_chunks):
 
 def upload_to_youtube(video_path, game_name):
     """Handles authenticated upload via GitHub Secrets."""
-    # Note: Requires google-api-python-client and properly authenticated OAuth credentials
     print(f"Uploading {video_path} to YouTube for game: {game_name}...")
     
-    # Example placeholder for where your Google API logic executes
     # You must implement your specific googleapiclient.discovery.build('youtube', 'v3', credentials=creds) logic here
     
     print("Upload complete!")
 
 # --- MAIN EXECUTION ---
 async def main():
-    # 1. Determine Current Game
     state = load_game_state()
     current_index = state.get("current_index", 0)
     current_game = GAMES[current_index]
     safe_game_name = get_safe_filename(current_game)
     print(f"--- Starting Daily Pipeline for: {current_game} ---")
 
-    # 2. Load Context
     memory = get_story_memory(safe_game_name)
     bible = get_character_bible(safe_game_name)
 
-    # 3. AI Generation (Groq + Pollinations)
     audio_text, new_memory, image_paths = generate_script_and_images(current_game, memory, bible)
-
-    # 4. Save New Memory for Tomorrow (Picked up by upload.yml)
     save_story_memory(safe_game_name, new_memory)
 
-    # 5. Audio Generation (Edge-TTS)
     print("Generating Voiceover via Edge-TTS...")
     audio_path = "vo.mp3"
     communicate = edge_tts.Communicate(audio_text, "en-US-GuyNeural")
     await communicate.save(audio_path)
 
-    # 6. Video Assembly
     text_chunks = split_text_for_captions(audio_text, words_per_chunk=3)
     final_video_path = render_video(audio_path, image_paths, text_chunks)
 
-    # 7. Upload
     upload_to_youtube(final_video_path, current_game)
 
-    # 8. Update Game Rotation for Tomorrow (Picked up by upload.yml)
     next_index = (current_index + 1) % len(GAMES)
     save_game_state(next_index)
     print(f"Pipeline complete. Next game in rotation: {GAMES[next_index]}")
