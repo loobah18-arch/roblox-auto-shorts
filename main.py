@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import random
 import glob
 import asyncio
@@ -47,7 +48,7 @@ def get_story_memory(safe_game_name):
     if os.path.exists(filename):
         with open(filename, "r") as f:
             return f.read()
-    # Safe fallback to global story memory
+    # Safe fallback to legacy story file
     if os.path.exists("story_memory.txt"):
         with open("story_memory.txt", "r") as f:
             return f.read()
@@ -63,89 +64,94 @@ def get_character_bible(safe_game_name):
     if os.path.exists(filename):
         with open(filename, "r") as f:
             return f.read()
-    # Safe fallback to global character bible
+    # Safe fallback to global character settings
     if os.path.exists("character_bible.json"):
         with open("character_bible.json", "r") as f:
             return f.read()
     return "No character bible found for this game."
 
-def generate_fallback_image(prompt, path):
-    """Generates an abstract high-quality geometric background with scene details using Pillow as a self-healing fallback."""
+# --- HELPER FUNCTIONS ---
+def extract_json(text):
+    """Safely extracts and parses a JSON block from potentially conversational LLM output."""
     try:
-        from PIL import Image, ImageDraw
-        # Create a beautiful vertical 1080x1920 abstract gradient-style card
-        img = Image.new("RGB", (1080, 1920), color=(15, 15, 25))
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Search for outer curly braces
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+    return None
+
+def create_fallback_image(path, index):
+    """Generates a high-quality vertical geometric placeholder card using Pillow if Pollinations AI fails."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        print(f"Creating self-healing high-quality visual placeholder for scene {index}...")
+        # High resolution vertical short layout (1080x1920)
+        img = Image.new("RGB", (1080, 1920), color=(15, 15, 27))
         draw = ImageDraw.Draw(img)
-        # Cool ambient tech circles to avoid a boring black screen
-        draw.ellipse([200, 400, 880, 1080], fill=(30, 30, 50), outline=(50, 50, 80), width=5)
-        draw.ellipse([400, 1200, 680, 1480], fill=(25, 25, 40), outline=(40, 40, 60), width=3)
-        draw.rectangle([50, 50, 1030, 1870], outline=(70, 70, 100), width=8)
+        
+        # Draw clean, stylized abstract background curves
+        for i in range(10):
+            offset = i * 60
+            draw.arc([100 - offset, 400 - offset, 980 + offset, 1500 + offset], 
+                     start=0, end=360, fill=(40 + i*15, 30 + i*10, 80 + i*5), width=2)
+            
+        # Draw central neon focus panel
+        draw.rounded_rectangle([140, 760, 940, 1160], radius=30, fill=(30, 30, 50), outline=(0, 255, 255), width=4)
+        
         img.save(path)
-        print(f"[Self-Healing] Abstract visual card generated successfully at {path}")
+        return True
     except Exception as e:
-        print(f"[Self-Healing] PIL fallback failed: {e}. Writing raw fallback image bytes.")
-        try:
-            with open(path, 'wb') as f:
-                f.write(b'')
-        except Exception:
-            pass
+        print(f"Pillow placeholder generation failed: {e}")
+        return False
 
 # --- PIPELINE FUNCTIONS ---
 def generate_script_and_images(game, memory, bible):
     """Integrates with Groq and Pollinations AI with dynamic multi-image correlation and Unreal Engine 5 styling."""
     print(f"Generating script for {game} using Groq...")
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-    
-    # Game-specific storytelling guidelines to keep stories highly immersive and engaging
-    game_guidelines = {
-        "blox fruits": "Write an intense anime-style saga. Focus on leveling, grinding bounty, unlocking rare devil fruits (like Dough, Shadow, or Dragon), and battling toxic bounty hunters in the Third Sea.",
-        "brookhaven": "Write a suspenseful roleplay mystery. Focus on bank robberies, secret tunnels, creepy modern mansions, and mysterious figures whispering under the neighborhood lights.",
-        "adopt me!": "Write a high-stakes trade negotiation or neon egg drama. Focus on legendary pets (like Frost Dragon or owl), the anxiety of a trust-trade, and building a dream neon mansion.",
-        "murder mystery 2": "Write a heart-pounding psychological obby/slasher. Focus on the terrifying panic of being an Innocent hiding in the shadows, a Sheriff trying to find the gun, or a cold-blooded Murderer stalking with a Godly knife.",
-        "tower of hell": "Write a funny, highly relatable rage-obby story. Focus on shifty lasers, low gravity, speed power-ups, and the hilarious agony of falling from the very top section all the way back to the start with zero checkpoints."
-    }
-    
-    safe_game = game.lower().strip()
-    guideline = game_guidelines.get(safe_game, "Write an epic, high-stakes Roblox adventure story with cliffhangers.")
-    
     prompt = f"""
-    Create an intense, highly engaging, and cinematic Roblox {game} script (strictly between 110 to 135 words to achieve a 50+ second final duration at natural speaking pacing) told in a commanding, epic voice.
-    Theme Guidelines: {guideline}
-    Previous Story Memory (for continuity): {memory}
+    Create an intense, cinematic Roblox {game} script (strictly between 110 to 135 words to achieve a 50+ second final duration at normal understandable speeds) told in a commanding, epic voice.
+    Previous Story Memory: {memory}
     Character Bible: {bible}
-    
-    Provide exactly 8 distinct visual scene descriptions so the background imagery continuously correlates with the narrative progression of this longer story.
+    Provide 8 distinct visual scene descriptions so the background imagery continuously correlates with the narrative progression of this longer story.
     Output JSON strictly in this format:
     {{
-      "voiceover": "Script text here (must be 110-135 words, highly engaging and theatrical, no brackets or stage directions)",
-      "new_memory": "A summary cliffhanger memory of today's events for tomorrow's continuation",
+      "voiceover": "Script text here (must be 110-135 words)",
+      "new_memory": "Cliffhanger for tomorrow here",
       "image_prompts": ["Prompt 1", "Prompt 2", "Prompt 3", "Prompt 4", "Prompt 5", "Prompt 6", "Prompt 7", "Prompt 8"]
     }}
     """
     
-    print("Fetching active models from Groq for auto-rotation and fallback...")
+    # Priority ordered sequence of stable free-tier and fallback models
+    fallback_models = [
+        "llama-3.3-70b-specdec",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "mixtral-8x7b-32768",
+        "gemma2-9b-it",
+        "llama3-70b-8192",
+        "llama3-8b-8192"
+    ]
+    
+    print("Fetching active models from Groq...")
     try:
         active_models_data = client.models.list().data
         valid_models = [
             m.id for m in active_models_data
-            if any(kw in m.id.lower() for kw in ["llama", "mixtral", "gemma", "qwen"])
+            if any(term in m.id.lower() for term in ["llama", "mixtral", "gemma", "qwen"])
         ]
+        # Keep fallback list at the end of valid_models to preserve order of priority
+        for model in fallback_models:
+            if model not in valid_models:
+                valid_models.append(model)
     except Exception as e:
-        print(f"Failed to fetch model list, using hardcoded fallbacks. Error: {e}")
-        valid_models = []
-
-    # Sequence of known free-tier and low-cost active models as reliable fallback buffers
-    fallbacks = [
-        "llama-3.3-70b-specdec",
-        "llama-3.3-70b-versatile",
-        "llama-3.1-70b-versatile",
-        "llama-3.1-8b-instant",
-        "mixtral-8x7b-32768",
-        "gemma2-9b-it"
-    ]
-    for fb in fallbacks:
-        if fb not in valid_models:
-            valid_models.append(fb)
+        print(f"Failed to fetch model list, falling back to default list. Error: {e}")
+        valid_models = fallback_models
 
     response_data = None
     for model_id in valid_models:
@@ -156,20 +162,24 @@ def generate_script_and_images(game, memory, bible):
                 model=model_id,
                 response_format={"type": "json_object"}
             )
-            response_data = json.loads(chat_completion.choices[0].message.content)
-            print(f"Success! Model {model_id} worked perfectly.")
-            break
+            raw_text = chat_completion.choices[0].message.content
+            response_data = extract_json(raw_text)
+            if response_data and "voiceover" in response_data:
+                print(f"Success! Model {model_id} worked perfectly.")
+                break
+            else:
+                print(f"Model {model_id} returned invalid schema. Retrying next...")
         except Exception as e:
             print(f"Model {model_id} failed. Searching next... Error: {e}")
             continue
 
+    # Fallback to local hardcoded dramatic script if Groq API goes completely dark
     if not response_data:
-        # Ultimate self-healing fallback to prevent any run failure or actions crash
-        print("[Self-Healing] All Groq API models failed or rate-limited. Activating safe story fail-safe...")
+        print("CRITICAL: Groq API completely unresponsive. Activating Self-Healing Narrative Fallback...")
         response_data = {
-            "voiceover": f"In the dark virtual world of Roblox {game}, a hidden force began to rise. Every block shifted, every code line cracked under the pressure. We had to move fast. There was no turning back now. But as the gate opened, the ultimate challenge appeared before us. The final boss stood waiting. To be continued...",
-            "new_memory": f"The heroes faced the final boss of Roblox {game} as the virtual world cracked.",
-            "image_prompts": [f"Roblox {game} epic cinematic world, unreal engine 5 render"] * 8
+            "voiceover": f"In the shadows of the {game} grid, an ancient power awakens. The players thought this was just another harmless server, but they were wrong. Legends speak of a hidden bunker beneath the city, guarded by shifting laser beams and a mystery no code can crack. As the timer counts down, a brave survivor steps forward, facing their ultimate destiny. Will they claim the awakened fruit and conquer the obby, or will the darkness consume everything they worked for? The choice is yours... but time is running out.",
+            "new_memory": "The ancient bunker door creaks open, revealing a blinding neon light as a mysterious shadow steps through.",
+            "image_prompts": [f"Epic Roblox {game} landscape under heavy dark sky"] * 8
         }
 
     audio_text = response_data.get("voiceover", "The journey continues...")
@@ -180,23 +190,21 @@ def generate_script_and_images(game, memory, bible):
     print(f"Generating {len(prompts)} correlated Unreal Engine 5 visual assets via Pollinations AI...")
     style_modifier = ", Unreal Engine 5 render, hyper-realistic lighting, ray tracing, 8k resolution, cinematic composition, high-end heavy AI visual masterpiece, octane render"
     for i, img_prompt in enumerate(prompts):
+        path = f"scene_{i}.jpg"
         try:
             enhanced_prompt = f"{img_prompt}{style_modifier}"
             safe_prompt = requests.utils.quote(enhanced_prompt)
             url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&nologo=true"
             response = requests.get(url, timeout=15)
             if response.status_code == 200:
-                path = f"scene_{i}.jpg"
                 with open(path, 'wb') as f:
                     f.write(response.content)
-                image_paths.append(path)
             else:
-                raise Exception(f"Bad response code: {response.status_code}")
+                raise Exception(f"Failed status code {response.status_code}")
         except Exception as e:
-            print(f"[Self-Healing] Pollinations AI failed for prompt {i}. Generating PIL fallback. Error: {e}")
-            path = f"scene_{i}.jpg"
-            generate_fallback_image(img_prompt, path)
-            image_paths.append(path)
+            print(f"Pollinations AI failed for scene {i}: {e}. Activating visual fallback...")
+            create_fallback_image(path, i)
+        image_paths.append(path)
 
     return audio_text, new_memory, image_paths
 
@@ -210,7 +218,7 @@ def split_text_for_captions(text, words_per_chunk=3):
             middle = len(chunk) // 2
             space_idx = chunk.rfind(' ', 0, middle)
             if space_idx != -1:
-                chunk = chunk[:space_idx] + "\\n" + chunk[space_idx+1:]
+                chunk = chunk[:space_idx] + "\n" + chunk[space_idx+1:]
         chunks.append(chunk)
     return chunks
 
@@ -425,17 +433,12 @@ async def main():
     raw_audio_path = "vo_raw.mp3"
     audio_path = "vo.mp3"
     
-    try:
-        # Stable deep narrator config using ChristopherNeural
-        communicate = edge_tts.Communicate(audio_text, "en-US-ChristopherNeural")
-        await communicate.save(raw_audio_path)
-    except Exception as e:
-        print(f"[Self-Healing] Edge-TTS failed to connect or save. Writing absolute silent fallback waveform. Error: {e}")
-        # Build 5-second placeholder raw silent wav using ffmpeg if TTS fails
-        subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "5", raw_audio_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Stable deep narrator config using ChristopherNeural
+    communicate = edge_tts.Communicate(audio_text, "en-US-ChristopherNeural")
+    await communicate.save(raw_audio_path)
     
-    # Apply voice effects: relaxed syllable silence removal and extremely clear, understandably paced 1.05x speedup
-    print("Optimizing voiceover pacing (1.05x natural speed, pitch-perfect)...")
+    # Clean understandable vocal pacing matching tQOIvmcX8_I (1.05x normal speed, standard natural deep pitch)
+    print("Optimizing voiceover pacing (1.05x standard speed & natural pitch)...")
     ffmpeg_cmd = [
         "ffmpeg", "-y",
         "-i", raw_audio_path,
