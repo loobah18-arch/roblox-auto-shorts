@@ -2,14 +2,14 @@ name: build-and-upload
 
 on:
   schedule:
-    - cron: '0 12 * * *'
-  workflow_dispatch:
+    - cron: '0 12 * * *' # Runs daily at 12:00 PM UTC
+  workflow_dispatch:     # Allows manual triggering
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
-    # Required to allow GitHub Actions to push the story_memory.txt file back to the repo
+    # Required to allow GitHub Actions to push files back to the repo
     permissions:
       contents: write 
     
@@ -37,7 +37,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Pipeline
+      - name: Run Video Pipeline
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
@@ -46,15 +46,14 @@ jobs:
         run: |
           python main.py
 
-      - name: Save Story Memory
+      - name: Commit and Push Updated State
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # We check if the file exists to prevent errors if Brookhaven was chosen (since no file is created)
-          if [ -f story_memory.txt ]; then
-            git add story_memory.txt
-            git commit -m "Update Blox Fruits story memory" || echo "No changes to commit"
-            git push
-          else
-            echo "No story_memory.txt found. Skipping commit."
-          fi
+          
+          # Use a wildcard to catch ANY generated story memory file, and include game_state.json
+          git add game_state.json story_memory_*.txt
+          
+          # Add [skip ci] to prevent this commit from triggering a duplicate workflow run
+          git commit -m "chore: update game state and story memory [skip ci]" || echo "No changes to commit"
+          git push
