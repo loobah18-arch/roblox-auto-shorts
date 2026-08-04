@@ -269,8 +269,8 @@ Episode Writing Guidelines:
         path = f"scene_{i}.jpg"
         # Spreading outgoing requests with human-mimicking delay to completely bypass 429 throttling limits
         if i > 0:
-            delay = random.uniform(15.5, 17.5)
-            print(f"Spreading API load. Sleeping for {delay:.2f} seconds before retrieving scene {i}...")
+            delay = random.uniform(30.5, 45.5)
+            print(f"Spreading API load. Sleeping for {delay:.2f} seconds (optimal delay) before retrieving scene {i} to fully clear any rate limits...")
             time.sleep(delay)
 
         max_retries = 2
@@ -279,7 +279,7 @@ Episode Writing Guidelines:
                 enhanced_prompt = f"{img_prompt}{style_modifier}"
                 safe_prompt = requests.utils.quote(enhanced_prompt, safe='')
                 url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920"
-                response = requests.get(url, timeout=40)
+                response = requests.get(url, timeout=60)
                 if response.status_code == 200:
                     with open(path, 'wb') as f:
                         f.write(response.content)
@@ -290,7 +290,9 @@ Episode Writing Guidelines:
             except Exception as e:
                 print(f"Retrieval attempt {attempt+1} failed for scene {i}: {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(5)  # Wait 5 seconds before retrying to clear any rate blocks
+                    retry_delay = 20 + attempt * 15
+                    print(f"Waiting {retry_delay} seconds (optimal backoff) before retrying to allow the rate limiter window to cool down...")
+                    time.sleep(retry_delay)
                 else:
                     print(f"Pollinations AI completely timed out for scene {i}. Deploying visual fallback...")
                     create_fallback_image(path, i)
