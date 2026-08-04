@@ -1,11 +1,8 @@
-numpy>=1.26.4
-Pillow>=10.0.0
-moviepy<2.0.0
+moviepy==1.0.3
 edge-tts
-requests>=2.31.0
 google-api-python-client
 google-auth-oauthlib
 google-auth-httplib2
+requests
+Pillow==9.5.0
 groq
-onnxruntime
-rembg
