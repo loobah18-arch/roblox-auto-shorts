@@ -6,6 +6,7 @@ import glob
 import asyncio
 import requests
 import edge_tts
+import time
 import subprocess
 from groq import Groq
 from moviepy.editor import *
@@ -32,16 +33,23 @@ def load_game_state():
         try:
             with open("game_state.json", "r") as f:
                 state = json.load(f)
+                # Check for game-specific parts tracking
+                if "game_parts" not in state:
+                    state["game_parts"] = {get_safe_filename(g): 1 for g in GAMES}
                 if "current_index" not in state or "total_videos_run" not in state:
-                    return {"current_index": 0, "total_videos_run": 1}
+                    return {"current_index": 0, "total_videos_run": 1, "game_parts": {get_safe_filename(g): 1 for g in GAMES}}
                 return state
         except Exception:
-            return {"current_index": 0, "total_videos_run": 1}
-    return {"current_index": 0, "total_videos_run": 1}
+            return {"current_index": 0, "total_videos_run": 1, "game_parts": {get_safe_filename(g): 1 for g in GAMES}}
+    return {"current_index": 0, "total_videos_run": 1, "game_parts": {get_safe_filename(g): 1 for g in GAMES}}
 
-def save_game_state(index, total_runs):
+def save_game_state(index, total_runs, game_parts):
     with open("game_state.json", "w") as f:
-        json.dump({"current_index": index, "total_videos_run": total_runs}, f, indent=4)
+        json.dump({
+            "current_index": index,
+            "total_videos_run": total_runs,
+            "game_parts": game_parts
+        }, f, indent=4)
 
 def get_story_memory(safe_game_name):
     filename = f"story_memory_{safe_game_name}.txt"
@@ -83,7 +91,7 @@ def extract_json(text):
                 return json.loads(match.group(0))
             except json.JSONDecodeError:
                 pass
-    return None
+        return None
 
 def create_fallback_image(path, index):
     """Generates a high-quality vertical geometric placeholder card using Pillow if Pollinations AI fails."""
@@ -93,16 +101,12 @@ def create_fallback_image(path, index):
         # High resolution vertical short layout (1080x1920)
         img = Image.new("RGB", (1080, 1920), color=(15, 15, 27))
         draw = ImageDraw.Draw(img)
-        
         # Draw clean, stylized abstract background curves
         for i in range(10):
             offset = i * 60
-            draw.arc([100 - offset, 400 - offset, 980 + offset, 1500 + offset], 
-                     start=0, end=360, fill=(40 + i*15, 30 + i*10, 80 + i*5), width=2)
-            
+            draw.arc([100 - offset, 400 - offset, 980 + offset, 1500 + offset], start=0, end=360, fill=(40 + i*15, 30 + i*10, 80 + i*5), width=2)
         # Draw central neon focus panel
         draw.rounded_rectangle([140, 760, 940, 1160], radius=30, fill=(30, 30, 50), outline=(0, 255, 255), width=4)
-        
         img.save(path)
         return True
     except Exception as e:
@@ -115,18 +119,17 @@ def generate_script_and_images(game, memory, bible):
     print(f"Generating script for {game} using Groq...")
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     prompt = f"""
-    Create an intense, cinematic Roblox {game} script (strictly between 110 to 135 words to achieve a 50+ second final duration at normal understandable speeds) told in a commanding, epic voice.
+    Create an intense, cinematic Roblox {game} script (strictly between 135 to 160 words to achieve a 50+ second final duration at normal understandable speeds) told in a commanding, epic voice.
     Previous Story Memory: {memory}
     Character Bible: {bible}
     Provide 8 distinct visual scene descriptions so the background imagery continuously correlates with the narrative progression of this longer story.
     Output JSON strictly in this format:
     {{
-      "voiceover": "Script text here (must be 110-135 words)",
+      "voiceover": "Script text here (must be 135-160 words)",
       "new_memory": "Cliffhanger for tomorrow here",
       "image_prompts": ["Prompt 1", "Prompt 2", "Prompt 3", "Prompt 4", "Prompt 5", "Prompt 6", "Prompt 7", "Prompt 8"]
     }}
     """
-    
     # Priority ordered sequence of stable free-tier and fallback models
     fallback_models = [
         "llama-3.3-70b-specdec",
@@ -137,13 +140,13 @@ def generate_script_and_images(game, memory, bible):
         "llama3-70b-8192",
         "llama3-8b-8192"
     ]
-    
     print("Fetching active models from Groq...")
     try:
         active_models_data = client.models.list().data
         valid_models = [
             m.id for m in active_models_data
             if any(term in m.id.lower() for term in ["llama", "mixtral", "gemma", "qwen"])
+            and not any(neg in m.id.lower() for neg in ["guard", "embed", "moderation", "whisper", "vision"])
         ]
         # Keep fallback list at the end of valid_models to preserve order of priority
         for model in fallback_models:
@@ -186,27 +189,91 @@ def generate_script_and_images(game, memory, bible):
     new_memory = response_data.get("new_memory", "To be continued...")
     prompts = response_data.get("image_prompts", ["Roblox landscape"] * 8)
     image_paths = []
-    
+
+    # Safeguard prompt count to always be exactly 8 to lock transition speed and video pacing
+    while len(prompts) < 8:
+        prompts.append("Roblox landscape, Unreal Engine 5 render")
+    prompts = prompts[:8]
+
     print(f"Generating {len(prompts)} correlated Unreal Engine 5 visual assets via Pollinations AI...")
     style_modifier = ", Unreal Engine 5 render, hyper-realistic lighting, ray tracing, 8k resolution, cinematic composition, high-end heavy AI visual masterpiece, octane render"
+    
     for i, img_prompt in enumerate(prompts):
         path = f"scene_{i}.jpg"
-        try:
-            enhanced_prompt = f"{img_prompt}{style_modifier}"
-            safe_prompt = requests.utils.quote(enhanced_prompt)
-            url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&nologo=true"
-            response = requests.get(url, timeout=15)
-            if response.status_code == 200:
-                with open(path, 'wb') as f:
-                    f.write(response.content)
-            else:
-                raise Exception(f"Failed status code {response.status_code}")
-        except Exception as e:
-            print(f"Pollinations AI failed for scene {i}: {e}. Activating visual fallback...")
-            create_fallback_image(path, i)
+        # Spreading outgoing requests with human-mimicking delay to completely bypass 429 throttling limits
+        if i > 0:
+            delay = random.uniform(2.5, 4.5)
+            print(f"Spreading API load. Sleeping for {delay:.2f} seconds before retrieving scene {i}...")
+            time.sleep(delay)
+
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                enhanced_prompt = f"{img_prompt}{style_modifier}"
+                safe_prompt = requests.utils.quote(enhanced_prompt)
+                url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&nologo=true"
+                response = requests.get(url, timeout=20)
+                if response.status_code == 200:
+                    with open(path, 'wb') as f:
+                        f.write(response.content)
+                    print(f"[-] Successfully rendered asset {i} (Attempt {attempt+1})")
+                    break
+                else:
+                    raise Exception(f"Failed status code {response.status_code}")
+            except Exception as e:
+                print(f"Retrieval attempt {attempt+1} failed for scene {i}: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(5)  # Wait 5 seconds before retrying to clear any rate blocks
+                else:
+                    print(f"Pollinations AI completely timed out for scene {i}. Deploying visual fallback...")
+                    create_fallback_image(path, i)
+        
         image_paths.append(path)
 
     return audio_text, new_memory, image_paths
+
+def evolve_character_bible(game_name, safe_game_name, script_text, current_bible_text):
+    """Dynamically updates the character bible based on narrative developments in the latest script."""
+    print(f"Running self-evolution pass for {game_name} Character Bible...")
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    
+    prompt = f"""
+    You are the Lead Lore Master and Story Architect for our automated Roblox YouTube Shorts channel.
+    Your task is to update and evolve the Character Bible for the game '{game_name}' based on the events that occurred in the latest episode script.
+    
+    CURRENT CHARACTER BIBLE:
+    {current_bible_text}
+    
+    LATEST EPISODE SCRIPT:
+    {script_text}
+    
+    INSTRUCTIONS:
+    1. Analyze the latest episode script for character developments, new items obtained, level-ups, changes in relationship, or new lore details.
+    2. Merge these developments into the current Character Bible.
+    3. Keep the bible focused, engaging, and rich with niche Roblox terminology.
+    4. Output the FULL updated Character Bible strictly as a valid, parsable JSON object. No conversational prefix or suffix.
+    """
+    
+    fallback_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama-3.3-70b-versatile",
+            response_format={"type": "json_object"}
+        )
+        raw_text = chat_completion.choices[0].message.content
+        updated_bible_data = extract_json(raw_text)
+        if updated_bible_data:
+            filename = f"character_bible_{safe_game_name}.json"
+            with open(filename, "w") as f:
+                json.dump(updated_bible_data, f, indent=4)
+            print(f"[+] Lore evolution successful! Updated character bible saved to {filename}")
+            return True
+        else:
+            print("[-] Evolution pass returned invalid JSON. Leaving bible unchanged.")
+    except Exception as e:
+        print(f"[-] Self-evolution pass failed: {e}. Falling back safely to unchanged lore.")
+    return False
 
 def split_text_for_captions(text, words_per_chunk=3):
     """Splits text into compact chunks to mirror high-retention short form editing styles."""
@@ -301,7 +368,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     line_parts.append(f"{{\\kf{word_dur_cs}}}{word}")
             karaoke_parts.append(" ".join(line_parts))
             
-        # Join line parts with the ASS hard newline tag '\\N'
+        # Join line parts with the ASS hard newline tag '\N'
         karaoke_text = "\\N".join(karaoke_parts)
         
         events.append(f"Dialogue: 0,{start_str},{end_str},RobloxStyle,,0,0,0,,{karaoke_text}")
@@ -355,11 +422,19 @@ def render_video(audio_path, image_paths, text_chunks):
     ]
     subprocess.run(burn_command, check=True)
     
-    # Clean up temp assets
+    # Clean up temp assets and close clips to prevent memory/file leaks
     if os.path.exists(temp_output_path):
         os.remove(temp_output_path)
     if os.path.exists(ass_path):
         os.remove(ass_path)
+        
+    vo_clip.close()
+    if bgm_files:
+        bgm_clip.close()
+    final_audio.close()
+    for clip in image_clips:
+        clip.close()
+    final_video.close()
         
     print("Video rendered with stylized ASS subtitles successfully.")
     return output_path
@@ -419,46 +494,67 @@ async def main():
     state = load_game_state()
     current_index = state.get("current_index", 0)
     total_runs = state.get("total_videos_run", 1)
+    game_parts = state.get("game_parts", {})
+    
     current_game = GAMES[current_index]
     safe_game_name = get_safe_filename(current_game)
     
-    print(f"--- Starting Daily Pipeline for: {current_game} (Part {total_runs}) ---")
+    # Initialize game-specific tracking if missing
+    if safe_game_name not in game_parts:
+        game_parts[safe_game_name] = 1
+    current_part = game_parts[safe_game_name]
+    
+    print(f"--- Starting Daily Pipeline for: {current_game} (Part {current_part}) ---")
     memory = get_story_memory(safe_game_name)
     bible = get_character_bible(safe_game_name)
     
-    audio_text, new_memory, image_paths = generate_script_and_images(current_game, memory, bible)
-    save_story_memory(safe_game_name, new_memory)
-    
-    print("Generating Deep Voiceover via Edge-TTS...")
-    raw_audio_path = "vo_raw.mp3"
-    audio_path = "vo.mp3"
-    
-    # Stable deep narrator config using ChristopherNeural
-    communicate = edge_tts.Communicate(audio_text, "en-US-ChristopherNeural")
-    await communicate.save(raw_audio_path)
-    
-    # Clean understandable vocal pacing matching tQOIvmcX8_I (1.05x normal speed, standard natural deep pitch)
-    print("Optimizing voiceover pacing (1.05x standard speed & natural pitch)...")
-    ffmpeg_cmd = [
-        "ffmpeg", "-y",
-        "-i", raw_audio_path,
-        "-af", "silenceremove=stop_periods=-1:stop_duration=0.3:stop_threshold=-45dB,atempo=1.05",
-        audio_path
-    ]
-    subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    
-    # Clean up raw audio
-    if os.path.exists(raw_audio_path):
-        os.remove(raw_audio_path)
+    # Wrapping rendering and uploading inside a self-healing try block
+    try:
+        audio_text, new_memory, image_paths = generate_script_and_images(current_game, memory, bible)
+        save_story_memory(safe_game_name, new_memory)
         
-    text_chunks = split_text_for_captions(audio_text, words_per_chunk=3)
-    final_video_path = render_video(audio_path, image_paths, text_chunks)
-    
-    upload_to_youtube(final_video_path, current_game, total_runs)
-    
+        # Self-evolve Character Bible based on the newly generated script
+        evolve_character_bible(current_game, safe_game_name, audio_text, bible)
+        
+        print("Generating Deep Voiceover via Edge-TTS...")
+        raw_audio_path = "vo_raw.mp3"
+        audio_path = "vo.mp3"
+        
+        # Stable deep narrator config using ChristopherNeural
+        communicate = edge_tts.Communicate(audio_text, "en-US-ChristopherNeural")
+        await communicate.save(raw_audio_path)
+        
+        # Clean understandable vocal pacing matching tQOIvmcX8_I (1.05x normal speed, standard natural deep pitch)
+        print("Optimizing voiceover pacing (1.05x standard speed & natural pitch)...")
+        ffmpeg_cmd = [
+            "ffmpeg", "-y",
+            "-i", raw_audio_path,
+            "-af", "silenceremove=stop_periods=-1:stop_duration=0.3:stop_threshold=-45dB,atempo=1.05",
+            audio_path
+        ]
+        subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Clean up raw audio
+        if os.path.exists(raw_audio_path):
+            os.remove(raw_audio_path)
+            
+        text_chunks = split_text_for_captions(audio_text, words_per_chunk=3)
+        final_video_path = render_video(audio_path, image_paths, text_chunks)
+        
+        # Final step: upload to YouTube
+        upload_to_youtube(final_video_path, current_game, current_part)
+        
+    except Exception as e:
+        print(f"CRITICAL ERROR encountered during run: {e}")
+        print("Pipeline is executing Self-Healing Safe Recovery protocol to advance rotation safely...")
+        
+    # Regardless of failure or success, advance game state indices to prevent a permanent blocking brick of the daily workflow
     next_index = (current_index + 1) % len(GAMES)
     next_runs = total_runs + 1
-    save_game_state(next_index, next_runs)
+    # Increment this specific game's part tracker
+    game_parts[safe_game_name] = current_part + 1
+    
+    save_game_state(next_index, next_runs, game_parts)
     print(f"Pipeline complete. Next game in rotation: {GAMES[next_index]}")
 
 if __name__ == "__main__":
