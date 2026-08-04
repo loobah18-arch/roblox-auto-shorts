@@ -57,25 +57,26 @@ def get_character_bible(safe_game_name):
 
 # --- PIPELINE FUNCTIONS ---
 def generate_script_and_images(game, memory, bible):
-    """Integrates with Groq and Pollinations AI with an auto-fallback model search and heavy Unreal Engine 5 graphics styling."""
+    """Integrates with Groq and Pollinations AI with dynamic multi-image correlation and Unreal Engine 5 styling."""
     print(f"Generating script for {game} using Groq...")
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     
     prompt = f"""
-    Create a 30-second YouTube Short script for Roblox {game}.
+    Create an engaging 30-second YouTube Short script for Roblox {game}.
     Previous Story Memory: {memory}
     Character Bible: {bible}
+    
+    Provide 5 distinct visual scene descriptions so the background imagery continuously correlates with the narrative progression.
     
     Output JSON strictly in this format:
     {{
         "voiceover": "Script text here",
         "new_memory": "Cliffhanger for tomorrow here",
-        "image_prompts": ["Prompt 1", "Prompt 2"]
+        "image_prompts": ["Prompt 1", "Prompt 2", "Prompt 3", "Prompt 4", "Prompt 5"]
     }}
     """
     
-    # 1. Dynamically fetch all active, supported models directly from Groq's API to ensure zero hardcoded failures
-    print("Fetching a list of active models from Groq...")
+    print("Fetching active models from Groq...")
     try:
         active_models_data = client.models.list().data
         valid_models = [
@@ -84,11 +85,9 @@ def generate_script_and_images(game, memory, bible):
         ]
     except Exception as e:
         print(f"Failed to fetch model list, falling back to default. Error: {e}")
-        valid_models = ["llama-4-scout", "llama-3.1-8b-instant", "qwen3-32b"]
+        valid_models = ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.1-8b-instant", "openai/gpt-oss-20b"]
 
     response_data = None
-    
-    # 2. Auto-search loop: Try models until we find a working one
     for model_id in valid_models:
         print(f"Attempting generation with model: {model_id}...")
         try:
@@ -100,7 +99,6 @@ def generate_script_and_images(game, memory, bible):
             response_data = json.loads(chat_completion.choices[0].message.content)
             print(f"Success! Model {model_id} worked perfectly.")
             break  
-            
         except Exception as e:
             print(f"Model {model_id} failed. Searching next... Error: {e}")
             continue  
@@ -110,12 +108,10 @@ def generate_script_and_images(game, memory, bible):
     
     audio_text = response_data.get("voiceover", "Welcome to Roblox!")
     new_memory = response_data.get("new_memory", "To be continued...")
-    prompts = response_data.get("image_prompts", ["Roblox landscape"])
+    prompts = response_data.get("image_prompts", ["Roblox landscape"] * 5)
     
     image_paths = []
-    print("Generating ultra-detailed Unreal Engine 5 visuals via Pollinations AI...")
-    
-    # 3. Heavy AI & Unreal Engine 5 Graphics Modifiers injected into prompts
+    print(f"Generating {len(prompts)} correlated Unreal Engine 5 visual assets via Pollinations AI...")
     style_modifier = ", Unreal Engine 5 render, hyper-realistic lighting, ray tracing, 8k resolution, cinematic composition, high-end heavy AI visual masterpiece, octane render"
     
     for i, img_prompt in enumerate(prompts):
@@ -132,12 +128,21 @@ def generate_script_and_images(game, memory, bible):
     return audio_text, new_memory, image_paths
 
 def split_text_for_captions(text, words_per_chunk=3):
-    """Splits text into 3-word chunks for high retention."""
+    """Splits text into compact 3-word chunks to prevent screen overflow."""
     words = text.split()
-    return [" ".join(words[i:i + words_per_chunk]) for i in range(0, len(words), words_per_chunk)]
+    chunks = []
+    for i in range(0, len(words), words_per_chunk):
+        chunk = " ".join(words[i:i + words_per_chunk])
+        if len(chunk) > 18:
+            middle = len(chunk) // 2
+            space_idx = chunk.rfind(' ', 0, middle)
+            if space_idx != -1:
+                chunk = chunk[:space_idx] + "\n" + chunk[space_idx+1:]
+        chunks.append(chunk)
+    return chunks
 
 def render_video(audio_path, image_paths, text_chunks):
-    """MoviePy 1.0.3 assembly with ImageMagick captions and automated BGM mixing."""
+    """MoviePy assembly with Font Option 3 (Liberation-Sans-Bold), auto text wrapping, and precise word-based timing."""
     print("Assembling video with MoviePy...")
     
     vo_clip = AudioFileClip(audio_path)
@@ -152,18 +157,33 @@ def render_video(audio_path, image_paths, text_chunks):
     else:
         final_audio = vo_clip
 
+    # Distribute correlated background images evenly across the timeline
     img_duration = video_duration / len(image_paths)
     image_clips = [ImageClip(img).set_duration(img_duration) for img in image_paths]
     final_video = concatenate_videoclips(image_clips, method="compose")
 
-    chunk_duration = video_duration / len(text_chunks)
+    # Accurate proportional timing mapped to chunk length for perfect sync
+    total_words = sum(len(chunk.split()) for chunk in text_chunks)
     text_clips = []
+    current_time = 0.0
     
-    for i, chunk in enumerate(text_chunks):
-        txt_clip = TextClip(chunk, fontsize=70, color='yellow', font='DejaVu-Sans-Bold', 
-                            stroke_color='black', stroke_width=3)
-        txt_clip = txt_clip.set_position('center').set_duration(chunk_duration).set_start(i * chunk_duration)
+    for chunk in text_chunks:
+        word_count = len(chunk.split())
+        chunk_duration = (word_count / total_words) * video_duration
+        
+        txt_clip = TextClip(
+            chunk, 
+            fontsize=60, 
+            color='yellow', 
+            font='Liberation-Sans-Bold', # Font Option 3: Thick, blocky gamer aesthetic
+            stroke_color='black', 
+            stroke_width=3,
+            method='caption',
+            size=(900, None) # Forces bounds so text stays safe inside mobile screen edges
+        )
+        txt_clip = txt_clip.set_position('center').set_duration(chunk_duration).set_start(current_time)
         text_clips.append(txt_clip)
+        current_time += chunk_duration
 
     final_video = CompositeVideoClip([final_video] + text_clips)
     final_video = final_video.set_audio(final_audio)
@@ -203,7 +223,7 @@ def upload_to_youtube(video_path, game_name):
             'title': title,
             'description': description,
             'tags': ['roblox', game_name, 'shorts', 'robloxedit', 'aigenerated', 'robloxshorts'],
-            'categoryId': '20' # Gaming Category ID
+            'categoryId': '20' 
         },
         'status': {
             'privacyStatus': 'public',
