@@ -421,7 +421,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     events = []
     for chunk in text_chunks:
         # Split chunk into lines to handle any newlines correctly
-        lines = chunk.strip().split('\n')
+        lines = chunk.strip().split('\\n')
         words_by_line = [line.split() for line in lines]
         
         actual_word_count = sum(len(line_words) for line_words in words_by_line)
@@ -451,13 +451,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     chunk_duration_cs = int(round(chunk_duration * 100))
                     elapsed_cs = word_dur_cs * (actual_word_count - 1)
                     final_word_dur = max(1, chunk_duration_cs - elapsed_cs)
-                    line_parts.append(f"{{\\kf{final_word_dur}}}{word}")
+                    line_parts.append(fr"{{\kf{final_word_dur}}}{word}")
                 else:
-                    line_parts.append(f"{{\\kf{word_dur_cs}}}{word}")
+                    line_parts.append(fr"{{\kf{word_dur_cs}}}{word}")
             karaoke_parts.append(" ".join(line_parts))
             
         # Join line parts with the ASS hard newline tag '\N'
-        karaoke_text = "\\N".join(karaoke_parts)
+        karaoke_text = r"\N".join(karaoke_parts)
         
         events.append(f"Dialogue: 0,{start_str},{end_str},RobloxStyle,,0,0,0,,{karaoke_text}")
         current_time = end_time
