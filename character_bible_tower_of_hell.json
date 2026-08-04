@@ -1,1 +1,26 @@
- 
+{
+    "playerCharacter": {
+        "name": "Protagonist",
+        "traits": {
+            "determination": "High",
+            "resolve": "High",
+            "bravery": "High"
+        },
+        "inventory": {
+            "items": []
+        },
+        "stats": {
+            "health": 100,
+            "sanity": 100
+        },
+        " relationships": {
+            "self": "Conflicted",
+            "shadows": "Adversarial"
+        },
+        "awakenings": {
+            "none": "No fruit awakenings"
+        },
+        "currentLocation": "Labyrinth of Reflections",
+        "goal": "Escape the Tower of Hell"
+    }
+}
