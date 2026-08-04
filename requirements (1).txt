@@ -1,0 +1,8 @@
+moviepy==1.0.3
+edge-tts
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+requests
+Pillow==9.5.0
+groq
