@@ -1,1 +1,66 @@
- 
+{
+    "characters": {
+        "Murderer": {
+            "traits": {
+                "personality": "sinister",
+                "motivations": [
+                    "power",
+                    "control",
+                    "fear"
+                ],
+                "abilities": [
+                    "stealth",
+                    "deception",
+                    "manipulation"
+                ]
+            },
+            "status": "at large",
+            "inventory": []
+        },
+        "Sheriff": {
+            "traits": {
+                "personality": "determined",
+                "motivations": [
+                    "justice",
+                    "vengeance",
+                    "protection"
+                ],
+                "abilities": [
+                    "investigation",
+                    "leadership",
+                    "pursuit"
+                ]
+            },
+            "status": "investigating",
+            "inventory": [
+                "cryptic message"
+            ]
+        }
+    },
+    "story": {
+        "setting": "Roblox City",
+        "plot": "murder mystery",
+        "tensions": [
+            "rising tensions",
+            "alliances tested"
+        ],
+        "stake": "justice vs chaos"
+    },
+    "events": {
+        "latest": {
+            "victim": "innocent civilian",
+            "scene": "crime scene with cryptic message",
+            "investigation": "ongoing"
+        }
+    },
+    "themes": {
+        "fear": "paralyzing the community",
+        "justice": "at stake",
+        "time": "running out"
+    },
+    " relationships": {
+        "Sheriff-Murderer": "adversarial",
+        "Sheriff-Community": "protective",
+        "Murderer-Community": "terrorizing"
+    }
+}
