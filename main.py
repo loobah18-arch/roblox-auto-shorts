@@ -28,20 +28,26 @@ def get_safe_filename(game_name):
 # --- STATE & MEMORY MANAGEMENT ---
 def load_game_state():
     if os.path.exists("game_state.json"):
-        with open("game_state.json", "r") as f:
-            return json.load(f)
-    return {"current_index": 0}
+        try:
+            with open("game_state.json", "r") as f:
+                state = json.load(f)
+                if "current_index" not in state or "total_videos_run" not in state:
+                    return {"current_index": 0, "total_videos_run": 1}
+                return state
+        except Exception:
+            return {"current_index": 0, "total_videos_run": 1}
+    return {"current_index": 0, "total_videos_run": 1}
 
-def save_game_state(index):
+def save_game_state(index, total_runs):
     with open("game_state.json", "w") as f:
-        json.dump({"current_index": index}, f, indent=4)
+        json.dump({"current_index": index, "total_videos_run": total_runs}, f, indent=4)
 
 def get_story_memory(safe_game_name):
     filename = f"story_memory_{safe_game_name}.txt"
     if os.path.exists(filename):
         with open(filename, "r") as f:
             return f.read()
-    return "No previous memory. Start a brand new adventure."
+    return "No previous memory. Start a brand new epic adventure."
 
 def save_story_memory(safe_game_name, new_memory):
     filename = f"story_memory_{safe_game_name}.txt"
@@ -62,7 +68,7 @@ def generate_script_and_images(game, memory, bible):
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     
     prompt = f"""
-    Create an engaging 30-second YouTube Short script for Roblox {game}.
+    Create an intense, cinematic 30-second YouTube Short script for Roblox {game} told in a commanding, epic voice.
     Previous Story Memory: {memory}
     Character Bible: {bible}
     
@@ -106,7 +112,7 @@ def generate_script_and_images(game, memory, bible):
     if not response_data:
         raise Exception("Fatal Error: Could not find any working Groq models.")
     
-    audio_text = response_data.get("voiceover", "Welcome to Roblox!")
+    audio_text = response_data.get("voiceover", "The journey continues...")
     new_memory = response_data.get("new_memory", "To be continued...")
     prompts = response_data.get("image_prompts", ["Roblox landscape"] * 5)
     
@@ -128,7 +134,7 @@ def generate_script_and_images(game, memory, bible):
     return audio_text, new_memory, image_paths
 
 def split_text_for_captions(text, words_per_chunk=3):
-    """Splits text into compact 3-word chunks to prevent screen overflow."""
+    """Splits text into compact chunks to mirror high-retention short form editing styles."""
     words = text.split()
     chunks = []
     for i in range(0, len(words), words_per_chunk):
@@ -142,7 +148,7 @@ def split_text_for_captions(text, words_per_chunk=3):
     return chunks
 
 def render_video(audio_path, image_paths, text_chunks):
-    """MoviePy assembly with Font Option 3 (Liberation-Sans-Bold), auto text wrapping, and precise word-based timing."""
+    """MoviePy assembly featuring precise lower-middle positioning and synchronized word chunk rendering."""
     print("Assembling video with MoviePy...")
     
     vo_clip = AudioFileClip(audio_path)
@@ -162,7 +168,7 @@ def render_video(audio_path, image_paths, text_chunks):
     image_clips = [ImageClip(img).set_duration(img_duration) for img in image_paths]
     final_video = concatenate_videoclips(image_clips, method="compose")
 
-    # Accurate proportional timing mapped to chunk length for perfect sync
+    # Precise chunk timing mapping
     total_words = sum(len(chunk.split()) for chunk in text_chunks)
     text_clips = []
     current_time = 0.0
@@ -173,15 +179,14 @@ def render_video(audio_path, image_paths, text_chunks):
         
         txt_clip = TextClip(
             chunk, 
-            fontsize=60, 
+            fontsize=65, 
             color='yellow', 
-            font='Liberation-Sans-Bold', # Font Option 3: Thick, blocky gamer aesthetic
+            font='Liberation-Sans-Bold', 
             stroke_color='black', 
-            stroke_width=3,
-            method='caption',
-            size=(900, None) # Forces bounds so text stays safe inside mobile screen edges
+            stroke_width=4
         )
-        txt_clip = txt_clip.set_position('center').set_duration(chunk_duration).set_start(current_time)
+        # Positioned cleanly in the lower-middle block of the screen
+        txt_clip = txt_clip.set_position(('center', 0.68), relative=True).set_duration(chunk_duration).set_start(current_time)
         text_clips.append(txt_clip)
         current_time += chunk_duration
 
@@ -193,9 +198,9 @@ def render_video(audio_path, image_paths, text_chunks):
     print("Video rendered successfully.")
     return output_path
 
-def upload_to_youtube(video_path, game_name):
-    """Handles authenticated upload using GitHub Secrets Refresh Token."""
-    print(f"Preparing to upload {video_path} to YouTube for: {game_name}...")
+def upload_to_youtube(video_path, game_name, part_number):
+    """Handles authenticated upload using GitHub Secrets Refresh Token with clean titles omitting 'AI Story'."""
+    print(f"Preparing to upload {video_path} to YouTube for: {game_name} Part {part_number}...")
     
     client_id = os.environ.get("CLIENT_ID")
     client_secret = os.environ.get("CLIENT_SECRET")
@@ -215,14 +220,14 @@ def upload_to_youtube(video_path, game_name):
     youtube = build('youtube', 'v3', credentials=creds)
 
     safe_name = get_safe_filename(game_name)
-    title = f"Epic {game_name} AI Story! 🤯 #roblox #shorts #{safe_name}"
-    description = f"What happens next in {game_name}? Drop a like and subscribe for tomorrow's episode! Generated entirely by AI."
+    title = f"{game_name} - Part {part_number} #roblox #shorts #{safe_name}"
+    description = f"The saga continues in {game_name} Part {part_number}. Like and subscribe for the next chapter!"
     
     body = {
         'snippet': {
             'title': title,
             'description': description,
-            'tags': ['roblox', game_name, 'shorts', 'robloxedit', 'aigenerated', 'robloxshorts'],
+            'tags': ['roblox', game_name, 'shorts', 'robloxshorts', safe_name],
             'categoryId': '20' 
         },
         'status': {
@@ -252,9 +257,11 @@ def upload_to_youtube(video_path, game_name):
 async def main():
     state = load_game_state()
     current_index = state.get("current_index", 0)
+    total_runs = state.get("total_videos_run", 1)
+    
     current_game = GAMES[current_index]
     safe_game_name = get_safe_filename(current_game)
-    print(f"--- Starting Daily Pipeline for: {current_game} ---")
+    print(f"--- Starting Daily Pipeline for: {current_game} (Part {total_runs}) ---")
 
     memory = get_story_memory(safe_game_name)
     bible = get_character_bible(safe_game_name)
@@ -262,18 +269,21 @@ async def main():
     audio_text, new_memory, image_paths = generate_script_and_images(current_game, memory, bible)
     save_story_memory(safe_game_name, new_memory)
 
-    print("Generating Voiceover via Edge-TTS...")
+    print("Generating Deep Voiceover via Edge-TTS...")
     audio_path = "vo.mp3"
-    communicate = edge_tts.Communicate(audio_text, "en-US-GuyNeural")
+    
+    # Stable deep narrator config using ChristopherNeural
+    communicate = edge_tts.Communicate(audio_text, "en-US-ChristopherNeural")
     await communicate.save(audio_path)
 
     text_chunks = split_text_for_captions(audio_text, words_per_chunk=3)
     final_video_path = render_video(audio_path, image_paths, text_chunks)
 
-    upload_to_youtube(final_video_path, current_game)
+    upload_to_youtube(final_video_path, current_game, total_runs)
 
     next_index = (current_index + 1) % len(GAMES)
-    save_game_state(next_index)
+    next_runs = total_runs + 1
+    save_game_state(next_index, next_runs)
     print(f"Pipeline complete. Next game in rotation: {GAMES[next_index]}")
 
 if __name__ == "__main__":
