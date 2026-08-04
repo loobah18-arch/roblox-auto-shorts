@@ -5,8 +5,8 @@
         "home": "Brookhaven, now in ruins"
     },
     "currentObjective": {
-        "quest": "Uncover the truth behind the disaster",
-        "location": "Mysterious research facility, hidden deep within the abandoned mine"
+        "quest": "Uncover the truth behind the disaster by reaching the hidden research facility",
+        "location": "Deeper within the abandoned mine"
     },
     "abilities": {
         "skills": [
@@ -24,7 +24,9 @@
         "experience": 0
     },
     "relationships": {
-        "allies": [],
+        "allies": [
+            "Mysterious voice guiding them"
+        ],
         "enemies": [
             "Dark power",
             "Horrors lurking in the shadows"
@@ -44,7 +46,8 @@
         },
         "locations": {
             "Brookhaven": "Ruins of a once peaceful home",
-            "Abandoned mine": "Hiding the mysterious research facility"
+            "Abandoned mine": "Hiding the mysterious research facility",
+            "Hidden research facility": "Destination for uncovering the truth"
         },
         "items": {
             "ancientTomes": "Contain cryptic map, crucial for the quest"
