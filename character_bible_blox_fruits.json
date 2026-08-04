@@ -11,9 +11,18 @@
             "Akanesu": "revered, Sea God's vision guiding the Protagonist's journey",
             "Crew": "loyal, faces set with determination, awaiting the Protagonist's lead"
         },
+        "inventory": {
+            "Sea God's Essence": "infused within the Protagonist's veins",
+            "Blox Fruits": "none acquired in this episode"
+        },
         "lore_details": {
             "Sea God's Throne": "carved from the bones of sea serpents, symbolizing the Protagonist's destiny",
-            "Vision of Akanesu": "guiding the Protagonist's journey, foreshadowing challenges and glory"
+            "Vision of Akanesu": "guiding the Protagonist's journey, foreshadowing challenges and glory",
+            "Giant Awakened": "a colossal sea monster, risen to challenge the Protagonist's claim to the Sea God's Throne"
+        },
+        "stats": {
+            "physical_strength": "enhanced due to Sea God's essence and Akanesu's blessings",
+            "aura_control": "improved, as evidenced by the effective use of Thunder Fist"
         }
     }
 }
