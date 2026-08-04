@@ -2,8 +2,8 @@ name: build-and-upload
 
 on:
   schedule:
-    - cron: '0 12 * * *' # Runs daily at 12:00 PM UTC
-  workflow_dispatch:     # Allows manual triggering
+    - cron: '0 12 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
