@@ -30,13 +30,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Human-mimicking Publish Jitter
-        run: |
-          # Generate a random sleep delay between 0 and 1800 seconds (up to 30 minutes)
-          jitter_delay=$((RANDOM % 1800))
-          echo "[-] Delaying video execution by $jitter_delay seconds to mimic authentic human behavior patterns."
-          sleep $jitter_delay
-
       - name: Run Video Pipeline
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
