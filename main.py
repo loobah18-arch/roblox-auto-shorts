@@ -1,14 +1,14 @@
 import os
 import json
 import time
+import random
 import urllib.parse
 import asyncio
 import requests
-import random
 from groq import Groq
 import edge_tts
 from moviepy.editor import ImageClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, CompositeAudioClip
-from moviepy.audio.fx.all import volumex, audio_loop
+import moviepy.audio.fx.all as afx
 
 # Google API Imports for YouTube Upload
 from google.oauth2.credentials import Credentials
@@ -28,56 +28,72 @@ REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
 groq_client = Groq(api_key=GROQ_API_KEY)
 
 # ==========================================
-# 2. SCRIPT GENERATION (DYNAMIC STORY MODE)
+# 2. GAME ROTATION SYSTEM
 # ==========================================
-def generate_script():
-    print("🤖 Requesting script from Groq API (Llama 3.3)...")
+def get_next_game():
+    games = ["Blox Fruits", "Brookhaven", "Adopt Me!", "Murder Mystery 2", "Tower of Hell"]
+    state_file = "game_state.json"
     
-    game_choice = random.choice(["Blox Fruits", "Brookhaven"])
-    print(f"🎲 Selected Theme for Today: {game_choice}")
+    last_index = -1
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, "r") as f:
+                state = json.load(f)
+                last_index = state.get("last_game_index", -1)
+        except Exception:
+            pass
+            
+    next_index = (last_index + 1) % len(games)
+    next_game = games[next_index]
     
-    if game_choice == "Blox Fruits":
-        previous_story = "A young pirate just arrived in the first sea." 
-        if os.path.exists("story_memory.txt"):
-            with open("story_memory.txt", "r") as f:
-                content = f.read().strip()
-                if content:
-                    previous_story = content
-                    
-        prompt = f"""
-        Write a 3-scene YouTube Short script about Roblox Blox Fruits. 
-        This is an ongoing episodic story. Here is a summary of the last episode: "{previous_story}"
+    # Save the updated state for tomorrow
+    with open(state_file, "w") as f:
+        json.dump({"last_game_index": next_index, "current_game": next_game}, f)
         
-        Write the NEXT episode in the story.
-        RULES:
-        1. Start immediately with action (Do NOT say "Welcome to...").
-        2. Use correct spelling ("Blox Fruits").
-        3. End with a cliffhanger and ask the viewer a question!
-        4. Return strictly in JSON format matching this structure:
-        {{
-          "title": "Video Title",
-          "scenes": [
-            {{"narration": "Voiceover text here", "image_prompt": "Visual description for AI"}}
-          ],
-          "summary": "Write a 1-sentence summary of THIS episode here so the AI remembers it for tomorrow."
-        }}
-        """
-    else:
-        prompt = """
-        Write a 3-scene YouTube Short script about a completely random, hilarious, and chaotic scenario in Roblox Brookhaven.
-        Make it a self-contained story.
-        RULES:
-        1. Start immediately with a crazy hook (Do NOT say "Welcome to...").
-        2. Make the situation bizarre (e.g., a secret agent bank robbery, alien invasion at the hospital, etc.).
-        3. End by asking the viewer what they would do in this situation!
-        4. Return strictly in JSON format matching this structure:
-        {{
-          "title": "Video Title",
-          "scenes": [
-            {{"narration": "Voiceover text here", "image_prompt": "Visual description for AI"}}
-          ]
-        }}
-        """
+    return next_game
+
+# ==========================================
+# 3. SCRIPT GENERATION (DYNAMIC STORY MODE)
+# ==========================================
+def generate_script(game_name):
+    print(f"🤖 Requesting script from Groq API for game: {game_name}...")
+    
+    safe_name = game_name.replace(' ', '_').replace('!', '').lower()
+    memory_file = f"story_memory_{safe_name}.txt"
+    bible_file = f"character_bible_{safe_name}.json"
+    
+    memory_context = f"Start a fresh, brand new exciting story in {game_name}."
+    bible_context = "Use standard Roblox character tropes."
+    
+    if os.path.exists(memory_file):
+        with open(memory_file, "r") as f:
+            content = f.read().strip()
+            if content:
+                memory_context = content
+                
+    if os.path.exists(bible_file):
+        with open(bible_file, "r") as f:
+            bible_context = f.read()
+
+    prompt = f"""
+    Write a 3-scene YouTube Shorts script for the Roblox game: {game_name}.
+    
+    Character Bible: {bible_context}
+    Previous Story Context (continue from this): {memory_context}
+    
+    RULES:
+    1. Start immediately with action (Do NOT say "Welcome to...").
+    2. The story must be exciting and end with a cliffhanger!
+    3. Ask the viewer a question at the end.
+    4. Return strictly in JSON format matching this structure:
+    {{
+      "title": "Video Title",
+      "scenes": [
+        {{"narration": "Voiceover text here", "image_prompt": "Visual description for AI image generation, 3d roblox style"}}
+      ],
+      "new_memory": "Write a 1-sentence summary of THIS episode here so the AI remembers it for the next video."
+    }}
+    """
     
     response = groq_client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
@@ -88,18 +104,20 @@ def generate_script():
     script_data = json.loads(response.choices[0].message.content)
     print(f"📌 Title: {script_data['title']}")
     
+    # Text replacement cleanup
     for scene in script_data["scenes"]:
         scene["narration"] = scene["narration"].replace("blocks fruits", "Blox Fruits").replace("Bloxs Fruits", "Blox Fruits")
     
-    if game_choice == "Blox Fruits" and "summary" in script_data:
-        print(f"💾 Saving Story Memory for Tomorrow: {script_data['summary']}")
-        with open("story_memory.txt", "w") as f:
-            f.write(script_data["summary"])
+    # Save the new cliffhanger memory for the next time this game rotates in
+    if "new_memory" in script_data:
+        print(f"💾 Saving Story Memory for {game_name} Tomorrow: {script_data['new_memory']}")
+        with open(memory_file, "w") as f:
+            f.write(script_data["new_memory"])
             
-    return script_data, game_choice
+    return script_data, game_name
 
 # ==========================================
-# 3. AI IMAGE DOWNLOADER
+# 4. AI IMAGE DOWNLOADER
 # ==========================================
 def download_ai_image(prompt, output_file):
     encoded_prompt = urllib.parse.quote(f"{prompt}, 3d roblox gaming art style, high quality")
@@ -117,58 +135,46 @@ def download_ai_image(prompt, output_file):
             print("   ✅ Image downloaded successfully!")
             break  
         except Exception as e:
-            print(f"   ⚠️ Connection error: {e}, retrying...")
+            print(f"   ⚠️ Connection error: {e}, retrying in 10s...")
             time.sleep(10)
             attempt += 1
 
 # ==========================================
-# 4. AUDIO GENERATION & BACKGROUND MUSIC
+# 5. AUDIO GENERATION (EDGE-TTS)
 # ==========================================
 async def generate_audio(text, output_file):
+    print(f"   ↳ Generating voiceover...")
     communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural", rate="+10%")
     await communicate.save(output_file)
 
-def add_background_music(voiceover_path, output_audio_path):
-    print("🎵 Adding random background music...")
+# ==========================================
+# 6. DYNAMIC SUBTITLE ENGINE (FIXED TEXT PROBLEM)
+# ==========================================
+def create_dynamic_subtitles(text, audio_duration):
+    words = text.split()
+    chunk_size = 3 # Shows max 3 words on screen at a time
+    chunks = [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
     
-    # List of royalty-free, copyright-safe gaming background tracks (direct URLs)
-    background_tracks = [
-        "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf756.mp3?filename=cyberpunk-2099-107016.mp3",
-        "https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=action-sport-rock-trailer-straight-to-the-top-10486.mp3",
-        "https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c2a737f8.mp3?filename=gaming-funk-10469.mp3"
-    ]
+    chunk_duration = audio_duration / len(chunks) if chunks else audio_duration
     
-    selected_track_url = random.choice(background_tracks)
-    music_file = "temp_music.mp3"
-    
-    try:
-        # Download the random music track
-        res = requests.get(selected_track_url, timeout=20)
-        with open(music_file, "wb") as f:
-            f.write(res.content)
-            
-        # Load audio clips
-        tts_clip = AudioFileClip(voiceover_path)
-        music_clip = AudioFileClip(music_file).fx(volumex, 0.1) # 10% volume so voice is clear
+    txt_clips = []
+    for i, chunk in enumerate(chunks):
+        txt_clip = TextClip(
+            chunk, 
+            fontsize=110, # Massive pop-up font
+            color='yellow', 
+            font='DejaVu-Sans-Bold',
+            stroke_color='black',
+            stroke_width=6,
+            method='caption',
+            size=(950, None)
+        ).set_position('center').set_start(i * chunk_duration).set_duration(chunk_duration)
+        txt_clips.append(txt_clip)
         
-        # Loop music to match video length and trim
-        music_clip = audio_loop(music_clip, duration=tts_clip.duration)
-        
-        # Mix background music and voiceover together
-        final_audio = CompositeAudioClip([music_clip, tts_clip])
-        final_audio.write_audiofile(output_audio_path, fps=44100, logger=None)
-        
-        tts_clip.close()
-        music_clip.close()
-        print("✅ Background music successfully mixed!")
-        
-    except Exception as e:
-        print(f"⚠️ Failed to add background music ({e}), using voiceover only.")
-        # Fallback to just the voiceover if download fails
-        os.rename(voiceover_path, output_audio_path)
+    return txt_clips
 
 # ==========================================
-# 5. VIDEO ASSEMBLY
+# 7. VIDEO ASSEMBLY & BGM MIXER
 # ==========================================
 def assemble_video(script_data, output_filename="final_short.mp4"):
     print("🎬 Assembling video scenes...")
@@ -178,43 +184,52 @@ def assemble_video(script_data, output_filename="final_short.mp4"):
         print(f"🎥 Processing Scene {i+1}/{len(script_data['scenes'])}...")
         
         image_file = f"scene_{i}.jpg"
-        raw_audio_file = f"raw_audio_{i}.mp3"
-        final_audio_file = f"scene_{i}.mp3"
+        audio_file = f"scene_{i}.mp3"
         
         download_ai_image(scene["image_prompt"], image_file)
-        asyncio.run(generate_audio(scene["narration"], raw_audio_file))
+        asyncio.run(generate_audio(scene["narration"], audio_file))
         
-        # Add background music to this scene's voiceover
-        add_background_music(raw_audio_file, final_audio_file)
-        
-        audio_clip = AudioFileClip(final_audio_file)
+        audio_clip = AudioFileClip(audio_file)
         
         image_clip = (ImageClip(image_file)
                       .resize(height=1920)
                       .crop(x_center=1080/2, width=1080)
                       .set_duration(audio_clip.duration))
         
-        txt_clip = TextClip(
-            scene["narration"], 
-            fontsize=70, 
-            color='white', 
-            font='DejaVu-Sans-Bold',
-            stroke_color='black',
-            stroke_width=3,
-            method='caption',
-            size=(900, None)
-        ).set_position('center').set_duration(audio_clip.duration)
+        # Add the flashing dynamic captions
+        subtitle_clips = create_dynamic_subtitles(scene["narration"], audio_clip.duration)
         
-        video_clip = CompositeVideoClip([image_clip, txt_clip]).set_audio(audio_clip)
+        video_clip = CompositeVideoClip([image_clip] + subtitle_clips).set_audio(audio_clip)
         clips.append(video_clip)
         
-    print("🎞️ Rendering final video...")
+    print("🎞️ Rendering final video sequence...")
     final_video = concatenate_videoclips(clips, method="compose")
+    
+    # --- FIXED BGM PROBLEM: LOCAL BGM FOLDER INTEGRATION ---
+    bgm_folder = "bgm"
+    if os.path.exists(bgm_folder):
+        bgm_files = [f for f in os.listdir(bgm_folder) if f.endswith(('.mp3', '.wav'))]
+        if bgm_files:
+            bgm_path = os.path.join(bgm_folder, random.choice(bgm_files))
+            print(f"🎵 Mixing background music: {bgm_path}")
+            
+            # Load track, reduce volume to 10%, and loop to match video length
+            bgm_clip = AudioFileClip(bgm_path).fx(afx.volumex, 0.1)
+            bgm_clip = afx.audio_loop(bgm_clip, duration=final_video.duration)
+            
+            # Combine Voiceover + BGM
+            final_audio = CompositeAudioClip([final_video.audio, bgm_clip])
+            final_video = final_video.set_audio(final_audio)
+        else:
+            print("⚠️ No audio files found in 'bgm' folder. Proceeding without music.")
+    else:
+        print("⚠️ 'bgm' folder not found. Proceeding without music.")
+
     final_video.write_videofile(output_filename, fps=24, codec="libx264", audio_codec="aac")
     print("✅ Video rendered successfully!")
 
 # ==========================================
-# 6. YOUTUBE UPLOAD
+# 8. YOUTUBE UPLOAD
 # ==========================================
 def upload_to_youtube(video_path, title, game_choice):
     print(f"🚀 Authenticating YouTube API...")
@@ -232,13 +247,12 @@ def upload_to_youtube(video_path, title, game_choice):
         )
         youtube = build("youtube", "v3", credentials=creds)
 
-        tags = ["Roblox", "Shorts", "Gaming", "RobloxEdit"]
+        safe_tag = game_choice.replace(' ', '')
+        tags = ["Roblox", "Shorts", "Gaming", "RobloxEdit", safe_tag]
         if game_choice == "Blox Fruits":
-            tags.extend(["BloxFruits", "BloxFruitsStory"])
-        else:
-            tags.extend(["Brookhaven", "BrookhavenRP"])
+            tags.append("BloxFruitsStory")
 
-        description = f"{title}\n\nWhat do you think? Let me know in the comments!\n\n#Roblox #RobloxShorts #Gaming"
+        description = f"{title}\n\nWhat do you think? Let me know in the comments!\n\n#Roblox #RobloxShorts #Gaming #{safe_tag}"
         safe_title = f"{title} #Shorts"[:100]
 
         body = {
@@ -273,9 +287,19 @@ def upload_to_youtube(video_path, title, game_choice):
 # ==========================================
 if __name__ == "__main__":
     try:
-        script, game_choice = generate_script()
+        # Step 1: Select Game from Daily Rotation
+        current_game = get_next_game()
+        print(f"🎲 Selected Game for Today: {current_game}")
+        
+        # Step 2: Generate Script with memory integration
+        script, game_choice = generate_script(current_game)
+        
+        # Step 3: Render Video (Now with dynamic captions & local BGM mixing)
         assemble_video(script, output_filename="roblox_short.mp4")
+        
+        # Step 4: Upload to YouTube
         upload_to_youtube("roblox_short.mp4", script["title"], game_choice)
+        
     except Exception as e:
         print(f"❌ Pipeline failed: {e}")
         exit(1)
