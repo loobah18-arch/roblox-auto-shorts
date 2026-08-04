@@ -1,47 +1,36 @@
-name: Generate Automated Roblox Short
+name: build-and-upload
 
 on:
-  workflow_dispatch:
   schedule:
-    # Runs automatically every day at 12:30 PM UTC (6:00 PM IST)
-    - cron: '30 12 * * *'
+    - cron: '0 12 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
-    # Grants permission for the workflow to write/push changes back to the repository
+    # Required to allow GitHub Actions to push the story_memory.txt file back to the repo
     permissions:
-      contents: write
-
-    timeout-minutes: 15
-
+      contents: write 
+    
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: '3.10'
 
-      - name: Cache Rembg u2net Model
-        uses: actions/cache@v4
-        with:
-          path: ~/.u2net
-          key: u2net-model-v1
-          restore-keys: |
-            u2net-model-
-
-      - name: Install System Dependencies (ImageMagick)
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y imagemagick
+          sudo apt-get install -y ffmpeg imagemagick fonts-dejavu-core
 
-      - name: Modify ImageMagick Security Policy for MoviePy
+      - name: Patch ImageMagick Security Policy
         run: |
-          sudo sed -i '/pattern="@\*"/d' /etc/ImageMagick-6/policy.xml
+          # Finds the policy file and deletes the line blocking text rendering (@*)
+          find /etc/ImageMagick-* -name "policy.xml" -exec sudo sed -i '/pattern="@\*"/d' {} \;
 
       - name: Install Python Dependencies
         run: |
@@ -54,12 +43,18 @@ jobs:
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
-        run: python main.py
-
-      - name: Commit and Push Story Memory
         run: |
-          git config --global user.name "Story Bot"
-          git config --global user.email "bot@users.noreply.github.com"
-          git add story_memory.txt
-          git commit -m "Auto-update infinite story memory for next episode" || exit 0
-          git push
+          python main.py
+
+      - name: Save Story Memory
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # We check if the file exists to prevent errors if Brookhaven was chosen (since no file is created)
+          if [ -f story_memory.txt ]; then
+            git add story_memory.txt
+            git commit -m "Update Blox Fruits story memory" || echo "No changes to commit"
+            git push
+          else
+            echo "No story_memory.txt found. Skipping commit."
+          fi
