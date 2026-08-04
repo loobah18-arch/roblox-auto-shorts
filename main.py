@@ -46,7 +46,6 @@ def get_next_game():
     next_index = (last_index + 1) % len(games)
     next_game = games[next_index]
     
-    # Save the updated state for tomorrow
     with open(state_file, "w") as f:
         json.dump({"last_game_index": next_index, "current_game": next_game}, f)
         
@@ -104,11 +103,9 @@ def generate_script(game_name):
     script_data = json.loads(response.choices[0].message.content)
     print(f"📌 Title: {script_data['title']}")
     
-    # Text replacement cleanup
     for scene in script_data["scenes"]:
         scene["narration"] = scene["narration"].replace("blocks fruits", "Blox Fruits").replace("Bloxs Fruits", "Blox Fruits")
     
-    # Save the new cliffhanger memory for the next time this game rotates in
     if "new_memory" in script_data:
         print(f"💾 Saving Story Memory for {game_name} Tomorrow: {script_data['new_memory']}")
         with open(memory_file, "w") as f:
@@ -148,28 +145,37 @@ async def generate_audio(text, output_file):
     await communicate.save(output_file)
 
 # ==========================================
-# 6. DYNAMIC SUBTITLE ENGINE (FIXED TEXT PROBLEM)
+# 6. DYNAMIC SUBTITLE ENGINE (FIXED SYNC & WORD BREAKING)
 # ==========================================
 def create_dynamic_subtitles(text, audio_duration):
     words = text.split()
-    chunk_size = 3 # Shows max 3 words on screen at a time
+    chunk_size = 3 
     chunks = [" ".join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
     
-    chunk_duration = audio_duration / len(chunks) if chunks else audio_duration
+    # Calculate total characters to weight the timing of each text popup
+    total_chars = sum(len(c) for c in chunks)
     
     txt_clips = []
-    for i, chunk in enumerate(chunks):
+    current_start_time = 0
+    
+    for chunk in chunks:
+        # Give longer text chunks more time on screen so it stays perfectly synced with the voice
+        chunk_duration = (len(chunk) / max(total_chars, 1)) * audio_duration
+        
         txt_clip = TextClip(
             chunk, 
-            fontsize=110, # Massive pop-up font
+            fontsize=85, # Reduced to prevent ImageMagick from splitting words
             color='yellow', 
             font='DejaVu-Sans-Bold',
             stroke_color='black',
-            stroke_width=6,
+            stroke_width=5,
             method='caption',
+            align='center', # Ensures multiple lines center properly
             size=(950, None)
-        ).set_position('center').set_start(i * chunk_duration).set_duration(chunk_duration)
+        ).set_position('center').set_start(current_start_time).set_duration(chunk_duration)
+        
         txt_clips.append(txt_clip)
+        current_start_time += chunk_duration
         
     return txt_clips
 
@@ -196,7 +202,6 @@ def assemble_video(script_data, output_filename="final_short.mp4"):
                       .crop(x_center=1080/2, width=1080)
                       .set_duration(audio_clip.duration))
         
-        # Add the flashing dynamic captions
         subtitle_clips = create_dynamic_subtitles(scene["narration"], audio_clip.duration)
         
         video_clip = CompositeVideoClip([image_clip] + subtitle_clips).set_audio(audio_clip)
@@ -205,7 +210,6 @@ def assemble_video(script_data, output_filename="final_short.mp4"):
     print("🎞️ Rendering final video sequence...")
     final_video = concatenate_videoclips(clips, method="compose")
     
-    # --- FIXED BGM PROBLEM: LOCAL BGM FOLDER INTEGRATION ---
     bgm_folder = "bgm"
     if os.path.exists(bgm_folder):
         bgm_files = [f for f in os.listdir(bgm_folder) if f.endswith(('.mp3', '.wav'))]
@@ -213,11 +217,9 @@ def assemble_video(script_data, output_filename="final_short.mp4"):
             bgm_path = os.path.join(bgm_folder, random.choice(bgm_files))
             print(f"🎵 Mixing background music: {bgm_path}")
             
-            # Load track, reduce volume to 10%, and loop to match video length
             bgm_clip = AudioFileClip(bgm_path).fx(afx.volumex, 0.1)
             bgm_clip = afx.audio_loop(bgm_clip, duration=final_video.duration)
             
-            # Combine Voiceover + BGM
             final_audio = CompositeAudioClip([final_video.audio, bgm_clip])
             final_video = final_video.set_audio(final_audio)
         else:
@@ -287,17 +289,11 @@ def upload_to_youtube(video_path, title, game_choice):
 # ==========================================
 if __name__ == "__main__":
     try:
-        # Step 1: Select Game from Daily Rotation
         current_game = get_next_game()
         print(f"🎲 Selected Game for Today: {current_game}")
         
-        # Step 2: Generate Script with memory integration
         script, game_choice = generate_script(current_game)
-        
-        # Step 3: Render Video (Now with dynamic captions & local BGM mixing)
         assemble_video(script, output_filename="roblox_short.mp4")
-        
-        # Step 4: Upload to YouTube
         upload_to_youtube("roblox_short.mp4", script["title"], game_choice)
         
     except Exception as e:
