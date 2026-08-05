@@ -1,28 +1,28 @@
 {
     "Protagonist": {
-        "clothes": "open blue vest shirt, red knee-length pants, sandal shoes",
-        "facial_features": "determined smile face decal, scar decal under left eye",
-        "accessories": "straw hat accessory (yellow), wanted poster back accessory, Akanesu's blessings aura accessory (electric blue, wave particles)",
-        "aura_color": "electric blue flame aura with wave particles, infused with sea god's essence",
-        "body_color": "light tan blocky skin, medium height Roblox avatar",
-        "signature_weapon": "giant rubber-stretched fist, gear fourth paw shockwave, electrified fist (new ability: Thunder Fist)",
-        "personality": "reckless, loud, heroic, determined, unwavering resolve",
+        "clothes": "open blue vest shirt, red knee-length pants, sandal shoes, partially torn from the battle with the giant sea monster",
+        "facial_features": "determined smile face decal, scar decal under left eye, bruises and cuts from the intense battle",
+        "accessories": "straw hat accessory (yellow), wanted poster back accessory, Akanesu's blessings aura accessory (electric blue, wave particles), a small, tattered sailcloth cape",
+        "aura_color": "electric blue flame aura with wave particles, infused with sea god's essence, now with a hint of golden glow from the unwavering resolve",
+        "body_color": "light tan blocky skin, medium height Roblox avatar, with visible muscles developed from the intense training and battles",
+        "signature_weapon": "giant rubber-stretched fist, gear fourth paw shockwave, electrified fist (new ability: Thunder Fist), with small, glowing blue runes etched into the arms",
+        "personality": "reckless, loud, heroic, determined, unwavering resolve, and a deep sense of responsibility to protect the crew",
         "relationships": {
-            "Akanesu": "revered, Sea God's vision guiding the Protagonist's journey",
-            "Crew": "loyal, faces set with determination, awaiting the Protagonist's lead"
+            "Akanesu": "revered, Sea God's vision guiding the Protagonist's journey, with a deeper understanding of the Prophecy and its connection to the Sea God's Throne",
+            "Crew": "loyal, faces set with determination, awaiting the Protagonist's lead, with a few members injured from the battle, but still standing strong"
         },
         "inventory": {
             "Sea God's Essence": "infused within the Protagonist's veins",
-            "Blox Fruits": "none acquired in this episode"
+            "Blox Fruits": "none acquired in this episode, but with a hint of a rare, ancient fruit hidden within the depths of the ocean"
         },
         "lore_details": {
-            "Sea God's Throne": "carved from the bones of sea serpents, symbolizing the Protagonist's destiny",
-            "Vision of Akanesu": "guiding the Protagonist's journey, foreshadowing challenges and glory",
-            "Giant Awakened": "a colossal sea monster, risen to challenge the Protagonist's claim to the Sea God's Throne"
+            "Sea God's Throne": "carved from the bones of sea serpents, symbolizing the Protagonist's destiny, now with a deeper understanding of its true power and the responsibility that comes with it",
+            "Vision of Akanesu": "guiding the Protagonist's journey, foreshadowing challenges and glory, with a new, unclear vision of a great calamity that threatens the ocean and its inhabitants",
+            "Giant Awakened": "a colossal sea monster, risen to challenge the Protagonist's claim to the Sea God's Throne, with a hidden connection to the ancient fruit and the Prophecy"
         },
         "stats": {
-            "physical_strength": "enhanced due to Sea God's essence and Akanesu's blessings",
-            "aura_control": "improved, as evidenced by the effective use of Thunder Fist"
+            "physical_strength": "significantly enhanced due to Sea God's essence, Akanesu's blessings, and the intense battle against the giant sea monster",
+            "aura_control": "greatly improved, as evidenced by the effective use of Thunder Fist and the ability to withstand the sea giant's colossal force"
         }
     }
 }
