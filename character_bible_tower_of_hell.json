@@ -13,7 +13,7 @@
             "health": 100,
             "sanity": 100
         },
-        " relationships": {
+        "relationships": {
             "self": "Conflicted",
             "shadows": "Adversarial"
         },
