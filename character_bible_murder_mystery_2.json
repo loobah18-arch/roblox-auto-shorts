@@ -15,7 +15,9 @@
                 ]
             },
             "status": "at large",
-            "inventory": []
+            "inventory": [
+                "chilling message"
+            ]
         },
         "Sheriff": {
             "traits": {
@@ -51,6 +53,10 @@
             "victim": "innocent civilian",
             "scene": "crime scene with cryptic message",
             "investigation": "ongoing"
+        },
+        "upcoming": {
+            "potential victim": "unknown",
+            "threat level": "high"
         }
     },
     "themes": {
@@ -58,7 +64,7 @@
         "justice": "at stake",
         "time": "running out"
     },
-    " relationships": {
+    "relationships": {
         "Sheriff-Murderer": "adversarial",
         "Sheriff-Community": "protective",
         "Murderer-Community": "terrorizing"
