@@ -99,6 +99,37 @@ def save_active_model(model_name):
     except Exception as e:
         print(f"Failed to save active model: {e}")
 
+
+# --- IMAGE PROVIDER STATE MANAGEMENT ---
+PROVIDERS = [
+    "pollinations_new",
+    "pollinations_legacy",
+    "pollinations_turbo",
+    "pollinations_realism",
+    "huggingface_flux"
+]
+
+def load_active_image_provider():
+    """Loads the last successfully used image provider. Defaults to 'pollinations_new'."""
+    if os.path.exists("active_image_provider.txt"):
+        try:
+            with open("active_image_provider.txt", "r") as f:
+                provider_name = f.read().strip()
+                if provider_name in PROVIDERS:
+                    return provider_name
+        except Exception:
+            pass
+    return "pollinations_new"
+
+def save_active_image_provider(provider_name):
+    """Saves the successfully working image provider name to persistent storage."""
+    try:
+        with open("active_image_provider.txt", "w") as f:
+            f.write(provider_name.strip())
+        print(f"[+] Sticky image provider updated: {provider_name}")
+    except Exception as e:
+        print(f"Failed to save active image provider: {e}")
+
 # --- HELPER FUNCTIONS ---
 def extract_json(text):
     """Safely extracts and parses a JSON block from potentially conversational LLM output."""
@@ -262,41 +293,112 @@ Episode Writing Guidelines:
         prompts.append("Roblox landscape, Unreal Engine 5 render")
     prompts = prompts[:8]
 
-    print(f"Generating {len(prompts)} correlated Unreal Engine 5 visual assets via Pollinations AI...")
-    style_modifier = ", Unreal Engine 5 render, hyper-realistic lighting, ray tracing, 8k resolution, cinematic composition, high-end heavy AI visual masterpiece, octane render"
+    print(f"Generating {len(prompts)} correlated vertical visual assets using our Auto-Healing Multi-Provider Engine...")
+    
+    # Load and order providers so the active one is tried first
+    active_provider = load_active_image_provider()
+    ordered_providers = [active_provider] + [p for p in PROVIDERS if p != active_provider]
+    print(f"Image generation fallback chain (sticky first): {ordered_providers}")
+    
+    import hashlib
     
     for i, img_prompt in enumerate(prompts):
         path = f"scene_{i}.jpg"
-        # Spreading outgoing requests with human-mimicking delay to completely bypass 429 throttling limits
+        seed = random.randint(1, 999999999)
+        
+        # Spreading outgoing requests with delay to bypass Cloudflare burst protections
         if i > 0:
             delay = random.uniform(30.5, 45.5)
-            print(f"Spreading API load. Sleeping for {delay:.2f} seconds (optimal delay) before retrieving scene {i} to fully clear any rate limits...")
+            print(f"Spreading API load. Sleeping for {delay:.2f} seconds (optimal delay) before retrieving scene {i}...")
             time.sleep(delay)
-
-        max_retries = 2
-        for attempt in range(max_retries):
-            try:
-                enhanced_prompt = f"{img_prompt}{style_modifier}"
-                safe_prompt = requests.utils.quote(enhanced_prompt, safe='')
-                url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920"
-                response = requests.get(url, timeout=60)
-                if response.status_code == 200:
-                    with open(path, 'wb') as f:
-                        f.write(response.content)
-                    print(f"[-] Successfully rendered asset {i} (Attempt {attempt+1})")
-                    break
-                else:
-                    raise Exception(f"Failed status code {response.status_code}")
-            except Exception as e:
-                print(f"Retrieval attempt {attempt+1} failed for scene {i}: {e}")
-                if attempt < max_retries - 1:
-                    retry_delay = 20 + attempt * 15
-                    print(f"Waiting {retry_delay} seconds (optimal backoff) before retrying to allow the rate limiter window to cool down...")
-                    time.sleep(retry_delay)
-                else:
-                    print(f"Pollinations AI completely timed out for scene {i}. Deploying visual fallback...")
-                    create_fallback_image(path, i)
+            
+        success = False
         
+        # Iterate through the ordered provider fallbacks
+        for provider in ordered_providers:
+            print(f"Attempting scene {i} using provider: {provider}...")
+            
+            # 2 retries per provider
+            max_retries = 2
+            provider_success = False
+            
+            for attempt in range(max_retries):
+                try:
+                    style_modifier = ", Unreal Engine 5 render, hyper-realistic lighting, ray tracing, 8k resolution, cinematic composition, high-end heavy AI visual masterpiece, octane render"
+                    enhanced_prompt = f"{img_prompt}{style_modifier}"
+                    safe_prompt = requests.utils.quote(enhanced_prompt, safe='')
+                    
+                    headers = {}
+                    timeout = 60
+                    
+                    if provider == "pollinations_new":
+                        url = f"https://gen.pollinations.ai/image/{safe_prompt}?width=1080&height=1920&model=flux&seed={seed}"
+                        response = requests.get(url, timeout=timeout)
+                    elif provider == "pollinations_legacy":
+                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&seed={seed}"
+                        response = requests.get(url, timeout=timeout)
+                    elif provider == "pollinations_turbo":
+                        url = f"https://gen.pollinations.ai/image/{safe_prompt}?width=1080&height=1920&model=turbo&seed={seed}"
+                        response = requests.get(url, timeout=timeout)
+                    elif provider == "pollinations_realism":
+                        url = f"https://gen.pollinations.ai/image/{safe_prompt}?width=1080&height=1920&model=flux-realism&seed={seed}"
+                        response = requests.get(url, timeout=timeout)
+                    elif provider == "huggingface_flux":
+                        hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY")
+                        if hf_token:
+                            headers = {"Authorization": f"Bearer {hf_token}"}
+                        url = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
+                        payload = {
+                            "inputs": enhanced_prompt,
+                            "parameters": {"width": 1080, "height": 1920}
+                        }
+                        response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+                    else:
+                        raise ValueError(f"Unknown image provider: {provider}")
+                        
+                    if response.status_code == 200:
+                        content_len = len(response.content)
+                        if content_len < 10240:
+                            raise Exception(f"Downloaded file is suspiciously small ({content_len} bytes)")
+                            
+                        # Check for the Pollinations rate-limit image hash
+                        file_hash = hashlib.md5(response.content).hexdigest()
+                        if file_hash == "2090a5dc21c32952cbf8496339752bd1":
+                            raise Exception("Pollinations rate-limit placeholder image detected.")
+                            
+                        with open(path, 'wb') as f:
+                            f.write(response.content)
+                        
+                        print(f"[+] Scene {i} successfully rendered by provider: {provider} (Attempt {attempt+1})")
+                        provider_success = True
+                        break
+                    else:
+                        raise Exception(f"Failed status code {response.status_code}")
+                        
+                except Exception as e:
+                    print(f"[-] Attempt {attempt+1} failed with provider {provider}: {e}")
+                    if attempt < max_retries - 1:
+                        retry_delay = 15 + attempt * 10
+                        print(f"Waiting {retry_delay}s before retrying provider...")
+                        time.sleep(retry_delay)
+            
+            if provider_success:
+                # Update sticky provider if we successfully switched to a new working one
+                if provider != active_provider:
+                    active_provider = provider
+                    save_active_image_provider(provider)
+                    # Re-order list so this working provider is tried first next time
+                    ordered_providers = [active_provider] + [p for p in PROVIDERS if p != active_provider]
+                success = True
+                break
+            else:
+                print(f"[-] Provider {provider} exhausted. Trying next fallback provider in chain...")
+                time.sleep(2) # Short pause before switching providers
+                
+        if not success:
+            print(f"[!] WARNING: All online image providers failed for scene {i}. Deploying visual fallback...")
+            create_fallback_image(path, i)
+            
         image_paths.append(path)
 
     return audio_text, new_memory, image_paths
