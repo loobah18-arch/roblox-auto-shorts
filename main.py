@@ -326,27 +326,34 @@ Episode Writing Guidelines:
                 try:
                     style_modifier = ", Unreal Engine 5 render, hyper-realistic lighting, ray tracing, 8k resolution, cinematic composition, high-end heavy AI visual masterpiece, octane render"
                     enhanced_prompt = f"{img_prompt}{style_modifier}"
-                    safe_prompt = requests.utils.quote(enhanced_prompt, safe='')
-                    
+                    # safe_prompt is recomputed below after truncation
+
                     headers = {}
                     timeout = 60
-                    
+
+                    # Truncate prompt to prevent URL length errors (Pollinations rejects very long URLs)
+                    MAX_PROMPT_CHARS = 400
+                    if len(enhanced_prompt) > MAX_PROMPT_CHARS:
+                        enhanced_prompt = enhanced_prompt[:MAX_PROMPT_CHARS]
+                    safe_prompt = requests.utils.quote(enhanced_prompt, safe='')
+
                     if provider == "pollinations_new":
-                        url = f"https://gen.pollinations.ai/image/{safe_prompt}?width=1080&height=1920&model=flux&seed={seed}"
+                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux&seed={seed}&nologo=true"
                         response = requests.get(url, timeout=timeout)
                     elif provider == "pollinations_legacy":
-                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&seed={seed}"
+                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux&seed={seed}&nologo=true"
                         response = requests.get(url, timeout=timeout)
                     elif provider == "pollinations_turbo":
-                        url = f"https://gen.pollinations.ai/image/{safe_prompt}?width=1080&height=1920&model=turbo&seed={seed}"
+                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=turbo&seed={seed}&nologo=true"
                         response = requests.get(url, timeout=timeout)
                     elif provider == "pollinations_realism":
-                        url = f"https://gen.pollinations.ai/image/{safe_prompt}?width=1080&height=1920&model=flux-realism&seed={seed}"
+                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux-realism&seed={seed}&nologo=true"
                         response = requests.get(url, timeout=timeout)
                     elif provider == "huggingface_flux":
                         hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY")
-                        if hf_token:
-                            headers = {"Authorization": f"Bearer {hf_token}"}
+                        if not hf_token:
+                            raise ValueError("HF_TOKEN secret not set — skipping huggingface_flux provider")
+                        headers = {"Authorization": f"Bearer {hf_token}"}
                         url = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
                         payload = {
                             "inputs": enhanced_prompt,
