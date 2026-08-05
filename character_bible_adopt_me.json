@@ -7,9 +7,9 @@
         "body_color": "light peach blocky skin, medium height Roblox avatar",
         "signature_weapon": "rubber chicken, super soaker water gun",
         "personality": "adventurous, optimistic, friendly, determined",
-        "goals": "obtain mega legendary pets",
-        "motivations": "passion for rare pets, ambition to be the best",
-        "relationship_status": "rivalry with mysterious player",
+        "goals": "obtain mega legendary pets, claim the title of the ultimate Adopt Me! champion",
+        "motivations": "passion for rare pets, ambition to be the best, surpass the mysterious rival",
+        "relationship_status": "intensified rivalry with mysterious player",
         "inventory": {
             "weapons": [
                 "rubber chicken",
@@ -18,9 +18,9 @@
             "pets": []
         },
         "stats": {
-            "wit": 8,
-            "strategy": 7,
-            "determination": 9
+            "wit": 9,
+            "strategy": 8,
+            "determination": 10
         }
     }
 }
