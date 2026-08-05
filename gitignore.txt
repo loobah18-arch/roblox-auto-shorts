@@ -1,0 +1,63 @@
+# =====================================================================
+# ROBLOX AUTO SHORTS ENGINE - OPTIMIZED .GITIGNORE
+# =====================================================================
+
+# 1. Ignore Temporary Media & Render Assets (CRITICAL)
+# Prevents GitHub Action bots from committing active video/audio files
+vo.mp3
+vo_raw.mp3
+subtitles.ass
+temp_unsubbed.mp4
+final_short.mp4
+scene_*.jpg
+*.jpg
+*.png
+*.mp3
+*.wav
+*.mp4
+*.ass
+
+# Exceptions: Allow your background music directory to be tracked
+!bgm/
+!bgm/*.mp3
+
+# 2. Python System & Build Artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 3. Virtual Environments
+venv/
+env/
+ENV/
+.env
+.venv
+
+# 4. OS & IDE Metadata
+.DS_Store
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
