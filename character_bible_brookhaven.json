@@ -5,14 +5,15 @@
         "home": "Brookhaven, now in ruins"
     },
     "currentObjective": {
-        "quest": "Uncover the truth behind the disaster by reaching the hidden research facility",
-        "location": "Deeper within the abandoned mine"
+        "quest": "Explore the dimly lit corridor and uncover the secrets of the research facility",
+        "location": "Within the hidden research facility"
     },
     "abilities": {
         "skills": [
             "Survival",
             "Problem-solving",
-            "Combat"
+            "Combat",
+            "Deciphering ancient texts"
         ],
         "equipment": [
             "Ancient tomes with cryptic map"
@@ -21,7 +22,7 @@
     "stats": {
         "level": 1,
         "health": 100,
-        "experience": 0
+        "experience": 10
     },
     "relationships": {
         "allies": [
@@ -29,14 +30,16 @@
         ],
         "enemies": [
             "Dark power",
-            "Horrors lurking in the shadows"
+            "Horrors lurking in the shadows",
+            "Unearthly whispering entity"
         ]
     },
     "personality": {
         "traits": [
             "Brave",
             "Determined",
-            "Curious"
+            "Curious",
+            "Resourceful"
         ]
     },
     "lore": {
@@ -47,7 +50,8 @@
         "locations": {
             "Brookhaven": "Ruins of a once peaceful home",
             "Abandoned mine": "Hiding the mysterious research facility",
-            "Hidden research facility": "Destination for uncovering the truth"
+            "Hidden research facility": "Destination for uncovering the truth, currently being explored",
+            "Dimly lit corridor": "Initial area of the research facility, filled with an eerie atmosphere"
         },
         "items": {
             "ancientTomes": "Contain cryptic map, crucial for the quest"
