@@ -709,7 +709,7 @@ def render_video(audio_path, image_paths, text_chunks):
     subprocess.run([
         "ffmpeg", "-y",
         "-i", temp_output_path,
-        "-vf", f"subtitles='{ass_path}'",
+        "-vf", f"subtitles={ass_path}",
         "-c:a", "copy",
         output_path
     ], check=True)
