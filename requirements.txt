@@ -1,4 +1,4 @@
-moviepy==1.0.3
+# moviepy removed — pipeline uses pure FFmpeg for all video rendering
 edge-tts
 google-api-python-client
 google-auth-oauthlib
