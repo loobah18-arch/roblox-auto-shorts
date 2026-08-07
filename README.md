@@ -19,7 +19,7 @@ Every day at **12:00 UTC** (or manually triggered), GitHub Actions runs the full
         ↓
 5. Generate deep voiceover via Edge-TTS
         ↓
-6. Render final video with captions via MoviePy + FFmpeg
+6. Render 9:16 video with Ken Burns motion & bottom karaoke captions via FFmpeg
         ↓
 7. Upload video to YouTube
         ↓
@@ -35,7 +35,20 @@ The pipeline rotates through 5 games daily:
 
 ---
 
-## 🖼️ Image Generation (Fixed)
+## 🎬 Video & Subtitle Quality (9:16 Vertical)
+
+The pipeline is optimized for YouTube Shorts (1080x1920 portrait format):
+
+- **Pure FFmpeg Engine**: Replaced MoviePy with a pure FFmpeg pipeline for smooth 30fps rendering, precise audio mixing, and high quality encoding (`libx264`, CRF 18).
+- **Dynamic Ken Burns Pan & Zoom**: 8 distinct camera motion styles across scenes (center zoom in/out, pan left/right/up/down, top-left/bottom-right zoom).
+- **Bottom Karaoke Subtitles**: Stylized Aegisub (`.ass`) subtitles burned directly onto the video:
+  - **Position**: Bottom-center alignment (`Alignment: 2`) with comfortable vertical margins (`MarginV: 120px`) for optimal readability on mobile screens.
+  - **Karaoke Highlights**: Word-by-word color transition (vibrant yellow active highlight over white font with bold black outline).
+  - **9:16 Safe Zone**: Designed so subtitles never overlap top headers or bottom UI elements in YouTube Shorts.
+
+---
+
+## 🖼️ Image Generation
 
 Images are generated using **Pollinations AI** (`image.pollinations.ai`) with a multi-provider fallback chain. If one provider fails, the next is tried automatically.
 
@@ -49,15 +62,18 @@ Images are generated using **Pollinations AI** (`image.pollinations.ai`) with a 
 
 > **Note:** All providers use `image.pollinations.ai` — the old `gen.pollinations.ai` domain now requires paid auth and has been removed.
 
-If all providers fail for a scene, a stylized placeholder image is automatically generated using Pillow so the video still renders.
-
-The pipeline remembers which provider last worked and tries it first on the next run ("sticky provider").
+If all providers fail for a scene, a stylized placeholder image is automatically generated using Pillow so the video still renders. The pipeline remembers which provider last worked and tries it first on the next run ("sticky provider").
 
 ---
 
 ## ⚙️ Setup
 
 ### 1. Fork / Clone this repo
+
+```bash
+git clone https://github.com/loobah18-arch/roblox-auto-shorts.git
+cd roblox-auto-shorts
+```
 
 ### 2. Add GitHub Secrets
 
@@ -96,16 +112,13 @@ roblox-auto-shorts/
 │       └── upload.yml          # GitHub Actions workflow
 ├── assets/                     # Static background images
 ├── bgm/                        # Background music tracks
-├── main.py                     # 🔑 Main pipeline script
+├── main.py                     # 🔑 Main pipeline script (FFmpeg, Groq, Edge-TTS, ASS captions)
 ├── requirements.txt            # Python dependencies
-├── game_state.json             # Tracks current game rotation
+├── game_state.json             # Tracks current game rotation & episode counts
 ├── active_llm_model.txt        # Remembers last working LLM
 ├── active_image_provider.txt   # Remembers last working image provider
 ├── character_bible_*.json      # Character lore per game
-├── story_memory_*.txt          # Ongoing story continuity per game
-├── scene_0.jpg → scene_7.jpg   # Last generated scene images
-├── vo.mp3                      # Last generated voiceover
-└── final_short.mp4             # Last rendered video
+└── story_memory_*.txt          # Ongoing story continuity per game
 ```
 
 ---
@@ -114,11 +127,11 @@ roblox-auto-shorts/
 
 | Component | Tool |
 |---|---|
-| Script & image prompts | [Groq](https://groq.com) (LLM — llama-3.3-70b) |
-| Image generation | [Pollinations AI](https://pollinations.ai) (free, no key needed) |
+| Script & image prompts | [Groq](https://groq.com) (LLM — llama-3.3-70b / multi-model fallback) |
+| Image generation | [Pollinations AI](https://pollinations.ai) (free FLUX / Turbo) + HuggingFace |
 | Voiceover | [Edge-TTS](https://github.com/rany2/edge-tts) (Microsoft neural voices) |
-| Video rendering | [MoviePy](https://zulko.github.io/moviepy/) + FFmpeg |
-| Captions | ASS subtitle format burned into video |
+| Video rendering | [FFmpeg](https://ffmpeg.org/) (Pure FFmpeg with Ken Burns effects) |
+| Captions & Subtitles | Aegisub ASS (`.ass`) with karaoke highlights at bottom (9:16 layout) |
 | Upload | YouTube Data API v3 |
 | Automation | GitHub Actions (free tier) |
 
