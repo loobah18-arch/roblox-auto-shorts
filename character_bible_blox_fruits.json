@@ -18,11 +18,13 @@
         "lore_details": {
             "Sea God's Throne": "carved from the bones of sea serpents, symbolizing the Protagonist's destiny, now with a deeper understanding of its true power and the responsibility that comes with it",
             "Vision of Akanesu": "guiding the Protagonist's journey, foreshadowing challenges and glory, with a new, unclear vision of a great calamity that threatens the ocean and its inhabitants",
-            "Giant Awakened": "a colossal sea monster, risen to challenge the Protagonist's claim to the Sea God's Throne, with a hidden connection to the ancient fruit and the Prophecy"
+            "Giant Awakened": "a colossal sea monster, risen to challenge the Protagonist's claim to the Sea God's Throne, with a hidden connection to the ancient fruit and the Prophecy",
+            "Prophecy": "unfolding, with the Protagonist at its center, and a great calamity looming on the horizon"
         },
         "stats": {
             "physical_strength": "significantly enhanced due to Sea God's essence, Akanesu's blessings, and the intense battle against the giant sea monster",
-            "aura_control": "greatly improved, as evidenced by the effective use of Thunder Fist and the ability to withstand the sea giant's colossal force"
+            "aura_control": "greatly improved, as evidenced by the effective use of Thunder Fist and the ability to withstand the sea giant's colossal force",
+            "resolve": "unwavering, fueled by the memories of the battles fought and won"
         }
     }
 }
