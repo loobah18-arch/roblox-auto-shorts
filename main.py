@@ -9,7 +9,7 @@ import edge_tts
 import time
 import subprocess
 from groq import Groq
-from moviepy.editor import *
+# moviepy import removed — pipeline uses pure FFmpeg for rendering
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -112,9 +112,9 @@ def save_active_model(model_name):
 # --- IMAGE PROVIDER STATE MANAGEMENT ---
 PROVIDERS = [
     "pollinations_new",
-    "pollinations_legacy",
+    "pollinations_flux_realism",
     "pollinations_turbo",
-    "pollinations_realism",
+    "pollinations_flux_pro",
     "huggingface_flux"
 ]
 
@@ -316,7 +316,8 @@ Episode Writing Guidelines:
         seed = random.randint(1, 999999999)
         
         # Spreading outgoing requests with delay to bypass Cloudflare burst protections
-        if i > 0:
+        # Only apply delay for Pollinations providers; HuggingFace has its own rate limiting
+        if i > 0 and not active_provider.startswith("huggingface"):
             delay = random.uniform(30.5, 45.5)
             print(f"Spreading API load. Sleeping for {delay:.2f} seconds (optimal delay) before retrieving scene {i}...")
             time.sleep(delay)
@@ -362,15 +363,16 @@ Episode Writing Guidelines:
                         # enhance=true uses Pollinations' free AI prompt enhancer for better results
                         url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux&seed={seed}&nologo=true&enhance=true"
                         response = requests.get(url, timeout=timeout)
-                    elif provider == "pollinations_legacy":
-                        # Bug fix: was identical to pollinations_new — now uses flux-realism as a true different model
+                    elif provider == "pollinations_flux_realism":
+                        # Flux-realism model: photorealistic outputs, distinct from flux base
                         url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux-realism&seed={seed}&nologo=true&enhance=true"
                         response = requests.get(url, timeout=timeout)
                     elif provider == "pollinations_turbo":
                         url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=turbo&seed={seed}&nologo=true"
                         response = requests.get(url, timeout=timeout)
-                    elif provider == "pollinations_realism":
-                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux-realism&seed={seed}&nologo=true&enhance=true"
+                    elif provider == "pollinations_flux_pro":
+                        # Flux-pro: higher quality, slower, used as final Pollinations fallback
+                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux-pro&seed={seed}&nologo=true"
                         response = requests.get(url, timeout=timeout)
                     elif provider == "huggingface_flux":
                         hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY")
@@ -546,7 +548,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: RobloxStyle,Impact,78,&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,2,0,1,7,3,2,10,10,500,1
+Style: RobloxStyle,Impact,82,&H00FFFFFF,&H0000FFFF,&H00000000,&HA0000000,1,0,0,0,100,100,2,0,1,8,4,8,30,30,80,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -608,6 +610,9 @@ def render_video(audio_path, image_paths, text_chunks):
     Replaces MoviePy with direct FFmpeg calls for higher quality 30fps output."""
     print("Assembling video with Ken Burns motion effects via FFmpeg...")
 
+    if not image_paths:
+        raise ValueError("render_video received empty image_paths list — cannot build video without scenes.")
+
     # Get audio duration using ffprobe (no MoviePy dependency needed)
     result = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -654,13 +659,16 @@ def render_video(audio_path, image_paths, text_chunks):
         # Pre-scale to 1080x1920 to optimize zoompan performance and ensure exact aspect ratio
         vf_chain = f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,{zp},fade=t=in:st=0:d=0.3,fade=t=out:st={fade_out_start:.4f}:d=0.3"
 
-        subprocess.run([
+        scene_result = subprocess.run([
             "ffmpeg", "-y", "-loop", "1", "-i", img_path,
             "-vf", vf_chain,
             "-t", d_str,
             "-c:v", "libx264", "-preset", "fast", "-crf", "18",
             "-pix_fmt", "yuv420p", "-r", "30", scene_out
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ], capture_output=True, text=True)
+        if scene_result.returncode != 0:
+            print(f"[!] FFmpeg scene {i} failed:\n{scene_result.stderr[-2000:]}")
+            raise subprocess.CalledProcessError(scene_result.returncode, "ffmpeg", scene_result.stderr)
         print(f"[+] Ken Burns applied to scene {i} ({direction})")
         scene_files.append(scene_out)
 
@@ -689,7 +697,7 @@ def render_video(audio_path, image_paths, text_chunks):
             "-i", audio_path,
             "-stream_loop", "-1", "-i", selected_bgm,
             "-filter_complex",
-            "[2:a]volume=0.08[bgm];[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+            "[2:a]volume=0.08[bgm];[1:a][bgm]amix=inputs=2:duration=first:normalize=0[aout]",
             "-map", "0:v", "-map", "[aout]",
             "-c:v", "copy", "-c:a", "aac", "-shortest",
             temp_output_path
@@ -700,19 +708,23 @@ def render_video(audio_path, image_paths, text_chunks):
             "-c:v", "copy", "-c:a", "aac", "-shortest", temp_output_path
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # Generate and burn ASS subtitles
-    ass_path = "subtitles.ass"
+    # Generate and burn ASS subtitles using absolute path to avoid libass resolution issues
+    ass_path = os.path.abspath("subtitles.ass")
     generate_ass_file(text_chunks, video_duration, ass_path)
 
     output_path = "final_short.mp4"
-    print("Burning Impact font subtitles via FFmpeg...")
-    subprocess.run([
+    print("Burning subtitles via FFmpeg libass...")
+    sub_result = subprocess.run([
         "ffmpeg", "-y",
         "-i", temp_output_path,
         "-vf", f"subtitles=filename='{ass_path}'",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "18",
         "-c:a", "copy",
         output_path
-    ], check=True)
+    ], capture_output=True, text=True)
+    if sub_result.returncode != 0:
+        print(f"[!] Subtitle burn failed:\n{sub_result.stderr[-2000:]}")
+        raise subprocess.CalledProcessError(sub_result.returncode, "ffmpeg", sub_result.stderr)
 
     # Clean up all temporary files
     for sf in scene_files:
@@ -763,7 +775,7 @@ def upload_to_youtube(video_path, game_name, part_number):
     print("Initiating YouTube upload stream...")
     media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype='video/mp4')
     request = youtube.videos().insert(
-        part=','.join(body.keys()),
+        part='snippet,status',
         body=body,
         media_body=media
     )
