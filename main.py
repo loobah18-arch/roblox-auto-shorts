@@ -584,8 +584,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         # Join line parts with the ASS hard newline tag '\N'
         karaoke_text = r"\N".join(karaoke_parts)
         
-        # \fad(150,150) adds a 150ms fade-in and 150ms fade-out to every subtitle line
-        events.append(f"Dialogue: 0,{start_str},{end_str},RobloxStyle,,0,0,0,{{\\fad(150,150)}}{karaoke_text}")
+        # Clean ASS karaoke dialogue line without conflicting fade tags
+        events.append(f"Dialogue: 0,{start_str},{end_str},RobloxStyle,,0,0,0,{karaoke_text}")
         current_time = end_time
         
     with open(output_ass_path, "w", encoding="utf-8") as f:
