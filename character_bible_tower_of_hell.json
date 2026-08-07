@@ -11,7 +11,7 @@
         },
         "stats": {
             "health": 100,
-            "sanity": 100
+            "sanity": 80
         },
         "relationships": {
             "self": "Conflicted",
