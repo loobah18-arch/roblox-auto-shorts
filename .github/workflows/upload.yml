@@ -1,6 +1,6 @@
 name: build-and-upload
 
-on:
+"on":
   schedule:
     # Uses off-peak minute (27) to prevent GitHub Actions high-demand top-of-hour cron queue drops
     - cron: '27 12 * * *'
