@@ -5,8 +5,8 @@
         "home": "Brookhaven, now in ruins"
     },
     "currentObjective": {
-        "quest": "Explore the dimly lit corridor and uncover the secrets of the research facility",
-        "location": "Within the hidden research facility"
+        "quest": "Uncover the secrets of Brookhaven's downfall within the hidden research facility",
+        "location": "Deeper within the hidden research facility"
     },
     "abilities": {
         "skills": [
@@ -21,8 +21,8 @@
     },
     "stats": {
         "level": 1,
-        "health": 100,
-        "experience": 10
+        "health": 90,
+        "experience": 20
     },
     "relationships": {
         "allies": [
