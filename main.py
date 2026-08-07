@@ -324,9 +324,21 @@ Episode Writing Guidelines:
             
             for attempt in range(max_retries):
                 try:
-                    style_modifier = ", Unreal Engine 5 render, hyper-realistic lighting, ray tracing, 8k resolution, cinematic composition, high-end heavy AI visual masterpiece, octane render"
+                    # Game-specific cinematic style context for more relevant, high-quality images
+                    game_style_map = {
+                        "Blox Fruits": "anime-style oceanic adventure, tropical island, glowing devil fruit powers, vibrant sea",
+                        "Brookhaven": "suburban cinematic drama, neon night lighting, realistic neighborhood atmosphere",
+                        "Adopt Me!": "colorful pastel fantasy world, cute magical pets, glowing nursery, dreamy sky",
+                        "Murder Mystery 2": "dark neon-lit mansion interior, mystery thriller, dramatic long shadows",
+                        "Tower of Hell": "extreme neon obstacle course, glowing platforms, dizzying heights, sci-fi arena"
+                    }
+                    game_style = game_style_map.get(game, "cinematic Roblox game scene")
+                    style_modifier = (
+                        f", {game_style}, cinematic vertical composition, dramatic lighting, "
+                        "high detail, vibrant colors, professional game art, "
+                        "volumetric fog, 8k resolution, award-winning render"
+                    )
                     enhanced_prompt = f"{img_prompt}{style_modifier}"
-                    # safe_prompt is recomputed below after truncation
 
                     headers = {}
                     timeout = 60
@@ -338,16 +350,18 @@ Episode Writing Guidelines:
                     safe_prompt = requests.utils.quote(enhanced_prompt, safe='')
 
                     if provider == "pollinations_new":
-                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux&seed={seed}&nologo=true"
+                        # enhance=true uses Pollinations' free AI prompt enhancer for better results
+                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux&seed={seed}&nologo=true&enhance=true"
                         response = requests.get(url, timeout=timeout)
                     elif provider == "pollinations_legacy":
-                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux&seed={seed}&nologo=true"
+                        # Bug fix: was identical to pollinations_new — now uses flux-realism as a true different model
+                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux-realism&seed={seed}&nologo=true&enhance=true"
                         response = requests.get(url, timeout=timeout)
                     elif provider == "pollinations_turbo":
                         url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=turbo&seed={seed}&nologo=true"
                         response = requests.get(url, timeout=timeout)
                     elif provider == "pollinations_realism":
-                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux-realism&seed={seed}&nologo=true"
+                        url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&model=flux-realism&seed={seed}&nologo=true&enhance=true"
                         response = requests.get(url, timeout=timeout)
                     elif provider == "huggingface_flux":
                         hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY")
@@ -523,7 +537,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: RobloxStyle,Arial,72,&H0000FFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,6,1,2,10,10,480,1
+Style: RobloxStyle,Impact,78,&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,2,0,1,7,3,2,10,10,500,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -570,7 +584,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         # Join line parts with the ASS hard newline tag '\N'
         karaoke_text = r"\N".join(karaoke_parts)
         
-        events.append(f"Dialogue: 0,{start_str},{end_str},RobloxStyle,,0,0,0,,{karaoke_text}")
+        # \fad(150,150) adds a 150ms fade-in and 150ms fade-out to every subtitle line
+        events.append(f"Dialogue: 0,{start_str},{end_str},RobloxStyle,,0,0,0,{{\\fad(150,150)}}{karaoke_text}")
         current_time = end_time
         
     with open(output_ass_path, "w", encoding="utf-8") as f:
@@ -580,62 +595,122 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     print(f"[-] Subtitles ASS file generated: {output_ass_path}")
 
 def render_video(audio_path, image_paths, text_chunks):
-    """MoviePy assembly featuring precise lower-middle positioning and synchronized word chunk rendering."""
-    print("Assembling basic video structure with MoviePy...")
-    vo_clip = AudioFileClip(audio_path)
-    video_duration = vo_clip.duration
-    
+    """Pure FFmpeg pipeline with Ken Burns pan/zoom per scene, audio mixing, and subtitle burn.
+    Replaces MoviePy with direct FFmpeg calls for higher quality 30fps output."""
+    print("Assembling video with Ken Burns motion effects via FFmpeg...")
+
+    # Get audio duration using ffprobe (no MoviePy dependency needed)
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", audio_path],
+        capture_output=True, text=True, check=True
+    )
+    video_duration = float(result.stdout.strip())
+
+    img_duration = video_duration / len(image_paths)
+    scene_files = []
+
+    # Cycle through 8 Ken Burns directions for visual variety
+    kb_directions = [
+        "zoom_in_center", "pan_right", "zoom_out_center",
+        "pan_left", "zoom_in_topleft", "pan_up",
+        "zoom_in_bottomright", "pan_down"
+    ]
+
+    print("Applying Ken Burns pan/zoom to each scene...")
+    for i, img_path in enumerate(image_paths):
+        scene_out = f"scene_kb_{i}.mp4"
+        direction = kb_directions[i % len(kb_directions)]
+        frames = max(1, int(img_duration * 30))  # 30fps
+        d_str = f"{img_duration:.4f}"
+        fade_out_start = max(0.0, img_duration - 0.3)
+
+        if direction == "zoom_in_center":
+            zp = f"zoompan=z='min(zoom+0.0015,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
+        elif direction == "zoom_out_center":
+            zp = f"zoompan=z='if(lte(zoom,1.0),1.5,max(zoom-0.0015,1.0))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
+        elif direction == "pan_right":
+            zp = f"zoompan=z=1.3:x='min(iw/zoom/2+iw*0.2*in_time/{d_str},iw-iw/zoom)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
+        elif direction == "pan_left":
+            zp = f"zoompan=z=1.3:x='max(iw/zoom/2-iw*0.2*in_time/{d_str},0)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
+        elif direction == "pan_up":
+            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='max(ih/zoom/2-ih*0.2*in_time/{d_str},0)':d={frames}:s=1080x1920:fps=30"
+        elif direction == "pan_down":
+            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='min(ih/zoom/2+ih*0.2*in_time/{d_str},ih-ih/zoom)':d={frames}:s=1080x1920:fps=30"
+        elif direction == "zoom_in_topleft":
+            zp = f"zoompan=z='min(zoom+0.0015,1.5)':x=0:y=0:d={frames}:s=1080x1920:fps=30"
+        else:  # zoom_in_bottomright
+            zp = f"zoompan=z='min(zoom+0.0015,1.5)':x='iw-iw/zoom':y='ih-ih/zoom':d={frames}:s=1080x1920:fps=30"
+
+        subprocess.run([
+            "ffmpeg", "-y", "-loop", "1", "-i", img_path,
+            "-vf", f"{zp},fade=t=in:st=0:d=0.3,fade=t=out:st={fade_out_start:.4f}:d=0.3",
+            "-t", d_str,
+            "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+            "-pix_fmt", "yuv420p", "-r", "30", scene_out
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"[+] Ken Burns applied to scene {i} ({direction})")
+        scene_files.append(scene_out)
+
+    # Concatenate all Ken Burns scene clips into one silent video
+    concat_list = "concat_list.txt"
+    with open(concat_list, "w") as f:
+        for sf in scene_files:
+            f.write(f"file '{sf}'\n")
+
+    temp_video_noaudio = "temp_video_noaudio.mp4"
+    print("Concatenating all scenes...")
+    subprocess.run([
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+        "-i", concat_list, "-c", "copy", temp_video_noaudio
+    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Mix BGM with voiceover using FFmpeg directly
     bgm_files = glob.glob("bgm/*.mp3")
+    temp_output_path = "temp_unsubbed.mp4"
     if bgm_files:
         selected_bgm = random.choice(bgm_files)
-        bgm_clip = AudioFileClip(selected_bgm).fx(afx.volumex, 0.1)
-        bgm_clip = bgm_clip.set_duration(video_duration)
-        final_audio = CompositeAudioClip([vo_clip, bgm_clip])
+        print(f"Mixing BGM: {selected_bgm} at 8% volume...")
+        subprocess.run([
+            "ffmpeg", "-y",
+            "-i", temp_video_noaudio,
+            "-i", audio_path,
+            "-stream_loop", "-1", "-i", selected_bgm,
+            "-filter_complex",
+            "[2:a]volume=0.08,aloop=loop=-1:size=2000000000[bgm];[1:a][bgm]amix=inputs=2:duration=first[aout]",
+            "-map", "0:v", "-map", "[aout]",
+            "-c:v", "copy", "-c:a", "aac", "-shortest",
+            temp_output_path
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
-        final_audio = vo_clip
-        
-    # Distribute correlated background images evenly across the timeline
-    img_duration = video_duration / len(image_paths)
-    image_clips = [ImageClip(img).set_duration(img_duration) for img in image_paths]
-    final_video = concatenate_videoclips(image_clips, method="compose")
-    final_video = final_video.set_audio(final_audio)
-    
-    temp_output_path = "temp_unsubbed.mp4"
-    print(f"Rendering unsubbed video to {temp_output_path}...")
-    final_video.write_videofile(temp_output_path, fps=24, codec="libx264", audio_codec="aac")
-    
-    # Generate ASS file
+        subprocess.run([
+            "ffmpeg", "-y", "-i", temp_video_noaudio, "-i", audio_path,
+            "-c:v", "copy", "-c:a", "aac", "-shortest", temp_output_path
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Generate and burn ASS subtitles
     ass_path = "subtitles.ass"
     generate_ass_file(text_chunks, video_duration, ass_path)
-    
+
     output_path = "final_short.mp4"
-    print("Burning highly stylized Roblox ASS subtitles via native FFmpeg filter...")
-    
-    # Burn subtitles using native FFmpeg video filter
-    burn_command = [
+    print("Burning Impact font subtitles via FFmpeg...")
+    subprocess.run([
         "ffmpeg", "-y",
         "-i", temp_output_path,
         "-vf", f"subtitles={ass_path}",
         "-c:a", "copy",
         output_path
-    ]
-    subprocess.run(burn_command, check=True)
-    
-    # Clean up temp assets and close clips to prevent memory/file leaks
-    if os.path.exists(temp_output_path):
-        os.remove(temp_output_path)
-    if os.path.exists(ass_path):
-        os.remove(ass_path)
-        
-    vo_clip.close()
-    if bgm_files:
-        bgm_clip.close()
-    final_audio.close()
-    for clip in image_clips:
-        clip.close()
-    final_video.close()
-        
-    print("Video rendered with stylized ASS subtitles successfully.")
+    ], check=True)
+
+    # Clean up all temporary files
+    for sf in scene_files:
+        if os.path.exists(sf):
+            os.remove(sf)
+    for tmp in [concat_list, temp_video_noaudio, temp_output_path, ass_path]:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+    print("Video rendered with Ken Burns effects and stylized subtitles successfully.")
     return output_path
 
 def upload_to_youtube(video_path, game_name, part_number):
@@ -723,12 +798,17 @@ async def main():
         communicate = edge_tts.Communicate(audio_text, "en-US-ChristopherNeural")
         await communicate.save(raw_audio_path)
         
-        # Clean understandable vocal pacing matching tQOIvmcX8_I (1.05x normal speed, standard natural deep pitch)
-        print("Optimizing voiceover pacing (1.05x standard speed & natural pitch)...")
+        # Studio-quality audio chain: silence trim → speed → dynamic compression → loudness normalize
+        print("Optimizing voiceover (1.05x speed, dynamic compression, loudness normalization)...")
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-i", raw_audio_path,
-            "-af", "silenceremove=stop_periods=-1:stop_duration=0.3:stop_threshold=-45dB,atempo=1.05",
+            "-af", (
+                "silenceremove=stop_periods=-1:stop_duration=0.3:stop_threshold=-45dB,"
+                "atempo=1.05,"
+                "acompressor=threshold=0.089:ratio=4:attack=5:release=50:makeup=2,"
+                "loudnorm=I=-14:LRA=11:TP=-1.5"
+            ),
             audio_path
         ]
         subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
