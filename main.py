@@ -594,7 +594,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         karaoke_text = r"\N".join(karaoke_parts)
         
         # Clean ASS karaoke dialogue line without conflicting fade tags
-        events.append(f"Dialogue: 0,{start_str},{end_str},RobloxStyle,,0,0,0,{karaoke_text}")
+        events.append(f"Dialogue: 0,{start_str},{end_str},RobloxStyle,,0,0,0,,{karaoke_text}")
         current_time = end_time
         
     with open(output_ass_path, "w", encoding="utf-8") as f:
@@ -709,7 +709,7 @@ def render_video(audio_path, image_paths, text_chunks):
     subprocess.run([
         "ffmpeg", "-y",
         "-i", temp_output_path,
-        "-vf", f"subtitles={ass_path}",
+        "-vf", f"subtitles=filename='{ass_path}'",
         "-c:a", "copy",
         output_path
     ], check=True)
