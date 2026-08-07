@@ -24,8 +24,9 @@ GAMES = [
 ]
 
 def get_safe_filename(game_name):
-    """Formats game name for file mapping (e.g., 'Adopt Me!' -> 'adopt_me')"""
-    return game_name.lower().replace(" ", "_").replace("!", "")
+    """Formats game name for safe file mapping (e.g., 'Adopt Me!' -> 'adopt_me')"""
+    clean_name = re.sub(r'[^a-z0-9_]', '', game_name.lower().replace(" ", "_"))
+    return clean_name
 
 # --- STATE & MEMORY MANAGEMENT ---
 def load_game_state():
@@ -457,14 +458,14 @@ Analyze the latest episode script for key updates (allies, stats, inventory frui
         )
         raw_text = chat_completion.choices[0].message.content
         updated_bible_data = extract_json(raw_text)
-        if updated_bible_data:
+        if updated_bible_data and isinstance(updated_bible_data, dict):
             filename = f"character_bible_{safe_game_name}.json"
             with open(filename, "w") as f:
                 json.dump(updated_bible_data, f, indent=4)
             print(f"[+] Lore evolution successful! Updated character bible saved to {filename}")
             return True
         else:
-            print("[-] Evolution pass returned invalid JSON. Leaving bible unchanged.")
+            print("[-] Evolution pass returned invalid JSON object structure. Leaving bible unchanged.")
     except Exception as e:
         print(f"[-] Self-evolution pass failed with model {model_id}: {e}. Trying fallback 'llama-3.3-70b-versatile'...")
         try:
@@ -478,7 +479,7 @@ Analyze the latest episode script for key updates (allies, stats, inventory frui
             )
             raw_text = chat_completion.choices[0].message.content
             updated_bible_data = extract_json(raw_text)
-            if updated_bible_data:
+            if updated_bible_data and isinstance(updated_bible_data, dict):
                 filename = f"character_bible_{safe_game_name}.json"
                 with open(filename, "w") as f:
                     json.dump(updated_bible_data, f, indent=4)
