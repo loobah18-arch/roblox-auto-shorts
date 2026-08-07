@@ -56,11 +56,15 @@ def get_story_memory(safe_game_name):
     filename = f"story_memory_{safe_game_name}.txt"
     if os.path.exists(filename):
         with open(filename, "r") as f:
-            return f.read()
+            content = f.read().strip()
+            if content:
+                return content
     # Safe fallback to legacy story file
     if os.path.exists("story_memory.txt"):
         with open("story_memory.txt", "r") as f:
-            return f.read()
+            content = f.read().strip()
+            if content:
+                return content
     return "No previous memory. Start a brand new epic adventure."
 
 def save_story_memory(safe_game_name, new_memory):
@@ -72,11 +76,15 @@ def get_character_bible(safe_game_name):
     filename = f"character_bible_{safe_game_name}.json"
     if os.path.exists(filename):
         with open(filename, "r") as f:
-            return f.read()
+            content = f.read().strip()
+            if content:
+                return content
     # Safe fallback to global character settings
     if os.path.exists("character_bible.json"):
         with open("character_bible.json", "r") as f:
-            return f.read()
+            content = f.read().strip()
+            if content:
+                return content
     return "No character bible found for this game."
 
 def load_active_model():
@@ -631,21 +639,24 @@ def render_video(audio_path, image_paths, text_chunks):
         elif direction == "zoom_out_center":
             zp = f"zoompan=z='if(lte(zoom,1.0),1.5,max(zoom-0.0015,1.0))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
         elif direction == "pan_right":
-            zp = f"zoompan=z=1.3:x='min(iw/zoom/2+iw*0.2*in_time/{d_str},iw-iw/zoom)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z=1.3:x='min(iw/zoom/2+iw*0.2*time/{d_str},iw-iw/zoom)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
         elif direction == "pan_left":
-            zp = f"zoompan=z=1.3:x='max(iw/zoom/2-iw*0.2*in_time/{d_str},0)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z=1.3:x='max(iw/zoom/2-iw*0.2*time/{d_str},0)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
         elif direction == "pan_up":
-            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='max(ih/zoom/2-ih*0.2*in_time/{d_str},0)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='max(ih/zoom/2-ih*0.2*time/{d_str},0)':d={frames}:s=1080x1920:fps=30"
         elif direction == "pan_down":
-            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='min(ih/zoom/2+ih*0.2*in_time/{d_str},ih-ih/zoom)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='min(ih/zoom/2+ih*0.2*time/{d_str},ih-ih/zoom)':d={frames}:s=1080x1920:fps=30"
         elif direction == "zoom_in_topleft":
             zp = f"zoompan=z='min(zoom+0.0015,1.5)':x=0:y=0:d={frames}:s=1080x1920:fps=30"
         else:  # zoom_in_bottomright
             zp = f"zoompan=z='min(zoom+0.0015,1.5)':x='iw-iw/zoom':y='ih-ih/zoom':d={frames}:s=1080x1920:fps=30"
 
+        # Pre-scale to 1080x1920 to optimize zoompan performance and ensure exact aspect ratio
+        vf_chain = f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,{zp},fade=t=in:st=0:d=0.3,fade=t=out:st={fade_out_start:.4f}:d=0.3"
+
         subprocess.run([
             "ffmpeg", "-y", "-loop", "1", "-i", img_path,
-            "-vf", f"{zp},fade=t=in:st=0:d=0.3,fade=t=out:st={fade_out_start:.4f}:d=0.3",
+            "-vf", vf_chain,
             "-t", d_str,
             "-c:v", "libx264", "-preset", "fast", "-crf", "18",
             "-pix_fmt", "yuv420p", "-r", "30", scene_out
@@ -678,7 +689,7 @@ def render_video(audio_path, image_paths, text_chunks):
             "-i", audio_path,
             "-stream_loop", "-1", "-i", selected_bgm,
             "-filter_complex",
-            "[2:a]volume=0.08,aloop=loop=-1:size=2000000000[bgm];[1:a][bgm]amix=inputs=2:duration=first[aout]",
+            "[2:a]volume=0.08[bgm];[1:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]",
             "-map", "0:v", "-map", "[aout]",
             "-c:v", "copy", "-c:a", "aac", "-shortest",
             temp_output_path
@@ -698,7 +709,7 @@ def render_video(audio_path, image_paths, text_chunks):
     subprocess.run([
         "ffmpeg", "-y",
         "-i", temp_output_path,
-        "-vf", f"subtitles={ass_path}",
+        "-vf", f"subtitles='{ass_path}'",
         "-c:a", "copy",
         output_path
     ], check=True)
