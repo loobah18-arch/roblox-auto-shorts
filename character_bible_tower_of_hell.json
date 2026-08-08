@@ -11,7 +11,7 @@
         },
         "stats": {
             "health": 100,
-            "sanity": 80
+            "sanity": 70
         },
         "relationships": {
             "self": "Conflicted",
@@ -20,7 +20,7 @@
         "awakenings": {
             "none": "No fruit awakenings"
         },
-        "currentLocation": "Labyrinth of Reflections",
+        "currentLocation": "Path of Darkness, Labyrinth of Reflections",
         "goal": "Escape the Tower of Hell"
     }
 }
