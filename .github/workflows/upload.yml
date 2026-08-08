@@ -21,7 +21,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: feature/video-quality
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python 3.10
@@ -57,5 +56,5 @@ jobs:
           git add -A
           git commit -m "chore: update game state and story memory [skip ci]" || echo "No changes to commit"
           git pull --rebase origin ${GITHUB_REF_NAME} || echo "No rebase needed"
-          git push origin ${GITHUB_REF_NAME}
+          git push origin HEAD:${GITHUB_REF_NAME}
 
