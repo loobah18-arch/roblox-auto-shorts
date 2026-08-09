@@ -5,6 +5,7 @@ import random
 import glob
 import asyncio
 import requests
+import urllib.request
 import edge_tts
 import time
 import subprocess
@@ -142,15 +143,20 @@ def save_active_image_provider(provider_name):
 # --- HELPER FUNCTIONS ---
 def extract_json(text):
     """Safely extracts and parses a JSON block from potentially conversational LLM output."""
+    clean = text.strip()
+    clean = re.sub(r"<think>.*?</think>", "", clean, flags=re.DOTALL).strip()
+    if "```json" in clean:
+        clean = clean.split("```json")[1].split("```")[0].strip()
+    elif "```" in clean:
+        clean = clean.split("```")[1].split("```")[0].strip()
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        # Search for outer curly braces
-        match = re.search(r'\{.*\}', text, re.DOTALL)
+        return json.loads(clean)
+    except Exception:
+        match = re.search(r'\{[\s\S]*\}', clean)
         if match:
             try:
                 return json.loads(match.group(0))
-            except json.JSONDecodeError:
+            except Exception:
                 pass
         return None
 
@@ -176,12 +182,11 @@ def create_fallback_image(path, index):
 
 # --- PIPELINE FUNCTIONS ---
 def generate_script_and_images(game, memory, bible):
-    """Integrates with Groq and Pollinations AI with dynamic multi-image correlation and Unreal Engine 5 styling.
-    Uses strict role separation (System and User prompts) to prevent prompt echoing and meta-instructions in voiceovers.
-    Dynamically loads the last successfully used model first as a sticky model, falling back only when quota is hit.
+    """Integrates with NVIDIA Nemotron 3 Ultra, Groq, and Pollinations AI.
+    Uses strict role separation to prevent prompt echoing and meta-instructions in voiceovers.
     """
-    print(f"Generating script for {game} using Groq...")
-    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    raw_n_key = os.environ.get("NVIDIA_API_KEY", "")
+    nvidia_api_key = raw_n_key.strip().replace(" ", "").strip("\"'") if raw_n_key else None
     
     # System role enforces narrative formatting and output structure
     system_prompt = """You are a professional cinematic story narrator and Roblox lore master. Your job is to output a single JSON object containing a high-energy spoken story narrative (the voiceover), a story progress cliffhanger memory, and image prompts.
@@ -251,33 +256,65 @@ Episode Writing Guidelines:
 
     response_data = None
     successful_model = None
-    for model_id in valid_models:
-        print(f"Attempting generation with model: {model_id}...")
+
+    # 1. Attempt NVIDIA Nemotron 3 Ultra first
+    if nvidia_api_key:
+        print("🧠 Querying NVIDIA Nemotron 3 Ultra (550B MoE) for Roblox story script...")
         try:
-            chat_completion = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt},
+            n_payload = json.dumps({
+                "model": "nvidia/nemotron-3-ultra-550b-a55b",
+                "messages": [
+                    {"role": "system", "content": system_prompt + "\nYou MUST return ONLY valid JSON."},
                     {"role": "user", "content": user_prompt}
                 ],
-                model=model_id,
-                response_format={"type": "json_object"}
+                "temperature": 0.3,
+                "max_tokens": 2048
+            }).encode("utf-8")
+            n_req = urllib.request.Request(
+                "https://integrate.api.nvidia.com/v1/chat/completions",
+                data=n_payload,
+                headers={"Authorization": f"Bearer {nvidia_api_key}", "Content-Type": "application/json"}
             )
-            raw_text = chat_completion.choices[0].message.content
-            response_data = extract_json(raw_text)
-            if response_data and "voiceover" in response_data:
-                # Sanity check: Ensure it didn't echo prompt instructions
-                voiceover_clean = response_data["voiceover"].strip()
-                if "Create an intense" in voiceover_clean or " strictly between" in voiceover_clean:
-                    print(f"Model {model_id} returned prompt-echoed text. Rejecting schema.")
-                    continue
-                print(f"Success! Model {model_id} worked perfectly.")
-                successful_model = model_id
-                break
-            else:
-                print(f"Model {model_id} returned invalid schema. Retrying next...")
-        except Exception as e:
-            print(f"Model {model_id} failed. Searching next... Error: {e}")
-            continue
+            with urllib.request.urlopen(n_req, timeout=35) as n_resp:
+                n_data = json.loads(n_resp.read().decode("utf-8"))
+                raw_text = n_data["choices"][0]["message"]["content"]
+                response_data = extract_json(raw_text)
+                if response_data and "voiceover" in response_data:
+                    print("✅ Success! NVIDIA Nemotron 3 Ultra generated story script.")
+                    successful_model = "nvidia/nemotron-3-ultra-550b-a55b"
+        except Exception as ne:
+            print(f"⚠️ Nemotron story generation notice: {ne}. Falling back to Groq...")
+
+    if not response_data:
+        print(f"Generating script for {game} using Groq...")
+        client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        for model_id in valid_models:
+            print(f"Attempting generation with model: {model_id}...")
+            try:
+                chat_completion = client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    model=model_id,
+                    response_format={"type": "json_object"}
+                )
+                raw_text = chat_completion.choices[0].message.content
+                response_data = extract_json(raw_text)
+                if response_data and "voiceover" in response_data:
+                    # Sanity check: Ensure it didn't echo prompt instructions
+                    voiceover_clean = response_data["voiceover"].strip()
+                    if "Create an intense" in voiceover_clean or " strictly between" in voiceover_clean:
+                        print(f"Model {model_id} returned prompt-echoed text. Rejecting schema.")
+                        continue
+                    print(f"Success! Model {model_id} worked perfectly.")
+                    successful_model = model_id
+                    break
+                else:
+                    print(f"Model {model_id} returned invalid schema. Retrying next...")
+            except Exception as e:
+                print(f"Model {model_id} failed. Searching next... Error: {e}")
+                continue
 
     # Fallback to local hardcoded dramatic script if Groq API goes completely dark
     if not response_data:
@@ -644,13 +681,13 @@ def render_video(audio_path, image_paths, text_chunks):
         elif direction == "zoom_out_center":
             zp = f"zoompan=z='if(lte(zoom,1.0),1.5,max(zoom-0.0015,1.0))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
         elif direction == "pan_right":
-            zp = f"zoompan=z=1.3:x='min(iw/zoom/2+iw*0.2*time/{d_str},iw-iw/zoom)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z=1.3:x='min(iw/zoom/2+iw*0.2*on/{frames},iw-iw/zoom)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
         elif direction == "pan_left":
-            zp = f"zoompan=z=1.3:x='max(iw/zoom/2-iw*0.2*time/{d_str},0)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z=1.3:x='max(iw/zoom/2-iw*0.2*on/{frames},0)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
         elif direction == "pan_up":
-            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='max(ih/zoom/2-ih*0.2*time/{d_str},0)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='max(ih/zoom/2-ih*0.2*on/{frames},0)':d={frames}:s=1080x1920:fps=30"
         elif direction == "pan_down":
-            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='min(ih/zoom/2+ih*0.2*time/{d_str},ih-ih/zoom)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='min(ih/zoom/2+ih*0.2*on/{frames},ih-ih/zoom)':d={frames}:s=1080x1920:fps=30"
         elif direction == "zoom_in_topleft":
             zp = f"zoompan=z='min(zoom+0.0015,1.5)':x=0:y=0:d={frames}:s=1080x1920:fps=30"
         else:  # zoom_in_bottomright
@@ -714,25 +751,27 @@ def render_video(audio_path, image_paths, text_chunks):
 
     output_path = "final_short.mp4"
     print("Burning subtitles via FFmpeg libass...")
-    sub_result = subprocess.run([
-        "ffmpeg", "-y",
-        "-i", temp_output_path,
-        "-vf", f"subtitles=filename='{ass_path}'",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "18",
-        "-c:a", "copy",
-        output_path
-    ], capture_output=True, text=True)
-    if sub_result.returncode != 0:
-        print(f"[!] Subtitle burn failed:\n{sub_result.stderr[-2000:]}")
-        raise subprocess.CalledProcessError(sub_result.returncode, "ffmpeg", sub_result.stderr)
-
-    # Clean up all temporary files
-    for sf in scene_files:
-        if os.path.exists(sf):
-            os.remove(sf)
-    for tmp in [concat_list, temp_video_noaudio, temp_output_path, ass_path]:
-        if os.path.exists(tmp):
-            os.remove(tmp)
+    esc_ass_path = ass_path.replace("\\", "/").replace(":", "\\:")
+    try:
+        sub_result = subprocess.run([
+            "ffmpeg", "-y",
+            "-i", temp_output_path,
+            "-vf", f"subtitles='{esc_ass_path}'",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+            "-c:a", "copy",
+            output_path
+        ], capture_output=True, text=True)
+        if sub_result.returncode != 0:
+            print(f"[!] Subtitle burn failed:\n{sub_result.stderr[-2000:]}")
+            raise subprocess.CalledProcessError(sub_result.returncode, "ffmpeg", sub_result.stderr)
+    finally:
+        # Clean up all temporary files safely
+        for sf in scene_files:
+            if os.path.exists(sf):
+                os.remove(sf)
+        for tmp in [concat_list, temp_video_noaudio, temp_output_path, ass_path]:
+            if os.path.exists(tmp):
+                os.remove(tmp)
 
     print("Video rendered with Ken Burns effects and stylized subtitles successfully.")
     return output_path
