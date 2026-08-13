@@ -13,7 +13,8 @@
         },
         "inventory": {
             "Sea God's Essence": "infused within the Protagonist's veins",
-            "Blox Fruits": "hint of a rare, ancient fruit hidden within the depths of the ocean, yet to be acquired"
+            "Blox Fruits": "hint of a rare, ancient fruit hidden within the depths of the ocean, yet to be acquired",
+            "Ancient Chamber Key": "unlocked, granting access to the secrets of the sea serpents and possibly the key to unlocking the Protagonist's true potential"
         },
         "lore_details": {
             "Sea God's Throne": "carved from the bones of sea serpents, symbolizing the Protagonist's destiny, now with a deeper understanding of its true power and the responsibility that comes with it",
@@ -25,7 +26,8 @@
         "stats": {
             "physical_strength": "significantly enhanced due to Sea God's essence, Akanesu's blessings, and the intense battle against the giant sea monster",
             "aura_control": "greatly improved, as evidenced by the effective use of Thunder Fist and the ability to withstand the sea giant's colossal force",
-            "resolve": "unwavering, fueled by the memories of the battles fought and won, and the determination to protect the crew and overcome the challenges ahead"
+            "resolve": "unwavering, fueled by the memories of the battles fought and won, and the determination to protect the crew and overcome the challenges ahead",
+            "insight": "deepened, with a greater understanding of the Prophecy, the Sea God's Throne, and the ancient chamber, preparing the Protagonist for the trials to come"
         }
     }
 }
