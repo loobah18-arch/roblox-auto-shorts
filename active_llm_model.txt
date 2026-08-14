@@ -1,1 +1,1 @@
-llama-3.3-70b-versatile
+nvidia/nemotron-3-ultra-550b-a55b:free
