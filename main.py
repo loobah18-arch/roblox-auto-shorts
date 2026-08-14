@@ -9,6 +9,8 @@ import urllib.request
 import edge_tts
 import time
 import subprocess
+import shutil
+from pathlib import Path
 try:
     from groq import Groq
 except ImportError:
@@ -37,62 +39,47 @@ def load_game_state():
     if os.path.exists("game_state.json"):
         try:
             with open("game_state.json", "r") as f:
-                state = json.load(f)
-                # Check for game-specific parts tracking
-                if "game_parts" not in state:
-                    state["game_parts"] = {get_safe_filename(g): 1 for g in GAMES}
-                if "current_index" not in state or "total_videos_run" not in state:
-                    return {"current_index": 0, "total_videos_run": 1, "game_parts": {get_safe_filename(g): 1 for g in GAMES}}
-                return state
+                return json.load(f)
         except Exception:
-            return {"current_index": 0, "total_videos_run": 1, "game_parts": {get_safe_filename(g): 1 for g in GAMES}}
-    return {"current_index": 0, "total_videos_run": 1, "game_parts": {get_safe_filename(g): 1 for g in GAMES}}
+            pass
+    return {"current_index": 0, "total_videos_run": 1, "game_parts": {}}
 
-def save_game_state(index, total_runs, game_parts):
+def save_game_state(current_index, total_videos_run, game_parts=None):
+    if game_parts is None:
+        state = load_game_state()
+        game_parts = state.get("game_parts", {})
     with open("game_state.json", "w") as f:
         json.dump({
-            "current_index": index,
-            "total_videos_run": total_runs,
+            "current_index": current_index,
+            "total_videos_run": total_videos_run,
             "game_parts": game_parts
         }, f, indent=4)
 
 def get_story_memory(safe_game_name):
-    filename = f"story_memory_{safe_game_name}.txt"
+    filename = f"memory_{safe_game_name}.txt"
     if os.path.exists(filename):
         with open(filename, "r") as f:
             content = f.read().strip()
             if content:
                 return content
-    # Safe fallback to legacy story file
-    if os.path.exists("story_memory.txt"):
-        with open("story_memory.txt", "r") as f:
-            content = f.read().strip()
-            if content:
-                return content
-    return "No previous memory. Start a brand new epic adventure."
+    return "A legendary adventure in the Roblox universe begins today."
 
 def save_story_memory(safe_game_name, new_memory):
-    filename = f"story_memory_{safe_game_name}.txt"
+    filename = f"memory_{safe_game_name}.txt"
     with open(filename, "w") as f:
-        f.write(new_memory)
+        f.write(new_memory.strip())
 
 def get_character_bible(safe_game_name):
-    filename = f"character_bible_{safe_game_name}.json"
+    filename = f"characters_{safe_game_name}.txt"
     if os.path.exists(filename):
         with open(filename, "r") as f:
-            content = f.read().strip()
-            if content:
-                return content
-    # Safe fallback to global character settings
-    if os.path.exists("character_bible.json"):
-        with open("character_bible.json", "r") as f:
             content = f.read().strip()
             if content:
                 return content
     return "No character bible found for this game."
 
 def load_active_model():
-    """Loads the last successfully used LLM model. Defaults to llama-3.3-70b-versatile."""
+    """Loads the last successfully used LLM model. Defaults to opencode/deepseek-v4-flash-free."""
     if os.path.exists("active_llm_model.txt"):
         try:
             with open("active_llm_model.txt", "r") as f:
@@ -101,7 +88,7 @@ def load_active_model():
                     return model_name
         except Exception:
             pass
-    return "llama-3.3-70b-versatile"
+    return "opencode/deepseek-v4-flash-free"
 
 def save_active_model(model_name):
     """Saves the successfully used LLM model name to persistent storage."""
@@ -183,13 +170,39 @@ def create_fallback_image(path, index):
         print(f"Pillow placeholder generation failed: {e}")
         return False
 
-# --- LLM API CALLER ---
+# --- OPENCODE & LLM API CALLERS ---
+def query_opencode_cli(model, system_prompt, user_prompt):
+    """Priority 1: Queries local OpenCode CLI for free tier AI models (DeepSeek-V4 Flash / Nemotron)."""
+    opencode_bin = shutil.which("opencode") or str(Path.home() / ".opencode/bin/opencode")
+    if opencode_bin and (Path(opencode_bin).exists() or shutil.which("opencode")):
+        try:
+            full_prompt = (
+                f"{system_prompt}\n\n"
+                f"{user_prompt}\n\n"
+                "Return ONLY a single valid raw JSON object. No conversational preamble, no markdown wrappers."
+            )
+            res = subprocess.run(
+                [opencode_bin, "run", "-m", model, full_prompt],
+                capture_output=True,
+                text=True,
+                timeout=45
+            )
+            if res.returncode == 0 and res.stdout:
+                parsed = extract_json(res.stdout)
+                if parsed and "voiceover" in parsed:
+                    vo = parsed["voiceover"].strip()
+                    if not ("Create an intense" in vo or " strictly between" in vo):
+                        return parsed
+        except Exception as e:
+            print(f"[OpenCode CLI {model}] Note: {e}")
+    return None
+
 def query_llm_chat(provider, model, system_prompt, user_prompt, api_key):
-    """Universal HTTP caller for OpenAI-compatible chat completion APIs (OpenRouter, DeepSeek, NVIDIA, Groq)."""
+    """Universal HTTP caller for OpenAI-compatible chat completion APIs (OpenCode, DeepSeek, NVIDIA, Groq)."""
     if not api_key:
         return None
     url_map = {
-        "openrouter": "https://openrouter.ai/api/v1/chat/completions",
+        "opencode": os.environ.get("OPENCODE_BASE_URL", "https://api.opencode.ai/v1/chat/completions"),
         "deepseek": "https://api.deepseek.com/chat/completions",
         "nvidia": "https://integrate.api.nvidia.com/v1/chat/completions",
         "groq": "https://api.groq.com/openai/v1/chat/completions"
@@ -199,11 +212,10 @@ def query_llm_chat(provider, model, system_prompt, user_prompt, api_key):
         return None
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/loobah18-arch/roblox-auto-shorts",
+        "X-Title": "Roblox Auto Shorts"
     }
-    if provider == "openrouter":
-        headers["HTTP-Referer"] = "https://github.com/loobah18-arch/roblox-auto-shorts"
-        headers["X-Title"] = "Roblox Auto Shorts"
     payload = {
         "model": model,
         "messages": [
@@ -213,7 +225,7 @@ def query_llm_chat(provider, model, system_prompt, user_prompt, api_key):
         "temperature": 0.3,
         "max_tokens": 1800
     }
-    if provider in ["openrouter", "groq", "deepseek"]:
+    if provider in ["groq", "deepseek"]:
         payload["response_format"] = {"type": "json_object"}
     try:
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
@@ -233,11 +245,11 @@ def query_llm_chat(provider, model, system_prompt, user_prompt, api_key):
 
 # --- PIPELINE FUNCTIONS ---
 def generate_script_and_images(game, memory, bible):
-    """Integrates with OpenRouter (Free Flagships), DeepSeek, NVIDIA Nemotron 3 Ultra, Groq, and Pollinations AI.
-    Prioritizes top free tier models, cascading to next best free models, then flagship proprietary tier, then Groq fast tier, and self-healing fallback.
+    """Integrates with OpenCode (DeepSeek v4 Flash), direct DeepSeek API, NVIDIA Nemotron 3 Ultra, Groq, and Pollinations AI.
+    Prioritizes top free tier models (OpenCode/DeepSeek), cascading to next best free models, then flagship proprietary tier, then Groq fast tier, and self-healing fallback.
     """
-    raw_o_key = os.environ.get("OPENROUTER_API_KEY", "")
-    openrouter_api_key = raw_o_key.strip().replace(" ", "").strip("\"'") if raw_o_key else None
+    raw_o_key = os.environ.get("OPENCODE_API_KEY", "")
+    opencode_api_key = raw_o_key.strip().replace(" ", "").strip("\"'") if raw_o_key else None
     
     raw_d_key = os.environ.get("DEEPSEEK_API_KEY", "")
     deepseek_api_key = raw_d_key.strip().replace(" ", "").strip("\"'") if raw_d_key else None
@@ -275,31 +287,25 @@ Episode Writing Guidelines:
 - Visual pacing: Provide exactly 8 distinct visual scene descriptions in 'image_prompts' that progress chronologically with your voiceover story.
 - Output JSON strictly matching the system instructions."""
 
-    # Top-priority OpenRouter free-tier flagship models
-    openrouter_free_models = [
-        "nvidia/nemotron-3-ultra-550b-a55b:free",
-        "google/gemma-4-31b-it:free",
-        "openai/gpt-oss-20b:free",
-        "nvidia/nemotron-3.5-lightning:free",
-        "google/gemma-4-26b-a4b-it:free",
-        "poolside/laguna-s-2.1:free",
-        "deepseek/deepseek-chat",
-        "openrouter/free"
+    # Priority Tier 1: OpenCode free models & DeepSeek models
+    opencode_free_models = [
+        "opencode/deepseek-v4-flash-free",
+        "opencode/nemotron-3-ultra-free",
+        "opencode/laguna-s-2.1-free"
     ]
 
-    # Direct DeepSeek API models
     deepseek_models = [
         "deepseek-chat",
         "deepseek-reasoner"
     ]
 
-    # NVIDIA NIM Flagship models
+    # Priority Tier 2: NVIDIA NIM Flagship models
     nvidia_models = [
         "nvidia/nemotron-3-ultra-550b-a55b",
         "nvidia/llama-3.1-nemotron-70b-instruct"
     ]
 
-    # Groq models
+    # Priority Tier 3: Groq models
     groq_models = [
         "llama-3.3-70b-versatile",
         "deepseek-r1-distill-llama-70b",
@@ -313,19 +319,28 @@ Episode Writing Guidelines:
     response_data = None
     successful_model = None
 
-    # --- TIER 1: Best Free Tier AI Models (OpenRouter / DeepSeek) ---
-    if openrouter_api_key:
-        print("🧠 [Tier 1] Querying OpenRouter Free Tier flagship models for Roblox story script...")
-        candidates = [sticky_model] if sticky_model in openrouter_free_models else []
-        for m in openrouter_free_models:
-            if m not in candidates:
-                candidates.append(m)
-                
-        for model_id in candidates:
-            print(f"  -> Attempting OpenRouter free model: {model_id}...")
-            response_data = query_llm_chat("openrouter", model_id, system_prompt, user_prompt, openrouter_api_key)
+    # --- TIER 1: Best Free Tier AI Models (OpenCode CLI & DeepSeek API) ---
+    print("🧠 [Tier 1] Querying OpenCode Free Tier models (Priority 1)...")
+    candidates = [sticky_model] if sticky_model in opencode_free_models else []
+    for m in opencode_free_models:
+        if m not in candidates:
+            candidates.append(m)
+            
+    for model_id in candidates:
+        print(f"  -> Attempting OpenCode model via CLI: {model_id}...")
+        response_data = query_opencode_cli(model_id, system_prompt, user_prompt)
+        if response_data:
+            print(f"✅ Success! OpenCode model {model_id} generated story script.")
+            successful_model = model_id
+            break
+
+    if not response_data and opencode_api_key:
+        print("🧠 [Tier 1] Querying OpenCode HTTP endpoint...")
+        for model_id in opencode_free_models:
+            print(f"  -> Attempting OpenCode HTTP: {model_id}...")
+            response_data = query_llm_chat("opencode", model_id, system_prompt, user_prompt, opencode_api_key)
             if response_data:
-                print(f"✅ Success! OpenRouter model {model_id} generated story script.")
+                print(f"✅ Success! OpenCode HTTP {model_id} generated story script.")
                 successful_model = model_id
                 break
 
