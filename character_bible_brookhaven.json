@@ -5,8 +5,8 @@
         "home": "Brookhaven, now in ruins"
     },
     "currentObjective": {
-        "quest": "Uncover the secrets of Brookhaven's downfall within the hidden research facility",
-        "location": "Deeper within the hidden research facility, nearing the heart of darkness"
+        "quest": "Uncover the secrets of Brookhaven's downfall within the heart of darkness",
+        "location": "Deeper within the heart of darkness, beyond the sealed door"
     },
     "abilities": {
         "skills": [
@@ -21,8 +21,8 @@
     },
     "stats": {
         "level": 1,
-        "health": 80,
-        "experience": 40
+        "health": 70,
+        "experience": 60
     },
     "relationships": {
         "allies": [
@@ -39,7 +39,8 @@
             "Brave",
             "Determined",
             "Curious",
-            "Resourceful"
+            "Resourceful",
+            "Resilient"
         ]
     },
     "lore": {
@@ -52,7 +53,8 @@
             "Abandoned mine": "Hiding the mysterious research facility",
             "Hidden research facility": "Destination for uncovering the truth, currently being explored",
             "Dimly lit corridor": "Initial area of the research facility, filled with an eerie atmosphere",
-            "Heart of darkness": "Deepest, most foreboding area of the research facility, shrouded in an impenetrable veil of darkness"
+            "Heart of darkness": "Deepest, most foreboding area of the research facility, shrouded in an impenetrable veil of darkness",
+            "Sealed door": "Threshold to the heart of darkness, protected by ancient runes and the unearthly whispering entity"
         },
         "items": {
             "ancientTomes": "Contain cryptic map, crucial for the quest"
