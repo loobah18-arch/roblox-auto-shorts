@@ -183,13 +183,70 @@ def create_fallback_image(path, index):
         print(f"Pillow placeholder generation failed: {e}")
         return False
 
+# --- LLM API CALLER ---
+def query_llm_chat(provider, model, system_prompt, user_prompt, api_key):
+    """Universal HTTP caller for OpenAI-compatible chat completion APIs (OpenRouter, DeepSeek, NVIDIA, Groq)."""
+    if not api_key:
+        return None
+    url_map = {
+        "openrouter": "https://openrouter.ai/api/v1/chat/completions",
+        "deepseek": "https://api.deepseek.com/chat/completions",
+        "nvidia": "https://integrate.api.nvidia.com/v1/chat/completions",
+        "groq": "https://api.groq.com/openai/v1/chat/completions"
+    }
+    url = url_map.get(provider)
+    if not url:
+        return None
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    if provider == "openrouter":
+        headers["HTTP-Referer"] = "https://github.com/loobah18-arch/roblox-auto-shorts"
+        headers["X-Title"] = "Roblox Auto Shorts"
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt + "\nYou MUST return ONLY a valid JSON object matching the required schema."},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.3,
+        "max_tokens": 1800
+    }
+    if provider in ["openrouter", "groq", "deepseek"]:
+        payload["response_format"] = {"type": "json_object"}
+    try:
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if "choices" in data and len(data["choices"]) > 0:
+                raw_text = data["choices"][0]["message"].get("content", "")
+                if raw_text:
+                    parsed = extract_json(raw_text)
+                    if parsed and "voiceover" in parsed:
+                        vo = parsed["voiceover"].strip()
+                        if not ("Create an intense" in vo or " strictly between" in vo):
+                            return parsed
+    except Exception as e:
+        print(f"[{provider}:{model}] Generation note: {e}")
+    return None
+
 # --- PIPELINE FUNCTIONS ---
 def generate_script_and_images(game, memory, bible):
-    """Integrates with NVIDIA Nemotron 3 Ultra, Groq, and Pollinations AI.
-    Uses strict role separation to prevent prompt echoing and meta-instructions in voiceovers.
+    """Integrates with OpenRouter (Free Flagships), DeepSeek, NVIDIA Nemotron 3 Ultra, Groq, and Pollinations AI.
+    Prioritizes top free tier models, cascading to next best free models, then flagship proprietary tier, then Groq fast tier, and self-healing fallback.
     """
+    raw_o_key = os.environ.get("OPENROUTER_API_KEY", "")
+    openrouter_api_key = raw_o_key.strip().replace(" ", "").strip("\"'") if raw_o_key else None
+    
+    raw_d_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    deepseek_api_key = raw_d_key.strip().replace(" ", "").strip("\"'") if raw_d_key else None
+
     raw_n_key = os.environ.get("NVIDIA_API_KEY", "")
     nvidia_api_key = raw_n_key.strip().replace(" ", "").strip("\"'") if raw_n_key else None
+    
+    raw_g_key = os.environ.get("GROQ_API_KEY", "")
+    groq_api_key = raw_g_key.strip().replace(" ", "").strip("\"'") if raw_g_key else None
     
     # System role enforces narrative formatting and output structure
     system_prompt = """You are a professional cinematic story narrator and Roblox lore master. Your job is to output a single JSON object containing a high-energy spoken story narrative (the voiceover), a story progress cliffhanger memory, and image prompts.
@@ -218,119 +275,101 @@ Episode Writing Guidelines:
 - Visual pacing: Provide exactly 8 distinct visual scene descriptions in 'image_prompts' that progress chronologically with your voiceover story.
 - Output JSON strictly matching the system instructions."""
 
-    # Priority ordered sequence of stable free-tier and fallback models
-    fallback_models = [
-        "llama-3.3-70b-versatile",
-        "llama-3.3-70b-specdec",
-        "openai/gpt-oss-20b",
+    # Top-priority OpenRouter free-tier flagship models
+    openrouter_free_models = [
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "google/gemma-4-31b-it:free",
         "openai/gpt-oss-20b:free",
-        "gpt-oss-20b",
-        "mixtral-8x7b-32768",
-        "gemma2-9b-it",
-        "llama3-70b-8192",
-        "llama3-8b-8192"
+        "nvidia/nemotron-3.5-lightning:free",
+        "google/gemma-4-26b-a4b-it:free",
+        "poolside/laguna-s-2.1:free",
+        "deepseek/deepseek-chat",
+        "openrouter/free"
     ]
-    
+
+    # Direct DeepSeek API models
+    deepseek_models = [
+        "deepseek-chat",
+        "deepseek-reasoner"
+    ]
+
+    # NVIDIA NIM Flagship models
+    nvidia_models = [
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "nvidia/llama-3.1-nemotron-70b-instruct"
+    ]
+
+    # Groq models
+    groq_models = [
+        "llama-3.3-70b-versatile",
+        "deepseek-r1-distill-llama-70b",
+        "openai/gpt-oss-20b",
+        "gemma2-9b-it"
+    ]
+
     sticky_model = load_active_model()
     print(f"Sticky model loaded: {sticky_model}")
-    
-    valid_models = []
-    if sticky_model:
-        valid_models.append(sticky_model)
-
-    print("Fetching active models from Groq...")
-    try:
-        active_models_data = client.models.list().data
-        fetched_models = [
-            m.id for m in active_models_data
-            if any(term in m.id.lower() for term in ["llama", "mixtral", "gemma", "qwen"])
-            and not any(neg in m.id.lower() for neg in ["guard", "embed", "moderation", "whisper", "vision"])
-        ]
-        # Keep fallback list at the end of valid_models to preserve order of priority
-        for model in fetched_models:
-            if model not in valid_models:
-                valid_models.append(model)
-    except Exception as e:
-        print(f"Failed to fetch model list, falling back to default list. Error: {e}")
-        
-    for model in fallback_models:
-        if model not in valid_models:
-            valid_models.append(model)
-
-    print(f"Roster of models to attempt (ordered by sticky priority): {valid_models}")
 
     response_data = None
     successful_model = None
 
-    # 1. Attempt NVIDIA Nemotron 3 Ultra first
-    if nvidia_api_key:
-        print("🧠 Querying NVIDIA Nemotron 3 Ultra (550B MoE) for Roblox story script...")
-        try:
-            n_payload = json.dumps({
-                "model": "nvidia/nemotron-3-ultra-550b-a55b",
-                "messages": [
-                    {"role": "system", "content": system_prompt + "\nYou MUST return ONLY valid JSON."},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "temperature": 0.3,
-                "max_tokens": 2048
-            }).encode("utf-8")
-            n_req = urllib.request.Request(
-                "https://integrate.api.nvidia.com/v1/chat/completions",
-                data=n_payload,
-                headers={"Authorization": f"Bearer {nvidia_api_key}", "Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(n_req, timeout=35) as n_resp:
-                n_data = json.loads(n_resp.read().decode("utf-8"))
-                raw_text = n_data["choices"][0]["message"]["content"]
-                response_data = extract_json(raw_text)
-                if response_data and "voiceover" in response_data:
-                    print("✅ Success! NVIDIA Nemotron 3 Ultra generated story script.")
-                    successful_model = "nvidia/nemotron-3-ultra-550b-a55b"
-        except Exception as ne:
-            print(f"⚠️ Nemotron story generation notice: {ne}. Falling back to Groq...")
+    # --- TIER 1: Best Free Tier AI Models (OpenRouter / DeepSeek) ---
+    if openrouter_api_key:
+        print("🧠 [Tier 1] Querying OpenRouter Free Tier flagship models for Roblox story script...")
+        candidates = [sticky_model] if sticky_model in openrouter_free_models else []
+        for m in openrouter_free_models:
+            if m not in candidates:
+                candidates.append(m)
+                
+        for model_id in candidates:
+            print(f"  -> Attempting OpenRouter free model: {model_id}...")
+            response_data = query_llm_chat("openrouter", model_id, system_prompt, user_prompt, openrouter_api_key)
+            if response_data:
+                print(f"✅ Success! OpenRouter model {model_id} generated story script.")
+                successful_model = model_id
+                break
 
-    if not response_data:
-        print(f"Generating script for {game} using Groq...")
-        client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-        for model_id in valid_models:
-            print(f"Attempting generation with model: {model_id}...")
-            try:
-                chat_completion = client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    model=model_id,
-                    response_format={"type": "json_object"}
-                )
-                raw_text = chat_completion.choices[0].message.content
-                response_data = extract_json(raw_text)
-                if response_data and "voiceover" in response_data:
-                    # Sanity check: Ensure it didn't echo prompt instructions
-                    voiceover_clean = response_data["voiceover"].strip()
-                    if "Create an intense" in voiceover_clean or " strictly between" in voiceover_clean:
-                        print(f"Model {model_id} returned prompt-echoed text. Rejecting schema.")
-                        continue
-                    print(f"Success! Model {model_id} worked perfectly.")
-                    successful_model = model_id
-                    break
-                else:
-                    print(f"Model {model_id} returned invalid schema. Retrying next...")
-            except Exception as e:
-                print(f"Model {model_id} failed. Searching next... Error: {e}")
-                continue
+    if not response_data and deepseek_api_key:
+        print("🧠 [Tier 1] Querying direct DeepSeek API for Roblox story script...")
+        for model_id in deepseek_models:
+            print(f"  -> Attempting DeepSeek model: {model_id}...")
+            response_data = query_llm_chat("deepseek", model_id, system_prompt, user_prompt, deepseek_api_key)
+            if response_data:
+                print(f"✅ Success! DeepSeek model {model_id} generated story script.")
+                successful_model = model_id
+                break
 
-    # Fallback to local hardcoded dramatic script if Groq API goes completely dark
+    # --- TIER 2: Current Best Flagship Model (NVIDIA Nemotron 3 Ultra) ---
+    if not response_data and nvidia_api_key:
+        print("🧠 [Tier 2] Free tier unavailable. Escalating to current best model: NVIDIA Nemotron 3 Ultra (550B MoE)...")
+        for model_id in nvidia_models:
+            print(f"  -> Attempting NVIDIA NIM model: {model_id}...")
+            response_data = query_llm_chat("nvidia", model_id, system_prompt, user_prompt, nvidia_api_key)
+            if response_data:
+                print(f"✅ Success! NVIDIA NIM model {model_id} generated story script.")
+                successful_model = model_id
+                break
+
+    # --- TIER 3: High-Speed Groq Free Tier ---
+    if not response_data and groq_api_key:
+        print("🧠 [Tier 3] Escalating to Groq High-Speed API...")
+        for model_id in groq_models:
+            print(f"  -> Attempting Groq model: {model_id}...")
+            response_data = query_llm_chat("groq", model_id, system_prompt, user_prompt, groq_api_key)
+            if response_data:
+                print(f"✅ Success! Groq model {model_id} generated story script.")
+                successful_model = model_id
+                break
+
+    # --- TIER 4: Self-Healing Procedural Narrative Fallback ---
     if not response_data:
-        print("CRITICAL: Groq API completely unresponsive. Activating Self-Healing Narrative Fallback...")
+        print("⚠️ [Tier 4] All AI endpoints unreachable. Activating Self-Healing Narrative Fallback...")
         response_data = {
             "voiceover": f"In the shadows of the {game} grid, an ancient power awakens. The players thought this was just another harmless server, but they were wrong. Legends speak of a hidden bunker beneath the city, guarded by shifting laser beams and a mystery no code can crack. As the timer counts down, a brave survivor steps forward, facing their ultimate destiny. Will they claim the awakened fruit and conquer the obby, or will the darkness consume everything they worked for? The choice is yours... but time is running out.",
             "new_memory": "The ancient bunker door creaks open, revealing a blinding neon light as a mysterious shadow steps through.",
             "image_prompts": [f"Epic Roblox {game} landscape under heavy dark sky"] * 8
         }
     else:
-        # Save successfully working sticky model to persistent memory
         if successful_model:
             save_active_model(successful_model)
 
