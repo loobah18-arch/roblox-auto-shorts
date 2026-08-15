@@ -1,26 +1,68 @@
 {
-    "NewPlayer": {
-        "clothes": "open blue vest shirt, green knee-length pants, sandal shoes",
-        "facial_features": "happy smile face decal, star face decal on forehead",
-        "accessories": "backpack accessory (blue), cool shades glasses accessory",
-        "aura_color": "bright blue pulse aura with sparkles particles",
-        "body_color": "light peach blocky skin, medium height Roblox avatar",
-        "signature_weapon": "rubber chicken, super soaker water gun",
-        "personality": "adventurous, optimistic, friendly, determined, resilient, fiercely competitive",
-        "goals": "obtain mega legendary pets, claim the title of the ultimate Adopt Me! champion, outdo the mysterious rival, prove crowd support and admiration is well-deserved",
-        "motivations": "passion for rare pets, ambition to be the best, surpass the mysterious rival, prove worth to the Adopt Me! community, validation of self-worth through victories",
-        "relationship_status": "intensified rivalry with mysterious player turned bitter, crowd support and admiration at an all-time high",
-        "inventory": {
-            "weapons": [
-                "rubber chicken",
-                "super soaker water gun"
+    "gameName": "Adopt Me!",
+    "setting": "Grid-based city with a hidden bunker",
+    "characters": [
+        {
+            "name": "Brave Survivor",
+            "traits": [
+                "courageous",
+                "determined"
             ],
-            "pets": []
-        },
-        "stats": {
-            "wit": 11,
-            "strategy": 10,
-            "determination": 13
+            "stats": {
+                "health": 100,
+                "strength": 10,
+                "agility": 15,
+                "intelligence": 12
+            },
+            "inventory": [
+                {
+                    "name": "Awakened Fruit",
+                    "type": "power-up",
+                    "description": "A mysterious fruit with unknown powers"
+                }
+            ],
+            "goals": [
+                "Claim the awakened fruit",
+                "Conquer the obby"
+            ],
+            "obstacles": [
+                "Shifting laser beams",
+                "Mystery code"
+            ],
+            "allies": [],
+            "enemies": [
+                "Darkness"
+            ]
         }
+    ],
+    "locations": [
+        {
+            "name": "Hidden Bunker",
+            "description": "A secret underground bunker with a mystery to uncover",
+            "obstacles": [
+                "Shifting laser beams",
+                "Mystery code"
+            ],
+            "rewards": [
+                "Awakened Fruit"
+            ]
+        },
+        {
+            "name": "Grid-based City",
+            "description": "The main city where players interact and play",
+            "locationsOfInterest": [
+                "Hidden Bunker"
+            ]
+        },
+        {
+            "name": "Obby",
+            "description": "A challenging obstacle course to conquer",
+            "difficultyLevel": "High"
+        }
+    ],
+    "plot": {
+        "mainQuest": "Claim the awakened fruit and conquer the obby",
+        "timeLimit": "Countdown timer",
+        "consequencesOfFailure": "Darkness consumes everything"
     }
 }
