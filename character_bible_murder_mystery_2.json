@@ -1,82 +1,65 @@
 {
-    "characters": {
-        "Murderer": {
-            "traits": {
-                "personality": "sinister",
-                "motivations": {
-                    "power": "increased desire",
-                    "control": "manipulating allies",
-                    "fear": "inspiring terror"
-                },
-                "abilities": {
-                    "stealth": "enhanced evasion",
-                    "deception": "masterful misdirection",
-                    "manipulation": "influencing allies"
-                }
+    "gameSettings": {
+        "gameName": "Murder Mystery 2",
+        "environment": "Murder Mystery 2 grid",
+        "locations": [
+            "hidden bunker",
+            "city"
+        ]
+    },
+    "characters": [
+        {
+            "characterName": "Brave Survivor",
+            "traits": [
+                "brave",
+                "daring"
+            ],
+            "inventory": [],
+            "stats": {
+                "health": 100,
+                "speed": 10,
+                "intelligence": 5
             },
-            "status": "still at large, becoming more elusive and powerful",
-            "inventory": {
-                "chilling message": "updated with taunting hints",
-                "cryptic clue": "revealing potential next target",
-                "bloodstained token": "symbol of terror",
-                "manipulation tools": "used to influence and deceive allies"
-            }
-        },
-        "Sheriff": {
-            "traits": {
-                "personality": "more determined and urgent",
-                "motivations": {
-                    "justice": "driven by anger and sadness",
-                    "vengeance": "increased desire for retribution",
-                    "protection": "desperate to save remaining allies"
-                },
-                "abilities": {
-                    "investigation": "intensified and more meticulous",
-                    "leadership": "struggling to maintain community trust",
-                    "pursuit": "relentless and aggressive"
-                }
-            },
-            "status": "investigating with high urgency and personal stakes, navigating a treacherous landscape",
-            "inventory": {
-                "cryptic message": "linked to potential traitor",
-                "haunting connection evidence": "revealing deeper conspiracy",
-                "updated case files": "prioritizing ally protection",
-                "investigative leads": "new clues and hints about the Murderer's next move"
-            }
+            "allies": [],
+            "enemies": [],
+            "goals": [
+                "claim the awakened fruit",
+                "conquer the obby"
+            ]
         }
-    },
-    "story": {
-        "setting": "Roblox City, gripped by fear and chaos",
-        "plot": "murder mystery with deepening conspiracies",
-        "tensions": {
-            "rising tensions": "community on the brink of collapse",
-            "alliances tested": "trust shattered among allies",
-            "trust broken": "paranoia and suspicion"
+    ],
+    "objects": [
+        {
+            "objectName": "awakened fruit",
+            "description": "ancient power",
+            "location": "hidden bunker",
+            "properties": [
+                "grants unknown power"
+            ]
         },
-        "stake": "justice vs chaos, with innocent lives hanging in the balance"
-    },
-    "events": {
-        "latest": {
-            "victim": "innocent civilian and close ally to the Sheriff",
-            "scene": "gruesome crime scene with haunting connections to previous murders",
-            "investigation": "intensified, with increased scrutiny of potential suspects"
+        {
+            "objectName": "laser beams",
+            "description": "shifting laser beams",
+            "location": "hidden bunker",
+            "properties": [
+                "guarding the bunker"
+            ]
         },
-        "upcoming": {
-            "potential victim": "trusted ally or key community member",
-            "threat level": "critically high, with the murderer becoming more aggressive"
+        {
+            "objectName": "obby",
+            "description": "challenge to conquer",
+            "location": "city",
+            "properties": [
+                "requires bravery and skill to conquer"
+            ]
         }
-    },
-    "themes": {
-        "fear": "all-consuming, with terror gripping the community",
-        "justice": "on the verge of collapse, as the system fails to protect its citizens",
-        "time": "running out, with each passing moment bringing the city closer to chaos",
-        "trust": "irreparably shattered, with alliances crumbling and paranoia spreading"
-    },
-    "relationships": {
-        "Sheriff-Murderer": "extremely adversarial, with a personal vendetta",
-        "Sheriff-Community": "protective, but struggling to maintain trust and order",
-        "Murderer-Community": "manipulative and terrorizing, with a sense of omnipresence",
-        "Sheriff-Trusted Ally": "tenuous and compromised, with loyalty being tested",
-        "Murderer-Allies": "increasing influence and control, with allies being manipulated and deceived"
-    }
+    ],
+    "events": [
+        {
+            "eventName": "awakening of ancient power",
+            "description": "ancient power awakens in the hidden bunker",
+            "location": "hidden bunker",
+            "time": "as the timer counts down"
+        }
+    ]
 }
