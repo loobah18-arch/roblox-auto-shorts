@@ -9,7 +9,12 @@ import urllib.request
 import edge_tts
 import time
 import subprocess
-from groq import Groq
+import shutil
+from pathlib import Path
+try:
+    from groq import Groq
+except ImportError:
+    Groq = None
 # moviepy import removed — pipeline uses pure FFmpeg for rendering
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -34,62 +39,47 @@ def load_game_state():
     if os.path.exists("game_state.json"):
         try:
             with open("game_state.json", "r") as f:
-                state = json.load(f)
-                # Check for game-specific parts tracking
-                if "game_parts" not in state:
-                    state["game_parts"] = {get_safe_filename(g): 1 for g in GAMES}
-                if "current_index" not in state or "total_videos_run" not in state:
-                    return {"current_index": 0, "total_videos_run": 1, "game_parts": {get_safe_filename(g): 1 for g in GAMES}}
-                return state
+                return json.load(f)
         except Exception:
-            return {"current_index": 0, "total_videos_run": 1, "game_parts": {get_safe_filename(g): 1 for g in GAMES}}
-    return {"current_index": 0, "total_videos_run": 1, "game_parts": {get_safe_filename(g): 1 for g in GAMES}}
+            pass
+    return {"current_index": 0, "total_videos_run": 1, "game_parts": {}}
 
-def save_game_state(index, total_runs, game_parts):
+def save_game_state(current_index, total_videos_run, game_parts=None):
+    if game_parts is None:
+        state = load_game_state()
+        game_parts = state.get("game_parts", {})
     with open("game_state.json", "w") as f:
         json.dump({
-            "current_index": index,
-            "total_videos_run": total_runs,
+            "current_index": current_index,
+            "total_videos_run": total_videos_run,
             "game_parts": game_parts
         }, f, indent=4)
 
 def get_story_memory(safe_game_name):
-    filename = f"story_memory_{safe_game_name}.txt"
+    filename = f"memory_{safe_game_name}.txt"
     if os.path.exists(filename):
         with open(filename, "r") as f:
             content = f.read().strip()
             if content:
                 return content
-    # Safe fallback to legacy story file
-    if os.path.exists("story_memory.txt"):
-        with open("story_memory.txt", "r") as f:
-            content = f.read().strip()
-            if content:
-                return content
-    return "No previous memory. Start a brand new epic adventure."
+    return "A legendary adventure in the Roblox universe begins today."
 
 def save_story_memory(safe_game_name, new_memory):
-    filename = f"story_memory_{safe_game_name}.txt"
+    filename = f"memory_{safe_game_name}.txt"
     with open(filename, "w") as f:
-        f.write(new_memory)
+        f.write(new_memory.strip())
 
 def get_character_bible(safe_game_name):
-    filename = f"character_bible_{safe_game_name}.json"
+    filename = f"characters_{safe_game_name}.txt"
     if os.path.exists(filename):
         with open(filename, "r") as f:
-            content = f.read().strip()
-            if content:
-                return content
-    # Safe fallback to global character settings
-    if os.path.exists("character_bible.json"):
-        with open("character_bible.json", "r") as f:
             content = f.read().strip()
             if content:
                 return content
     return "No character bible found for this game."
 
 def load_active_model():
-    """Loads the last successfully used LLM model. Defaults to llama-3.3-70b-versatile."""
+    """Loads the last successfully used LLM model. Defaults to opencode/deepseek-v4-flash-free."""
     if os.path.exists("active_llm_model.txt"):
         try:
             with open("active_llm_model.txt", "r") as f:
@@ -98,7 +88,7 @@ def load_active_model():
                     return model_name
         except Exception:
             pass
-    return "llama-3.3-70b-versatile"
+    return "opencode/deepseek-v4-flash-free"
 
 def save_active_model(model_name):
     """Saves the successfully used LLM model name to persistent storage."""
@@ -180,13 +170,95 @@ def create_fallback_image(path, index):
         print(f"Pillow placeholder generation failed: {e}")
         return False
 
+# --- OPENCODE & LLM API CALLERS ---
+def query_opencode_cli(model, system_prompt, user_prompt):
+    """Priority 1: Queries local OpenCode CLI for free tier AI models (DeepSeek-V4 Flash / Nemotron)."""
+    opencode_bin = shutil.which("opencode") or str(Path.home() / ".opencode/bin/opencode")
+    if opencode_bin and (Path(opencode_bin).exists() or shutil.which("opencode")):
+        try:
+            full_prompt = (
+                f"{system_prompt}\n\n"
+                f"{user_prompt}\n\n"
+                "Return ONLY a single valid raw JSON object. No conversational preamble, no markdown wrappers."
+            )
+            res = subprocess.run(
+                [opencode_bin, "run", "-m", model, full_prompt],
+                capture_output=True,
+                text=True,
+                timeout=45
+            )
+            if res.returncode == 0 and res.stdout:
+                parsed = extract_json(res.stdout)
+                if parsed and "voiceover" in parsed:
+                    vo = parsed["voiceover"].strip()
+                    if not ("Create an intense" in vo or " strictly between" in vo):
+                        return parsed
+        except Exception as e:
+            print(f"[OpenCode CLI {model}] Note: {e}")
+    return None
+
+def query_llm_chat(provider, model, system_prompt, user_prompt, api_key):
+    """Universal HTTP caller for OpenAI-compatible chat completion APIs (OpenCode, DeepSeek, NVIDIA, Groq)."""
+    if not api_key:
+        return None
+    url_map = {
+        "opencode": os.environ.get("OPENCODE_BASE_URL", "https://api.opencode.ai/v1/chat/completions"),
+        "deepseek": "https://api.deepseek.com/chat/completions",
+        "nvidia": "https://integrate.api.nvidia.com/v1/chat/completions",
+        "groq": "https://api.groq.com/openai/v1/chat/completions"
+    }
+    url = url_map.get(provider)
+    if not url:
+        return None
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/loobah18-arch/roblox-auto-shorts",
+        "X-Title": "Roblox Auto Shorts"
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt + "\nYou MUST return ONLY a valid JSON object matching the required schema."},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.3,
+        "max_tokens": 1800
+    }
+    if provider in ["groq", "deepseek"]:
+        payload["response_format"] = {"type": "json_object"}
+    try:
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if "choices" in data and len(data["choices"]) > 0:
+                raw_text = data["choices"][0]["message"].get("content", "")
+                if raw_text:
+                    parsed = extract_json(raw_text)
+                    if parsed and "voiceover" in parsed:
+                        vo = parsed["voiceover"].strip()
+                        if not ("Create an intense" in vo or " strictly between" in vo):
+                            return parsed
+    except Exception as e:
+        print(f"[{provider}:{model}] Generation note: {e}")
+    return None
+
 # --- PIPELINE FUNCTIONS ---
 def generate_script_and_images(game, memory, bible):
-    """Integrates with NVIDIA Nemotron 3 Ultra, Groq, and Pollinations AI.
-    Uses strict role separation to prevent prompt echoing and meta-instructions in voiceovers.
+    """Integrates with OpenCode (DeepSeek v4 Flash), direct DeepSeek API, NVIDIA Nemotron 3 Ultra, Groq, and Pollinations AI.
+    Prioritizes top free tier models (OpenCode/DeepSeek), cascading to next best free models, then flagship proprietary tier, then Groq fast tier, and self-healing fallback.
     """
+    raw_o_key = os.environ.get("OPENCODE_API_KEY", "")
+    opencode_api_key = raw_o_key.strip().replace(" ", "").strip("\"'") if raw_o_key else None
+    
+    raw_d_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    deepseek_api_key = raw_d_key.strip().replace(" ", "").strip("\"'") if raw_d_key else None
+
     raw_n_key = os.environ.get("NVIDIA_API_KEY", "")
     nvidia_api_key = raw_n_key.strip().replace(" ", "").strip("\"'") if raw_n_key else None
+    
+    raw_g_key = os.environ.get("GROQ_API_KEY", "")
+    groq_api_key = raw_g_key.strip().replace(" ", "").strip("\"'") if raw_g_key else None
     
     # System role enforces narrative formatting and output structure
     system_prompt = """You are a professional cinematic story narrator and Roblox lore master. Your job is to output a single JSON object containing a high-energy spoken story narrative (the voiceover), a story progress cliffhanger memory, and image prompts.
@@ -215,117 +287,104 @@ Episode Writing Guidelines:
 - Visual pacing: Provide exactly 8 distinct visual scene descriptions in 'image_prompts' that progress chronologically with your voiceover story.
 - Output JSON strictly matching the system instructions."""
 
-    # Priority ordered sequence of stable free-tier and fallback models
-    fallback_models = [
-        "llama-3.3-70b-versatile",
-        "llama-3.3-70b-specdec",
-        "llama-3.1-8b-instant",
-        "mixtral-8x7b-32768",
-        "gemma2-9b-it",
-        "llama3-70b-8192",
-        "llama3-8b-8192"
+    # Priority Tier 1: OpenCode free models & DeepSeek models
+    opencode_free_models = [
+        "opencode/deepseek-v4-flash-free",
+        "opencode/nemotron-3-ultra-free",
+        "opencode/laguna-s-2.1-free"
     ]
-    
+
+    deepseek_models = [
+        "deepseek-chat",
+        "deepseek-reasoner"
+    ]
+
+    # Priority Tier 2: NVIDIA NIM Flagship models
+    nvidia_models = [
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "nvidia/llama-3.1-nemotron-70b-instruct"
+    ]
+
+    # Priority Tier 3: Groq models
+    groq_models = [
+        "llama-3.3-70b-versatile",
+        "deepseek-r1-distill-llama-70b",
+        "openai/gpt-oss-20b",
+        "gemma2-9b-it"
+    ]
+
     sticky_model = load_active_model()
     print(f"Sticky model loaded: {sticky_model}")
-    
-    valid_models = []
-    if sticky_model:
-        valid_models.append(sticky_model)
-
-    print("Fetching active models from Groq...")
-    try:
-        active_models_data = client.models.list().data
-        fetched_models = [
-            m.id for m in active_models_data
-            if any(term in m.id.lower() for term in ["llama", "mixtral", "gemma", "qwen"])
-            and not any(neg in m.id.lower() for neg in ["guard", "embed", "moderation", "whisper", "vision"])
-        ]
-        # Keep fallback list at the end of valid_models to preserve order of priority
-        for model in fetched_models:
-            if model not in valid_models:
-                valid_models.append(model)
-    except Exception as e:
-        print(f"Failed to fetch model list, falling back to default list. Error: {e}")
-        
-    for model in fallback_models:
-        if model not in valid_models:
-            valid_models.append(model)
-
-    print(f"Roster of models to attempt (ordered by sticky priority): {valid_models}")
 
     response_data = None
     successful_model = None
 
-    # 1. Attempt NVIDIA Nemotron 3 Ultra first
-    if nvidia_api_key:
-        print("🧠 Querying NVIDIA Nemotron 3 Ultra (550B MoE) for Roblox story script...")
-        try:
-            n_payload = json.dumps({
-                "model": "nvidia/nemotron-3-ultra-550b-a55b",
-                "messages": [
-                    {"role": "system", "content": system_prompt + "\nYou MUST return ONLY valid JSON."},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "temperature": 0.3,
-                "max_tokens": 2048
-            }).encode("utf-8")
-            n_req = urllib.request.Request(
-                "https://integrate.api.nvidia.com/v1/chat/completions",
-                data=n_payload,
-                headers={"Authorization": f"Bearer {nvidia_api_key}", "Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(n_req, timeout=35) as n_resp:
-                n_data = json.loads(n_resp.read().decode("utf-8"))
-                raw_text = n_data["choices"][0]["message"]["content"]
-                response_data = extract_json(raw_text)
-                if response_data and "voiceover" in response_data:
-                    print("✅ Success! NVIDIA Nemotron 3 Ultra generated story script.")
-                    successful_model = "nvidia/nemotron-3-ultra-550b-a55b"
-        except Exception as ne:
-            print(f"⚠️ Nemotron story generation notice: {ne}. Falling back to Groq...")
+    # --- TIER 1: Best Free Tier AI Models (OpenCode CLI & DeepSeek API) ---
+    print("🧠 [Tier 1] Querying OpenCode Free Tier models (Priority 1)...")
+    candidates = [sticky_model] if sticky_model in opencode_free_models else []
+    for m in opencode_free_models:
+        if m not in candidates:
+            candidates.append(m)
+            
+    for model_id in candidates:
+        print(f"  -> Attempting OpenCode model via CLI: {model_id}...")
+        response_data = query_opencode_cli(model_id, system_prompt, user_prompt)
+        if response_data:
+            print(f"✅ Success! OpenCode model {model_id} generated story script.")
+            successful_model = model_id
+            break
 
-    if not response_data:
-        print(f"Generating script for {game} using Groq...")
-        client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-        for model_id in valid_models:
-            print(f"Attempting generation with model: {model_id}...")
-            try:
-                chat_completion = client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    model=model_id,
-                    response_format={"type": "json_object"}
-                )
-                raw_text = chat_completion.choices[0].message.content
-                response_data = extract_json(raw_text)
-                if response_data and "voiceover" in response_data:
-                    # Sanity check: Ensure it didn't echo prompt instructions
-                    voiceover_clean = response_data["voiceover"].strip()
-                    if "Create an intense" in voiceover_clean or " strictly between" in voiceover_clean:
-                        print(f"Model {model_id} returned prompt-echoed text. Rejecting schema.")
-                        continue
-                    print(f"Success! Model {model_id} worked perfectly.")
-                    successful_model = model_id
-                    break
-                else:
-                    print(f"Model {model_id} returned invalid schema. Retrying next...")
-            except Exception as e:
-                print(f"Model {model_id} failed. Searching next... Error: {e}")
-                continue
+    if not response_data and opencode_api_key:
+        print("🧠 [Tier 1] Querying OpenCode HTTP endpoint...")
+        for model_id in opencode_free_models:
+            print(f"  -> Attempting OpenCode HTTP: {model_id}...")
+            response_data = query_llm_chat("opencode", model_id, system_prompt, user_prompt, opencode_api_key)
+            if response_data:
+                print(f"✅ Success! OpenCode HTTP {model_id} generated story script.")
+                successful_model = model_id
+                break
 
-    # Fallback to local hardcoded dramatic script if Groq API goes completely dark
+    if not response_data and deepseek_api_key:
+        print("🧠 [Tier 1] Querying direct DeepSeek API for Roblox story script...")
+        for model_id in deepseek_models:
+            print(f"  -> Attempting DeepSeek model: {model_id}...")
+            response_data = query_llm_chat("deepseek", model_id, system_prompt, user_prompt, deepseek_api_key)
+            if response_data:
+                print(f"✅ Success! DeepSeek model {model_id} generated story script.")
+                successful_model = model_id
+                break
+
+    # --- TIER 2: Current Best Flagship Model (NVIDIA Nemotron 3 Ultra) ---
+    if not response_data and nvidia_api_key:
+        print("🧠 [Tier 2] Free tier unavailable. Escalating to current best model: NVIDIA Nemotron 3 Ultra (550B MoE)...")
+        for model_id in nvidia_models:
+            print(f"  -> Attempting NVIDIA NIM model: {model_id}...")
+            response_data = query_llm_chat("nvidia", model_id, system_prompt, user_prompt, nvidia_api_key)
+            if response_data:
+                print(f"✅ Success! NVIDIA NIM model {model_id} generated story script.")
+                successful_model = model_id
+                break
+
+    # --- TIER 3: High-Speed Groq Free Tier ---
+    if not response_data and groq_api_key:
+        print("🧠 [Tier 3] Escalating to Groq High-Speed API...")
+        for model_id in groq_models:
+            print(f"  -> Attempting Groq model: {model_id}...")
+            response_data = query_llm_chat("groq", model_id, system_prompt, user_prompt, groq_api_key)
+            if response_data:
+                print(f"✅ Success! Groq model {model_id} generated story script.")
+                successful_model = model_id
+                break
+
+    # --- TIER 4: Self-Healing Procedural Narrative Fallback ---
     if not response_data:
-        print("CRITICAL: Groq API completely unresponsive. Activating Self-Healing Narrative Fallback...")
+        print("⚠️ [Tier 4] All AI endpoints unreachable. Activating Self-Healing Narrative Fallback...")
         response_data = {
             "voiceover": f"In the shadows of the {game} grid, an ancient power awakens. The players thought this was just another harmless server, but they were wrong. Legends speak of a hidden bunker beneath the city, guarded by shifting laser beams and a mystery no code can crack. As the timer counts down, a brave survivor steps forward, facing their ultimate destiny. Will they claim the awakened fruit and conquer the obby, or will the darkness consume everything they worked for? The choice is yours... but time is running out.",
             "new_memory": "The ancient bunker door creaks open, revealing a blinding neon light as a mysterious shadow steps through.",
             "image_prompts": [f"Epic Roblox {game} landscape under heavy dark sky"] * 8
         }
     else:
-        # Save successfully working sticky model to persistent memory
         if successful_model:
             save_active_model(successful_model)
 
@@ -568,13 +627,31 @@ def format_time_ass(seconds):
                 hours += 1
     return f"{hours}:{minutes:02d}:{secs:02d}.{centiseconds:02d}"
 
-def generate_ass_file(text_chunks, video_duration, output_ass_path="subtitles.ass"):
-    """Generates Aegisub Advanced Substation Alpha (.ass) subtitles with Roblox-style word-by-word karaoke highlight."""
+def generate_ass_file(text_chunks, video_duration, output_ass_path, is_landscape=False):
+    """Generates an Advanced SubStation Alpha (.ass) file with frame-accurate word-level karaoke timings.
+    Supports both 9:16 portrait and 16:9 widescreen layouts."""
     total_words = sum(len(chunk.replace("\n", " ").split()) for chunk in text_chunks)
     current_time = 0.0
     
-    # Yellow primary fill for active highlights, solid white secondary for unhighlighted, thick black outline
-    ass_header = """[Script Info]
+    if is_landscape:
+        ass_header = """[Script Info]
+; Script generated by Roblox Auto Shorts Engine
+Title: Roblox Auto Subtitles Landscape
+ScriptType: v4.00+
+WrapStyle: 0
+PlayResX: 1920
+PlayResY: 1080
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: RobloxStyle,Impact,56,&H00FFFFFF,&H0000FFFF,&H00000000,&HA0000000,1,0,0,0,100,100,2,0,1,6,3,2,60,60,70,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    else:
+        ass_header = """[Script Info]
 ; Script generated by Roblox Auto Shorts Engine
 Title: Roblox Auto Shorts Subtitles
 ScriptType: v4.00+
@@ -593,7 +670,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     
     events = []
     for chunk in text_chunks:
-        # Split chunk into lines to handle any newlines correctly
         lines_split = chunk.strip().split('\n')
         words_by_line = [line.split() for line in lines_split]
         
@@ -607,7 +683,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         start_str = format_time_ass(current_time)
         end_str = format_time_ass(end_time)
         
-        # Base duration per word in centiseconds (1/100 of a second)
         word_dur_cs = int(round((chunk_duration / actual_word_count) * 100))
         if word_dur_cs < 1:
             word_dur_cs = 1
@@ -620,7 +695,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             for word in line_words:
                 words_processed += 1
                 if words_processed == actual_word_count:
-                    # Ensure the final word duration matches the chunk duration exactly
                     chunk_duration_cs = int(round(chunk_duration * 100))
                     elapsed_cs = word_dur_cs * (actual_word_count - 1)
                     final_word_dur = max(1, chunk_duration_cs - elapsed_cs)
@@ -629,10 +703,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     line_parts.append(fr"{{\kf{word_dur_cs}}}{word}")
             karaoke_parts.append(" ".join(line_parts))
             
-        # Join line parts with the ASS hard newline tag '\N'
         karaoke_text = r"\N".join(karaoke_parts)
-        
-        # Clean ASS karaoke dialogue line without conflicting fade tags
         events.append(f"Dialogue: 0,{start_str},{end_str},RobloxStyle,,0,0,0,,{karaoke_text}")
         current_time = end_time
         
@@ -640,12 +711,44 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         f.write(ass_header)
         for event in events:
             f.write(event + "\n")
-    print(f"[-] Subtitles ASS file generated: {output_ass_path}")
+    print(f"[-] Subtitles ASS file generated ({'16:9 Landscape' if is_landscape else '9:16 Portrait'}): {output_ass_path}")
 
-def render_video(audio_path, image_paths, text_chunks):
-    """Pure FFmpeg pipeline with Ken Burns pan/zoom per scene, audio mixing, and subtitle burn.
-    Replaces MoviePy with direct FFmpeg calls for higher quality 30fps output."""
-    print("Assembling video with Ken Burns motion effects via FFmpeg...")
+def generate_roblox_thumbnail(video_path, thumb_path, game_name="", part_number=1, is_landscape=False):
+    """Generates a high-CTR custom thumbnail with bold curiosity text stamping."""
+    try:
+        clean_title = f"{game_name} - EPISODE {part_number}".upper() if game_name else "ROBLOX STORY"
+        if is_landscape:
+            vf = (
+                f"scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
+                f"drawbox=y=780:color=black@0.85:width=iw:height=150:t=fill,"
+                f"drawbox=y=780:color=#00D2FF@0.95:width=iw:height=150:t=4,"
+                f"drawtext=text='{clean_title}':fontcolor=#FFE600:fontsize=52:font='Impact':x=(w-text_w)/2:y=830"
+            )
+        else:
+            vf = (
+                f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
+                f"drawbox=y=1380:color=black@0.85:width=iw:height=160:t=fill,"
+                f"drawbox=y=1380:color=#00D2FF@0.95:width=iw:height=160:t=4,"
+                f"drawtext=text='{clean_title}':fontcolor=#FFE600:fontsize=46:font='Impact':x=(w-text_w)/2:y=1436"
+            )
+        subprocess.run([
+            "ffmpeg", "-y",
+            "-ss", "00:00:02.00",
+            "-i", str(video_path),
+            "-vframes", "1",
+            "-vf", vf,
+            "-q:v", "2",
+            str(thumb_path)
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if os.path.exists(thumb_path):
+            print(f"[+] Custom thumbnail generated: {thumb_path}")
+    except Exception as te:
+        print(f"[-] Thumbnail notice: {te}")
+
+def render_video(audio_path, image_paths, text_chunks, is_landscape=False, output_path=None, game_name="", part_number=1):
+    """Pure FFmpeg pipeline with Ken Burns pan/zoom per scene, audio mixing, subtitle burn, and thumbnail generation.
+    Supports both 9:16 vertical Short and 16:9 widescreen Normal Video."""
+    print(f"Assembling {'16:9 Landscape Normal Video' if is_landscape else '9:16 Portrait Short'} with Ken Burns motion effects via FFmpeg...")
 
     if not image_paths:
         raise ValueError("render_video received empty image_paths list — cannot build video without scenes.")
@@ -668,33 +771,35 @@ def render_video(audio_path, image_paths, text_chunks):
         "zoom_in_bottomright", "pan_down"
     ]
 
-    print("Applying Ken Burns pan/zoom to each scene...")
+    res_w, res_h = (1920, 1080) if is_landscape else (1080, 1920)
+
+    print(f"Applying Ken Burns pan/zoom to each scene ({res_w}x{res_h})...")
     for i, img_path in enumerate(image_paths):
-        scene_out = f"scene_kb_{i}.mp4"
+        scene_out = f"scene_kb_{'ls_' if is_landscape else ''}{i}.mp4"
         direction = kb_directions[i % len(kb_directions)]
         frames = max(1, int(img_duration * 30))  # 30fps
         d_str = f"{img_duration:.4f}"
         fade_out_start = max(0.0, img_duration - 0.3)
 
         if direction == "zoom_in_center":
-            zp = f"zoompan=z='min(zoom+0.0015,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z='min(zoom+0.0015,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s={res_w}x{res_h}:fps=30"
         elif direction == "zoom_out_center":
-            zp = f"zoompan=z='if(lte(zoom,1.0),1.5,max(zoom-0.0015,1.0))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z='if(lte(zoom,1.0),1.5,max(zoom-0.0015,1.0))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s={res_w}x{res_h}:fps=30"
         elif direction == "pan_right":
-            zp = f"zoompan=z=1.3:x='min(iw/zoom/2+iw*0.2*on/{frames},iw-iw/zoom)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z=1.3:x='min(iw/zoom/2+iw*0.2*on/{frames},iw-iw/zoom)':y='ih/2-(ih/zoom/2)':d={frames}:s={res_w}x{res_h}:fps=30"
         elif direction == "pan_left":
-            zp = f"zoompan=z=1.3:x='max(iw/zoom/2-iw*0.2*on/{frames},0)':y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z=1.3:x='max(iw/zoom/2-iw*0.2*on/{frames},0)':y='ih/2-(ih/zoom/2)':d={frames}:s={res_w}x{res_h}:fps=30"
         elif direction == "pan_up":
-            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='max(ih/zoom/2-ih*0.2*on/{frames},0)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='max(ih/zoom/2-ih*0.2*on/{frames},0)':d={frames}:s={res_w}x{res_h}:fps=30"
         elif direction == "pan_down":
-            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='min(ih/zoom/2+ih*0.2*on/{frames},ih-ih/zoom)':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z=1.3:x='iw/2-(iw/zoom/2)':y='min(ih/zoom/2+ih*0.2*on/{frames},ih-ih/zoom)':d={frames}:s={res_w}x{res_h}:fps=30"
         elif direction == "zoom_in_topleft":
-            zp = f"zoompan=z='min(zoom+0.0015,1.5)':x=0:y=0:d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z='min(zoom+0.0015,1.5)':x=0:y=0:d={frames}:s={res_w}x{res_h}:fps=30"
         else:  # zoom_in_bottomright
-            zp = f"zoompan=z='min(zoom+0.0015,1.5)':x='iw-iw/zoom':y='ih-ih/zoom':d={frames}:s=1080x1920:fps=30"
+            zp = f"zoompan=z='min(zoom+0.0015,1.5)':x='iw-iw/zoom':y='ih-ih/zoom':d={frames}:s={res_w}x{res_h}:fps=30"
 
-        # Pre-scale to 1080x1920 to optimize zoompan performance and ensure exact aspect ratio
-        vf_chain = f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,{zp},fade=t=in:st=0:d=0.3,fade=t=out:st={fade_out_start:.4f}:d=0.3"
+        # Pre-scale to output dims to ensure exact aspect ratio
+        vf_chain = f"scale={res_w}:{res_h}:force_original_aspect_ratio=increase,crop={res_w}:{res_h},{zp},fade=t=in:st=0:d=0.3,fade=t=out:st={fade_out_start:.4f}:d=0.3"
 
         scene_result = subprocess.run([
             "ffmpeg", "-y", "-loop", "1", "-i", img_path,
@@ -706,17 +811,17 @@ def render_video(audio_path, image_paths, text_chunks):
         if scene_result.returncode != 0:
             print(f"[!] FFmpeg scene {i} failed:\n{scene_result.stderr[-2000:]}")
             raise subprocess.CalledProcessError(scene_result.returncode, "ffmpeg", scene_result.stderr)
-        print(f"[+] Ken Burns applied to scene {i} ({direction})")
+        print(f"[+] Ken Burns applied to scene {i} ({direction} @ {res_w}x{res_h})")
         scene_files.append(scene_out)
 
     # Concatenate all Ken Burns scene clips into one silent video
-    concat_list = "concat_list.txt"
+    concat_list = f"concat_list_{'ls' if is_landscape else 'pt'}.txt"
     with open(concat_list, "w") as f:
         for sf in scene_files:
             f.write(f"file '{sf}'\n")
 
-    temp_video_noaudio = "temp_video_noaudio.mp4"
-    print("Concatenating all scenes...")
+    temp_video_noaudio = f"temp_video_noaudio_{'ls' if is_landscape else 'pt'}.mp4"
+    print(f"Concatenating all scenes ({'16:9' if is_landscape else '9:16'})...")
     subprocess.run([
         "ffmpeg", "-y", "-f", "concat", "-safe", "0",
         "-i", concat_list, "-c", "copy", temp_video_noaudio
@@ -724,7 +829,7 @@ def render_video(audio_path, image_paths, text_chunks):
 
     # Mix BGM with voiceover using FFmpeg directly
     bgm_files = glob.glob("bgm/*.mp3")
-    temp_output_path = "temp_unsubbed.mp4"
+    temp_output_path = f"temp_unsubbed_{'ls' if is_landscape else 'pt'}.mp4"
     if bgm_files:
         selected_bgm = random.choice(bgm_files)
         print(f"Mixing BGM: {selected_bgm} at 8% volume...")
@@ -746,11 +851,13 @@ def render_video(audio_path, image_paths, text_chunks):
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Generate and burn ASS subtitles using absolute path to avoid libass resolution issues
-    ass_path = os.path.abspath("subtitles.ass")
-    generate_ass_file(text_chunks, video_duration, ass_path)
+    ass_path = os.path.abspath(f"subtitles_{'ls' if is_landscape else 'pt'}.ass")
+    generate_ass_file(text_chunks, video_duration, ass_path, is_landscape=is_landscape)
 
-    output_path = "final_short.mp4"
-    print("Burning subtitles via FFmpeg libass...")
+    if output_path is None:
+        output_path = "final_video_169.mp4" if is_landscape else "final_short.mp4"
+        
+    print(f"Burning subtitles via FFmpeg libass ({'16:9 Landscape' if is_landscape else '9:16 Portrait'})...")
     esc_ass_path = ass_path.replace("\\", "/").replace(":", "\\:")
     try:
         sub_result = subprocess.run([
@@ -773,18 +880,23 @@ def render_video(audio_path, image_paths, text_chunks):
             if os.path.exists(tmp):
                 os.remove(tmp)
 
-    print("Video rendered with Ken Burns effects and stylized subtitles successfully.")
+    # Generate custom thumbnail
+    thumb_path = f"thumb_{os.path.splitext(output_path)[0]}.jpg"
+    generate_roblox_thumbnail(output_path, thumb_path, game_name, part_number, is_landscape=is_landscape)
+
+    print(f"Video ({'16:9 Landscape' if is_landscape else '9:16 Portrait'}) rendered successfully: {output_path}")
     return output_path
 
-def upload_to_youtube(video_path, game_name, part_number):
-    """Handles authenticated upload using GitHub Secrets Refresh Token with clean titles omitting 'AI Story'."""
-    print(f"Preparing to upload {video_path} to YouTube for: {game_name} Part {part_number}...")
+def upload_to_youtube(video_path, game_name, part_number, is_short=True):
+    """Handles authenticated upload using GitHub Secrets Refresh Token for Short (9:16) or Normal Video (16:9)."""
+    print(f"Preparing to upload {video_path} to YouTube ({'Short 9:16' if is_short else 'Normal Video 16:9'}) for: {game_name} Part {part_number}...")
     client_id = os.environ.get("CLIENT_ID")
     client_secret = os.environ.get("CLIENT_SECRET")
     refresh_token = os.environ.get("REFRESH_TOKEN")
     
     if not all([client_id, client_secret, refresh_token]):
-        raise Exception("CRITICAL: Missing YouTube API credentials in environment variables.")
+        print(f"⚠️ Notice: Missing YouTube API credentials in environment variables. Completed dry-run render for {'Short' if is_short else 'Normal Video'}.")
+        return None
         
     creds = Credentials(
         token=None,
@@ -795,23 +907,39 @@ def upload_to_youtube(video_path, game_name, part_number):
     )
     youtube = build('youtube', 'v3', credentials=creds)
     safe_name = get_safe_filename(game_name)
-    title = f"{game_name} - Part {part_number} #roblox #shorts #{safe_name}"
-    description = f"The saga continues in {game_name} Part {part_number}. Like and subscribe for the next chapter!"
+    
+    if is_short:
+        title = f"{game_name} - Part {part_number} #roblox #shorts #{safe_name}"
+        description = f"The saga continues in {game_name} Part {part_number}. Like and subscribe for the next chapter!\n\n#roblox #shorts #gaming #{safe_name}"
+        tags = ['roblox', game_name, 'shorts', 'robloxshorts', safe_name]
+    else:
+        title = f"{game_name} - Episode {part_number} | Full Roblox Story"
+        description = f"""The story continues in {game_name} Episode {part_number}!
+
+Follow the full lore, dramatic twists, and unforgettable Roblox story adventures.
+
+👍 Like the video if you enjoyed!
+💬 Leave a comment with your favorite character or theories for the next episode!
+🔔 Subscribe and turn on notifications for daily new Roblox lore and animated story episodes!
+
+#roblox #robloxstory #gaming #robloxedit #{safe_name}
+"""
+        tags = ['roblox', game_name, 'robloxstory', 'robloxgaming', safe_name, 'storytime', 'robloxanimation']
     
     body = {
         'snippet': {
-            'title': title,
+            'title': title[:100],
             'description': description,
-            'tags': ['roblox', game_name, 'shorts', 'robloxshorts', safe_name],
-            'categoryId': '20'
+            'tags': tags[:15],
+            'categoryId': '20'  # Gaming
         },
         'status': {
-            'privacyStatus': 'public',
+            'privacyStatus': os.environ.get('PRIVACY_STATUS', 'public'),
             'selfDeclaredMadeForKids': False
         }
     }
     
-    print("Initiating YouTube upload stream...")
+    print(f"Initiating YouTube upload stream ({'Short' if is_short else 'Normal Video'})...")
     media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype='video/mp4')
     request = youtube.videos().insert(
         part='snippet,status',
@@ -824,7 +952,27 @@ def upload_to_youtube(video_path, game_name, part_number):
         status, response = request.next_chunk()
         if status:
             print(f"Uploaded {int(status.progress() * 100)}%...")
-    print(f"SUCCESS! Video uploaded perfectly. YouTube Video ID: {response['id']}")
+            
+    video_id = response.get('id')
+    if is_short:
+        print(f"SUCCESS! Short uploaded perfectly. YouTube Video ID: {video_id} (URL: https://youtube.com/shorts/{video_id})")
+    else:
+        print(f"SUCCESS! Normal Video uploaded perfectly. YouTube Video ID: {video_id} (URL: https://youtube.com/watch?v={video_id})")
+
+    # Upload custom thumbnail if present
+    thumb_path = f"thumb_{os.path.splitext(video_path)[0]}.jpg"
+    if os.path.exists(thumb_path):
+        try:
+            print(f"Uploading custom thumbnail for {video_id}...")
+            youtube.thumbnails().set(
+                videoId=video_id,
+                media_body=MediaFileUpload(thumb_path, mimetype='image/jpeg')
+            ).execute()
+            print("✅ Custom thumbnail uploaded successfully!")
+        except Exception as te:
+            print(f"Thumbnail upload notice: {te}")
+
+    return video_id
 
 # --- MAIN EXECUTION ---
 async def main():
@@ -881,10 +1029,16 @@ async def main():
             os.remove(raw_audio_path)
             
         text_chunks = split_text_for_captions(audio_text, words_per_chunk=3)
-        final_video_path = render_video(audio_path, image_paths, text_chunks)
         
-        # Final step: upload to YouTube
-        upload_to_youtube(final_video_path, current_game, current_part)
+        # 1. Render 9:16 Short
+        final_short_path = render_video(audio_path, image_paths, text_chunks, is_landscape=False, game_name=current_game, part_number=current_part)
+        
+        # 2. Render 16:9 Widescreen Normal Video
+        final_landscape_path = render_video(audio_path, image_paths, text_chunks, is_landscape=True, game_name=current_game, part_number=current_part)
+        
+        # 3. Dual Upload to YouTube
+        upload_to_youtube(final_short_path, current_game, current_part, is_short=True)
+        upload_to_youtube(final_landscape_path, current_game, current_part, is_short=False)
         
     except Exception as e:
         print(f"CRITICAL ERROR encountered during run: {e}")
