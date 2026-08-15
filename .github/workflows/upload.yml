@@ -2,8 +2,8 @@ name: build-and-upload
 
 "on":
   schedule:
-    # Uses off-peak minute (27) to prevent GitHub Actions high-demand top-of-hour cron queue drops
-    - cron: '27 12 * * *'
+    # Runs twice daily at 00:27 and 12:27 UTC (off-peak minute prevents GitHub queue drops)
+    - cron: '27 0,12 * * *'
   workflow_dispatch:
 
 concurrency:
