@@ -1,60 +1,46 @@
 {
-    "characterName": "The Chosen One",
-    "backstory": {
-        "history": "Survivor of the great Brookhaven catastrophe",
-        "home": "Brookhaven, now in ruins"
-    },
-    "currentObjective": {
-        "quest": "Uncover the secrets of Brookhaven's downfall within the hidden research facility",
-        "location": "Deeper within the hidden research facility"
-    },
-    "abilities": {
-        "skills": [
-            "Survival",
-            "Problem-solving",
-            "Combat",
-            "Deciphering ancient texts"
-        ],
-        "equipment": [
-            "Ancient tomes with cryptic map"
-        ]
-    },
-    "stats": {
-        "level": 1,
-        "health": 90,
-        "experience": 20
-    },
-    "relationships": {
-        "allies": [
-            "Mysterious voice guiding them"
-        ],
-        "enemies": [
-            "Dark power",
-            "Horrors lurking in the shadows",
-            "Unearthly whispering entity"
-        ]
-    },
-    "personality": {
-        "traits": [
-            "Brave",
-            "Determined",
-            "Curious",
-            "Resourceful"
-        ]
-    },
-    "lore": {
-        "worldHistory": {
-            "event": "Great Brookhaven catastrophe",
-            "cause": "Unknown, related to dark power"
+    "gameName": "Brookhaven",
+    "location": "Brookhaven Grid",
+    "mainCharacter": {
+        "name": "Brave Survivor",
+        "traits": {
+            "bravery": 5,
+            "determination": 5,
+            "agility": 3
         },
-        "locations": {
-            "Brookhaven": "Ruins of a once peaceful home",
-            "Abandoned mine": "Hiding the mysterious research facility",
-            "Hidden research facility": "Destination for uncovering the truth, currently being explored",
-            "Dimly lit corridor": "Initial area of the research facility, filled with an eerie atmosphere"
+        "inventory": [
+            "None"
+        ],
+        "objective": "Claim awakened fruit and conquer obby",
+        "relationship": {
+            "npc": "None",
+            "player": "Indirect"
         },
-        "items": {
-            "ancientTomes": "Contain cryptic map, crucial for the quest"
+        "stats": {
+            "health": 100,
+            "stamina": 100
         }
-    }
+    },
+    "supportingElements": {
+        "ancientPower": {
+            "location": "Hidden Bunker",
+            "guardians": "Shifting Laser Beams",
+            "secret": "Uncrackable Code"
+        },
+        "awakenedFruit": {
+            "location": "Hidden Bunker",
+            "powers": "Unknown"
+        },
+        "obby": {
+            "location": "Brookhaven Grid",
+            "difficulty": "High"
+        }
+    },
+    "episodes": [
+        {
+            "episode": 1,
+            "description": "Introduction to Brookhaven and the ancient power",
+            "mainCharacterProgress": "Stepped forward to face destiny"
+        }
+    ]
 }
