@@ -1,26 +1,48 @@
 {
     "playerCharacter": {
-        "name": "Protagonist",
-        "traits": {
-            "determination": "High",
-            "resolve": "High",
-            "bravery": "High"
-        },
-        "inventory": {
-            "items": []
-        },
+        "name": "The Survivor",
+        "traits": [
+            "brave",
+            "determined"
+        ],
         "stats": {
-            "health": 100,
-            "sanity": 50
+            "agility": "untested",
+            "intelligence": "untested",
+            "strength": "untested"
         },
-        "relationships": {
-            "self": "Conflicted",
-            "shadows": "Adversarial"
+        "inventory": [],
+        "allies": null,
+        "enemies": null,
+        "goals": [
+            " Claim the awakened fruit",
+            "Conquer the obby"
+        ],
+        "obstacles": [
+            "Shifting laser beams",
+            "Mystery code",
+            "Time limit"
+        ]
+    },
+    "npcs": [],
+    "locations": {
+        "Tower of Hell grid": {
+            "description": "A server with a hidden secret",
+            "notableFeatures": [
+                "Hidden bunker beneath the city"
+            ]
         },
-        "awakenings": {
-            "none": "No fruit awakenings"
-        },
-        "currentLocation": "Deeper in the Labyrinth of Reflections",
-        "goal": "Escape the Tower of Hell"
+        "Hidden Bunker": {
+            "description": "A guarded area with a mystery to crack",
+            "notableFeatures": [
+                "Shifting laser beams",
+                "Mystery code"
+            ]
+        }
+    },
+    "items": {
+        "Awakened Fruit": {
+            "description": "A powerful fruit with unknown abilities",
+            "properties": null
+        }
     }
 }
