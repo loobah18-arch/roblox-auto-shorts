@@ -1,33 +1,58 @@
 {
-    "Protagonist": {
-        "clothes": "open blue vest shirt, red knee-length pants, sandal shoes, partially torn from the battle with the giant sea monster",
-        "facial_features": "determined smile face decal, scar decal under left eye, bruises and cuts from the intense battle",
-        "accessories": "straw hat accessory (yellow), wanted poster back accessory, Akanesu's blessings aura accessory (electric blue, wave particles), a small, tattered sailcloth cape",
-        "aura_color": "electric blue flame aura with wave particles, infused with sea god's essence, now with a hint of golden glow from the unwavering resolve",
-        "body_color": "light tan blocky skin, medium height Roblox avatar, with visible muscles developed from the intense training and battles",
-        "signature_weapon": "giant rubber-stretched fist, gear fourth paw shockwave, electrified fist (new ability: Thunder Fist), with small, glowing blue runes etched into the arms",
-        "personality": "reckless, loud, heroic, determined, unwavering resolve, and a deep sense of responsibility to protect the crew",
-        "relationships": {
-            "Akanesu": "revered, Sea God's vision guiding the Protagonist's journey, with a deeper understanding of the Prophecy and its connection to the Sea God's Throne",
-            "Crew": "loyal, faces set with determination, awaiting the Protagonist's lead, with a few members injured from the battle, but still standing strong"
+    "characters": [
+        {
+            "name": "Brave Survivor",
+            "traits": [
+                "courageous",
+                "determined"
+            ],
+            "stats": {
+                "health": 100,
+                "energy": 100
+            },
+            "inventory": [],
+            "allies": [],
+            "enemies": [],
+            "storyProgress": {
+                "currentObjective": "Claim the awakened fruit and conquer the obby",
+                "currentChallenge": "Navigate the hidden bunker and avoid shifting laser beams"
+            },
+            "fruitAwakenings": null
+        }
+    ],
+    "locations": [
+        {
+            "name": "Hidden Bunker",
+            "description": "A secret underground facility with shifting laser beams and a mystery to uncover",
+            "accessibility": "Restricted",
+            "notableFeatures": [
+                "Laser beam traps",
+                "Mystery code to crack"
+            ]
         },
-        "inventory": {
-            "Sea God's Essence": "infused within the Protagonist's veins",
-            "Blox Fruits": "hint of a rare, ancient fruit hidden within the depths of the ocean, yet to be acquired",
-            "Ancient Chamber Key": "unlocked, granting access to the secrets of the sea serpents and possibly the key to unlocking the Protagonist's true potential"
-        },
-        "lore_details": {
-            "Sea God's Throne": "carved from the bones of sea serpents, symbolizing the Protagonist's destiny, now with a deeper understanding of its true power and the responsibility that comes with it",
-            "Vision of Akanesu": "guiding the Protagonist's journey, foreshadowing challenges and glory, with a new, unclear vision of a great calamity that threatens the ocean and its inhabitants",
-            "Giant Awakened": "a colossal sea monster, risen to challenge the Protagonist's claim to the Sea God's Throne, with a hidden connection to the ancient fruit and the Prophecy",
-            "Ancient Chamber": "unleashed beneath the sea giant's lair, holding secrets of the sea serpents and possibly the key to unlocking the Protagonist's true potential",
-            "Prophecy": "unfolding, with the Protagonist at its center, and a great calamity looming on the horizon, requiring the Protagonist's unwavering resolve and determination to overcome"
-        },
-        "stats": {
-            "physical_strength": "significantly enhanced due to Sea God's essence, Akanesu's blessings, and the intense battle against the giant sea monster",
-            "aura_control": "greatly improved, as evidenced by the effective use of Thunder Fist and the ability to withstand the sea giant's colossal force",
-            "resolve": "unwavering, fueled by the memories of the battles fought and won, and the determination to protect the crew and overcome the challenges ahead",
-            "insight": "deepened, with a greater understanding of the Prophecy, the Sea God's Throne, and the ancient chamber, preparing the Protagonist for the trials to come"
+        {
+            "name": "Blox Fruits Grid",
+            "description": "A vast server filled with unknown dangers and opportunities",
+            "accessibility": "Open",
+            "notableFeatures": [
+                "Unknown fruits and powers",
+                "Shrouded in mystery"
+            ]
+        }
+    ],
+    "items": [
+        {
+            "name": "Awakened Fruit",
+            "description": "A mysterious and ancient power with unknown abilities",
+            "location": "Hidden Bunker",
+            "acquired": false
+        }
+    ],
+    "storyArcs": {
+        "mainStory": {
+            "description": "The brave survivor must navigate the hidden bunker, claim the awakened fruit, and conquer the obby before time runs out",
+            "currentEpisode": 1,
+            "totalEpisodes": null
         }
     }
 }
