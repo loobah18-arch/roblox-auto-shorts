@@ -1,63 +1,53 @@
 {
-    "characterName": "The Chosen One",
-    "backstory": {
-        "history": "Survivor of the great Brookhaven catastrophe",
-        "home": "Brookhaven, now in ruins"
-    },
-    "currentObjective": {
-        "quest": "Uncover the secrets of Brookhaven's downfall within the heart of darkness",
-        "location": "Deeper within the heart of darkness, beyond the sealed door"
-    },
-    "abilities": {
-        "skills": [
-            "Survival",
-            "Problem-solving",
-            "Combat",
-            "Deciphering ancient texts"
-        ],
-        "equipment": [
-            "Ancient tomes with cryptic map"
-        ]
-    },
-    "stats": {
-        "level": 1,
-        "health": 70,
-        "experience": 60
-    },
-    "relationships": {
-        "allies": [
-            "Mysterious voice guiding them"
-        ],
-        "enemies": [
-            "Dark power",
-            "Horrors lurking in the shadows",
-            "Unearthly whispering entity"
-        ]
-    },
-    "personality": {
-        "traits": [
-            "Brave",
-            "Determined",
-            "Curious",
-            "Resourceful",
-            "Resilient"
-        ]
-    },
-    "lore": {
-        "worldHistory": {
-            "event": "Great Brookhaven catastrophe",
-            "cause": "Unknown, related to dark power"
+    "GameName": "Brookhaven",
+    "Locations": [
+        {
+            "Name": "Brookhaven Grid",
+            "Description": "The main city where players reside"
         },
-        "locations": {
-            "Brookhaven": "Ruins of a once peaceful home",
-            "Abandoned mine": "Hiding the mysterious research facility",
-            "Hidden research facility": "Destination for uncovering the truth, currently being explored",
-            "Dimly lit corridor": "Initial area of the research facility, filled with an eerie atmosphere",
-            "Heart of darkness": "Deepest, most foreboding area of the research facility, shrouded in an impenetrable veil of darkness",
-            "Sealed door": "Threshold to the heart of darkness, protected by ancient runes and the unearthly whispering entity"
-        },
-        "items": {
-            "ancientTomes": "Contain cryptic map, crucial for the quest"
+        {
+            "Name": "Hidden Bunker",
+            "Description": "A secret underground location beneath the city, protected by laser beams and a mysterious code"
         }
-    }
+    ],
+    "Characters": [
+        {
+            "Name": "Brave Survivor",
+            "Role": "Protagonist",
+            "Traits": [
+                "Courageous",
+                "Determined"
+            ],
+            "Stats": {
+                "Health": 100,
+                "Strength": 10,
+                "Agility": 15,
+                "Intelligence": 8
+            },
+            "Inventory": [],
+            "Goals": [
+                "Claim the awakened fruit",
+                "Conquer the obby"
+            ],
+            "Relationships": {}
+        }
+    ],
+    "Objects": [
+        {
+            "Name": "Awakened Fruit",
+            "Description": "A powerful, ancient fruit with unknown abilities"
+        },
+        {
+            "Name": "Laser Beams",
+            "Description": "Shifting beams that guard the hidden bunker"
+        },
+        {
+            "Name": "Mysterious Code",
+            "Description": "A code that protects the hidden bunker, unable to be cracked by any known means"
+        },
+        {
+            "Name": "Obby",
+            "Description": "A challenging obstacle course"
+        }
+    ]
 }
