@@ -66,7 +66,7 @@ def save_game_state(current_index, total_videos_run, game_parts=None):
         }, f, indent=4)
 
 def get_story_memory(safe_game_name):
-    filename = f"memory_{safe_game_name}.txt"
+    filename = f"story_memory_{safe_game_name}.txt"
     if os.path.exists(filename):
         with open(filename, "r") as f:
             content = f.read().strip()
@@ -75,17 +75,20 @@ def get_story_memory(safe_game_name):
     return "A legendary adventure in the Roblox universe begins today."
 
 def save_story_memory(safe_game_name, new_memory):
-    filename = f"memory_{safe_game_name}.txt"
+    filename = f"story_memory_{safe_game_name}.txt"
     with open(filename, "w") as f:
         f.write(new_memory.strip())
 
 def get_character_bible(safe_game_name):
-    filename = f"characters_{safe_game_name}.txt"
+    filename = f"character_bible_{safe_game_name}.json"
     if os.path.exists(filename):
-        with open(filename, "r") as f:
-            content = f.read().strip()
-            if content:
-                return content
+        try:
+            with open(filename, "r") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return json.dumps(data, indent=2)
+        except Exception:
+            pass
     return "No character bible found for this game."
 
 def load_active_model():
