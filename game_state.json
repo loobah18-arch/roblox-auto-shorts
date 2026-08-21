@@ -1,11 +1,11 @@
 {
-    "current_index": 4,
-    "total_videos_run": 45,
+    "current_index": 0,
+    "total_videos_run": 46,
     "game_parts": {
         "blox_fruits": 9,
         "brookhaven": 9,
         "adopt_me": 9,
         "murder_mystery_2": 9,
-        "tower_of_hell": 8
+        "tower_of_hell": 9
     }
 }
