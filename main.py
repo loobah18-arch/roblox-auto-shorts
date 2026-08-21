@@ -141,6 +141,18 @@ def save_active_image_provider(provider_name):
         print(f"Failed to save active image provider: {e}")
 
 # --- HELPER FUNCTIONS ---
+VOICEOVER_MIN_WORDS = 135
+VOICEOVER_MAX_WORDS = 160
+
+def voiceover_score(data):
+    """0 = voiceover within the 135-160 word spec; otherwise deviation from the range."""
+    wc = len(str(data.get("voiceover", "")).split())
+    if wc < VOICEOVER_MIN_WORDS:
+        return VOICEOVER_MIN_WORDS - wc
+    if wc > VOICEOVER_MAX_WORDS:
+        return wc - VOICEOVER_MAX_WORDS
+    return 0
+
 def extract_json(text):
     """Safely extracts and parses a JSON block from potentially conversational LLM output."""
     clean = text.strip()
@@ -318,65 +330,113 @@ Episode Writing Guidelines:
     sticky_model = load_active_model()
     print(f"Sticky model loaded: {sticky_model}")
 
-    response_data = None
+    best_data = None
+    best_score = float("inf")
     successful_model = None
+    llm_attempts = 0
+    MAX_LLM_ATTEMPTS = 10
 
-    # --- TIER 1: Best Free Tier AI Models (OpenCode CLI & DeepSeek API) ---
+    length_reminder = (
+        "\n\nCRITICAL LENGTH FIX: Your previous voiceover did not meet the required length. "
+        f"Regenerate the JSON with a voiceover of STRICTLY {VOICEOVER_MIN_WORDS} to {VOICEOVER_MAX_WORDS} words."
+    )
+
+    def consider(result, model_id):
+        """Records the result if it is the closest-to-spec so far. Returns True only on a perfect match."""
+        nonlocal best_data, best_score, successful_model
+        if not isinstance(result, dict):
+            return False
+        score = voiceover_score(result)
+        if score < best_score:
+            best_score = score
+            best_data = result
+            successful_model = model_id
+        return score == 0
+
+    # --- TIER 1: Best Free Tier AI Models (OpenCode CLI & HTTP) ---
     print("🧠 [Tier 1] Querying OpenCode Free Tier models (Priority 1)...")
     candidates = [sticky_model] if sticky_model in opencode_free_models else []
     for m in opencode_free_models:
         if m not in candidates:
             candidates.append(m)
-            
-    for model_id in candidates:
-        print(f"  -> Attempting OpenCode model via CLI: {model_id}...")
-        response_data = query_opencode_cli(model_id, system_prompt, user_prompt)
-        if response_data:
-            print(f"✅ Success! OpenCode model {model_id} generated story script.")
-            successful_model = model_id
-            break
 
-    if not response_data and opencode_api_key:
+    for model_id in candidates:
+        if llm_attempts >= MAX_LLM_ATTEMPTS or best_score == 0:
+            break
+        print(f"  -> Attempting OpenCode model via CLI: {model_id}...")
+        result = query_opencode_cli(model_id, system_prompt, user_prompt)
+        llm_attempts += 1
+        if consider(result, model_id):
+            print(f"✅ Success! OpenCode model {model_id} generated story script.")
+            break
+        if result and llm_attempts < MAX_LLM_ATTEMPTS:
+            # One bounded retry with an explicit length correction
+            print(f"  -> Voiceover out of word range; retrying {model_id} with length correction...")
+            result = query_opencode_cli(model_id, system_prompt + length_reminder, user_prompt)
+            llm_attempts += 1
+            if consider(result, model_id):
+                print(f"✅ Success! OpenCode model {model_id} generated story script (after retry).")
+                break
+
+    if best_score > 0 and opencode_api_key:
         print("🧠 [Tier 1] Querying OpenCode HTTP endpoint...")
         for model_id in opencode_free_models:
+            if llm_attempts >= MAX_LLM_ATTEMPTS or best_score == 0:
+                break
             print(f"  -> Attempting OpenCode HTTP: {model_id}...")
-            response_data = query_llm_chat("opencode", model_id, system_prompt, user_prompt, opencode_api_key)
-            if response_data:
+            result = query_llm_chat("opencode", model_id, system_prompt, user_prompt, opencode_api_key)
+            llm_attempts += 1
+            if consider(result, model_id):
                 print(f"✅ Success! OpenCode HTTP {model_id} generated story script.")
-                successful_model = model_id
                 break
 
     # --- TIER 2: Free NVIDIA NIM (free API key from build.nvidia.com) ---
-    if not response_data and nvidia_api_key:
+    if best_score > 0 and nvidia_api_key:
         print("🧠 [Tier 2] Free tier unavailable. Escalating to current best model: NVIDIA Nemotron 3 Ultra (550B MoE)...")
         for model_id in nvidia_models:
+            if llm_attempts >= MAX_LLM_ATTEMPTS or best_score == 0:
+                break
             print(f"  -> Attempting NVIDIA NIM model: {model_id}...")
-            response_data = query_llm_chat("nvidia", model_id, system_prompt, user_prompt, nvidia_api_key)
-            if response_data:
+            result = query_llm_chat("nvidia", model_id, system_prompt, user_prompt, nvidia_api_key)
+            llm_attempts += 1
+            if consider(result, model_id):
                 print(f"✅ Success! NVIDIA NIM model {model_id} generated story script.")
-                successful_model = model_id
                 break
 
     # --- TIER 3: High-Speed Groq Free Tier ---
-    if not response_data and groq_api_key:
+    if best_score > 0 and groq_api_key:
         print("🧠 [Tier 3] Escalating to Groq High-Speed API...")
         for model_id in groq_models:
+            if llm_attempts >= MAX_LLM_ATTEMPTS or best_score == 0:
+                break
             print(f"  -> Attempting Groq model: {model_id}...")
-            response_data = query_llm_chat("groq", model_id, system_prompt, user_prompt, groq_api_key)
-            if response_data:
+            result = query_llm_chat("groq", model_id, system_prompt, user_prompt, groq_api_key)
+            llm_attempts += 1
+            if consider(result, model_id):
                 print(f"✅ Success! Groq model {model_id} generated story script.")
-                successful_model = model_id
                 break
 
     # --- TIER 4: Self-Healing Procedural Narrative Fallback ---
-    if not response_data:
+    if best_data is None:
         print("⚠️ [Tier 4] All AI endpoints unreachable. Activating Self-Healing Narrative Fallback...")
         response_data = {
-            "voiceover": f"In the shadows of the {game} grid, an ancient power awakens. The players thought this was just another harmless server, but they were wrong. Legends speak of a hidden bunker beneath the city, guarded by shifting laser beams and a mystery no code can crack. As the timer counts down, a brave survivor steps forward, facing their ultimate destiny. Will they claim the awakened fruit and conquer the obby, or will the darkness consume everything they worked for? The choice is yours... but time is running out.",
+            "voiceover": (
+                f"The shadows of the {game} grid tremble tonight, because something ancient has finally awakened. "
+                "The players logged in expecting another harmless server, another easy grind, another quiet evening — but they were wrong. "
+                "Deep beneath the city lies a hidden bunker, sealed for years, guarded by shifting laser beams, locked doors, "
+                "and a mystery no code can crack. As the countdown ticks lower, one brave survivor steps forward while everyone else runs. "
+                "They carry nothing but a rusty tool, a half-charged flashlight, and a legend whispered in the lobby for generations. "
+                "Behind every corridor, the darkness watches. Behind every door, the awakened power grows stronger. "
+                "Will they claim the legendary prize before the timer hits zero, or will the bunker claim them instead? "
+                "The choice is theirs... but time is running out, and the grid never forgives the slow."
+            ),
             "new_memory": "The ancient bunker door creaks open, revealing a blinding neon light as a mysterious shadow steps through.",
             "image_prompts": [f"Epic Roblox {game} landscape under heavy dark sky"] * 8
         }
     else:
+        response_data = best_data
+        if best_score > 0:
+            print(f"⚠️ No model hit the {VOICEOVER_MIN_WORDS}-{VOICEOVER_MAX_WORDS} word target (best deviation: {int(best_score)} words). Using closest result.")
         if successful_model:
             save_active_model(successful_model)
 
