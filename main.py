@@ -21,6 +21,16 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # --- CONFIGURATION ---
+# Live free-tier models available via the local OpenCode CLI (verified 2026-08).
+# Ordered strongest-first. All 100% free — no API keys required.
+OPENCODE_FREE_MODELS = [
+    "opencode/nemotron-3-ultra-free",
+    "opencode/nemotron-3.5-lightning-free",
+    "opencode/mimo-v2.5-free",
+    "opencode/hy3-free",
+    "opencode/muse-spark-1.2-contributor-free"
+]
+
 GAMES = [
     "Blox Fruits",
     "Brookhaven",
@@ -79,16 +89,16 @@ def get_character_bible(safe_game_name):
     return "No character bible found for this game."
 
 def load_active_model():
-    """Loads the last successfully used LLM model. Defaults to opencode/deepseek-v4-flash-free."""
+    """Loads the last successfully used LLM model. Defaults to the strongest free OpenCode model."""
     if os.path.exists("active_llm_model.txt"):
         try:
             with open("active_llm_model.txt", "r") as f:
                 model_name = f.read().strip()
-                if model_name:
+                if model_name in OPENCODE_FREE_MODELS:
                     return model_name
         except Exception:
             pass
-    return "opencode/deepseek-v4-flash-free"
+    return OPENCODE_FREE_MODELS[0]
 
 def save_active_model(model_name):
     """Saves the successfully used LLM model name to persistent storage."""
@@ -171,8 +181,8 @@ def create_fallback_image(path, index):
         return False
 
 # --- OPENCODE & LLM API CALLERS ---
-def query_opencode_cli(model, system_prompt, user_prompt):
-    """Priority 1: Queries local OpenCode CLI for free tier AI models (DeepSeek-V4 Flash / Nemotron)."""
+def query_opencode_cli(model, system_prompt, user_prompt, require_voiceover=True):
+    """Priority 1: Queries local OpenCode CLI for free tier AI models. No API key needed."""
     opencode_bin = shutil.which("opencode") or str(Path.home() / ".opencode/bin/opencode")
     if opencode_bin and (Path(opencode_bin).exists() or shutil.which("opencode")):
         try:
@@ -185,14 +195,19 @@ def query_opencode_cli(model, system_prompt, user_prompt):
                 [opencode_bin, "run", "-m", model, full_prompt],
                 capture_output=True,
                 text=True,
-                timeout=45
+                timeout=180
             )
             if res.returncode == 0 and res.stdout:
                 parsed = extract_json(res.stdout)
-                if parsed and "voiceover" in parsed:
-                    vo = parsed["voiceover"].strip()
-                    if not ("Create an intense" in vo or " strictly between" in vo):
-                        return parsed
+                if not isinstance(parsed, dict):
+                    return None
+                if require_voiceover:
+                    if "voiceover" in parsed:
+                        vo = parsed["voiceover"].strip()
+                        if not ("Create an intense" in vo or " strictly between" in vo):
+                            return parsed
+                    return None
+                return parsed
         except Exception as e:
             print(f"[OpenCode CLI {model}] Note: {e}")
     return None
@@ -250,9 +265,6 @@ def generate_script_and_images(game, memory, bible):
     """
     raw_o_key = os.environ.get("OPENCODE_API_KEY", "")
     opencode_api_key = raw_o_key.strip().replace(" ", "").strip("\"'") if raw_o_key else None
-    
-    raw_d_key = os.environ.get("DEEPSEEK_API_KEY", "")
-    deepseek_api_key = raw_d_key.strip().replace(" ", "").strip("\"'") if raw_d_key else None
 
     raw_n_key = os.environ.get("NVIDIA_API_KEY", "")
     nvidia_api_key = raw_n_key.strip().replace(" ", "").strip("\"'") if raw_n_key else None
@@ -287,30 +299,20 @@ Episode Writing Guidelines:
 - Visual pacing: Provide exactly 8 distinct visual scene descriptions in 'image_prompts' that progress chronologically with your voiceover story.
 - Output JSON strictly matching the system instructions."""
 
-    # Priority Tier 1: OpenCode free models & DeepSeek models
-    opencode_free_models = [
-        "opencode/deepseek-v4-flash-free",
-        "opencode/nemotron-3-ultra-free",
-        "opencode/laguna-s-2.1-free"
-    ]
+    # Priority Tier 1: OpenCode free models (local CLI — always free, no keys)
+    opencode_free_models = OPENCODE_FREE_MODELS
 
-    deepseek_models = [
-        "deepseek-chat",
-        "deepseek-reasoner"
-    ]
-
-    # Priority Tier 2: NVIDIA NIM Flagship models
+    # Priority Tier 2: NVIDIA NIM models (free API key from build.nvidia.com)
     nvidia_models = [
         "nvidia/nemotron-3-ultra-550b-a55b",
         "nvidia/llama-3.1-nemotron-70b-instruct"
     ]
 
-    # Priority Tier 3: Groq models
+    # Priority Tier 3: Groq models (free tier API key from console.groq.com)
     groq_models = [
         "llama-3.3-70b-versatile",
         "deepseek-r1-distill-llama-70b",
-        "openai/gpt-oss-20b",
-        "gemma2-9b-it"
+        "openai/gpt-oss-20b"
     ]
 
     sticky_model = load_active_model()
@@ -344,17 +346,7 @@ Episode Writing Guidelines:
                 successful_model = model_id
                 break
 
-    if not response_data and deepseek_api_key:
-        print("🧠 [Tier 1] Querying direct DeepSeek API for Roblox story script...")
-        for model_id in deepseek_models:
-            print(f"  -> Attempting DeepSeek model: {model_id}...")
-            response_data = query_llm_chat("deepseek", model_id, system_prompt, user_prompt, deepseek_api_key)
-            if response_data:
-                print(f"✅ Success! DeepSeek model {model_id} generated story script.")
-                successful_model = model_id
-                break
-
-    # --- TIER 2: Current Best Flagship Model (NVIDIA Nemotron 3 Ultra) ---
+    # --- TIER 2: Free NVIDIA NIM (free API key from build.nvidia.com) ---
     if not response_data and nvidia_api_key:
         print("🧠 [Tier 2] Free tier unavailable. Escalating to current best model: NVIDIA Nemotron 3 Ultra (550B MoE)...")
         for model_id in nvidia_models:
@@ -532,10 +524,10 @@ Episode Writing Guidelines:
     return audio_text, new_memory, image_paths
 
 def evolve_character_bible(game_name, safe_game_name, script_text, current_bible_text):
-    """Dynamically updates the character bible based on narrative developments in the latest script."""
+    """Dynamically updates the character bible based on narrative developments in the latest script.
+    Fully free: uses local OpenCode CLI models first, then Groq free tier as fallback."""
     print(f"Running self-evolution pass for {game_name} Character Bible...")
-    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-    
+
     system_prompt = """You are the Lead Lore Master and Story Architect for our automated Roblox YouTube Shorts channel.
 Your task is to update and evolve the Character Bible for the game based on the events that occurred in the latest episode script.
 
@@ -550,49 +542,53 @@ LATEST EPISODE SCRIPT:
 {script_text}
 
 Analyze the latest episode script for key updates (allies, stats, inventory fruit awakenings, etc.) and write the entire merged and updated Character Bible JSON."""
-    
-    # Try the loaded sticky model
-    model_id = load_active_model()
-    try:
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            model=model_id,
-            response_format={"type": "json_object"}
-        )
-        raw_text = chat_completion.choices[0].message.content
-        updated_bible_data = extract_json(raw_text)
+
+    def save_bible(updated_bible_data):
         if updated_bible_data and isinstance(updated_bible_data, dict):
             filename = f"character_bible_{safe_game_name}.json"
             with open(filename, "w") as f:
                 json.dump(updated_bible_data, f, indent=4)
             print(f"[+] Lore evolution successful! Updated character bible saved to {filename}")
             return True
-        else:
-            print("[-] Evolution pass returned invalid JSON object structure. Leaving bible unchanged.")
+        return False
+
+    # Priority 1: Free local OpenCode CLI models (no API key needed)
+    sticky_model = load_active_model()
+    candidates = [sticky_model] + [m for m in OPENCODE_FREE_MODELS if m != sticky_model]
+    for model_id in candidates:
+        print(f"  -> Attempting OpenCode CLI model: {model_id}...")
+        result = query_opencode_cli(model_id, system_prompt, user_prompt, require_voiceover=False)
+        if save_bible(result):
+            return True
+
+    # Priority 2: Groq free tier (only if a free API key is configured)
+    groq_api_key = os.environ.get("GROQ_API_KEY")
+    if not groq_api_key:
+        print("[-] No GROQ_API_KEY set and all OpenCode models failed. Safely keeping current bible.")
+        return False
+
+    try:
+        from groq import Groq
+        client = Groq(api_key=groq_api_key)
+        for model_id in ["llama-3.3-70b-versatile", "openai/gpt-oss-20b"]:
+            try:
+                chat_completion = client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    model=model_id,
+                    response_format={"type": "json_object"}
+                )
+                raw_text = chat_completion.choices[0].message.content
+                if save_bible(extract_json(raw_text)):
+                    return True
+            except Exception as ex:
+                print(f"[-] Groq evolution pass failed with model {model_id}: {ex}")
     except Exception as e:
-        print(f"[-] Self-evolution pass failed with model {model_id}: {e}. Trying fallback 'llama-3.3-70b-versatile'...")
-        try:
-            chat_completion = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                model="llama-3.3-70b-versatile",
-                response_format={"type": "json_object"}
-            )
-            raw_text = chat_completion.choices[0].message.content
-            updated_bible_data = extract_json(raw_text)
-            if updated_bible_data and isinstance(updated_bible_data, dict):
-                filename = f"character_bible_{safe_game_name}.json"
-                with open(filename, "w") as f:
-                    json.dump(updated_bible_data, f, indent=4)
-                print(f"[+] Lore evolution successful! Updated character bible saved to {filename}")
-                return True
-        except Exception as ex:
-            print(f"[-] Fallback self-evolution pass failed: {ex}. Safely keeping current bible.")
+        print(f"[-] Groq client unavailable: {e}")
+
+    print("[-] All evolution providers failed. Safely keeping current bible.")
     return False
 
 def split_text_for_captions(text, words_per_chunk=3):

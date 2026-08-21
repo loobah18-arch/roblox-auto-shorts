@@ -1,1 +1,1 @@
-nvidia/nemotron-3-ultra-550b-a55b:free
+opencode/nemotron-3-ultra-free

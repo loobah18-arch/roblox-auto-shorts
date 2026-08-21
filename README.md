@@ -13,7 +13,7 @@ Every day at **12:00 UTC** (or manually triggered), GitHub Actions runs the full
         ↓
 2. Load story memory + character bible for that game
         ↓
-3. Generate script + image prompts via Groq AI (LLM)
+3. Generate script + image prompts via free OpenCode AI models (Nemotron 3 Ultra head + fallback chain)
         ↓
 4. Generate 8 vertical scene images via Pollinations AI
         ↓
@@ -81,7 +81,7 @@ Go to **Settings → Secrets and variables → Actions → New repository secret
 
 | Secret | What it is | Required? |
 |---|---|---|
-| `GROQ_API_KEY` | API key from [console.groq.com](https://console.groq.com) | ✅ Yes |
+| `GROQ_API_KEY` | API key from [console.groq.com](https://console.groq.com) | ⚠️ Optional (fallback only — pipeline runs fully free without it) |
 | `CLIENT_ID` | Google OAuth client ID | ✅ Yes |
 | `CLIENT_SECRET` | Google OAuth client secret | ✅ Yes |
 | `REFRESH_TOKEN` | YouTube OAuth refresh token | ✅ Yes |
@@ -112,7 +112,7 @@ roblox-auto-shorts/
 │       └── upload.yml          # GitHub Actions workflow
 ├── assets/                     # Static background images
 ├── bgm/                        # Background music tracks
-├── main.py                     # 🔑 Main pipeline script (FFmpeg, Groq, Edge-TTS, ASS captions)
+├── main.py                     # 🔑 Main pipeline script (FFmpeg, OpenCode free LLMs, Edge-TTS, ASS captions)
 ├── requirements.txt            # Python dependencies
 ├── game_state.json             # Tracks current game rotation & episode counts
 ├── active_llm_model.txt        # Remembers last working LLM
@@ -127,7 +127,7 @@ roblox-auto-shorts/
 
 | Component | Tool |
 |---|---|
-| Script & image prompts | [Groq](https://groq.com) (LLM — llama-3.3-70b / multi-model fallback) |
+| Script & image prompts | [OpenCode free models](https://opencode.ai) (Nemotron 3 Ultra head, multi-model fallback chain) |
 | Image generation | [Pollinations AI](https://pollinations.ai) (free FLUX / Turbo) + HuggingFace |
 | Voiceover | [Edge-TTS](https://github.com/rany2/edge-tts) (Microsoft neural voices) |
 | Video rendering | [FFmpeg](https://ffmpeg.org/) (Pure FFmpeg with Ken Burns effects) |
@@ -149,8 +149,8 @@ roblox-auto-shorts/
 - Ensure your YouTube OAuth refresh token hasn't expired
 
 **LLM quota errors**
-- Groq free tier has daily limits; the pipeline auto-falls back through multiple models
-- Check [console.groq.com](https://console.groq.com) for quota status
+- The pipeline runs on free OpenCode models via the local CLI (no key needed); Groq/NVIDIA are optional fallbacks
+- Check `active_llm_model.txt` to see which model last succeeded
 
 **Workflow doesn't trigger on schedule**
 - GitHub disables scheduled workflows after 60 days of repo inactivity
