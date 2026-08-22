@@ -7,7 +7,7 @@
         },
         {
             "Name": "Hidden Bunker",
-            "Description": "A secret underground location beneath the city, protected by laser beams and a mysterious code"
+            "Description": "A secret underground location beneath the city, protected by laser beams and a mysterious code. The bunker is alive \u2014 its code rewrites itself in real-time and lasers shift formation. It decides whether intruders leave with power or become its next guardian."
         }
     ],
     "Characters": [
@@ -16,7 +16,9 @@
             "Role": "Protagonist",
             "Traits": [
                 "Courageous",
-                "Determined"
+                "Determined",
+                "Precise",
+                "Resilient"
             ],
             "Stats": {
                 "Health": 100,
@@ -24,30 +26,62 @@
                 "Agility": 15,
                 "Intelligence": 8
             },
-            "Inventory": [],
+            "Inventory": [
+                "Awakened Fruit"
+            ],
             "Goals": [
                 "Claim the awakened fruit",
-                "Conquer the obby"
+                "Conquer the obby",
+                "Survive the bunker's judgment",
+                "Escape with power or accept guardianship"
             ],
-            "Relationships": {}
+            "Relationships": {
+                "The Entity": "Watched by the silent guardian of vanished players; the entity observed the Survivor's obby run and witnessed their arrival at the fruit"
+            }
+        },
+        {
+            "Name": "The Entity",
+            "Role": "Guardian / Antagonist",
+            "Traits": [
+                "Silent observer",
+                "Woven from static and whispered usernames",
+                "Ancient",
+                "Judgmental"
+            ],
+            "Stats": {
+                "Health": "Unknown",
+                "Strength": "Unknown",
+                "Agility": "Unknown",
+                "Intelligence": "Unknown"
+            },
+            "Inventory": [],
+            "Goals": [
+                "Guard the awakened fruit",
+                "Test intruders",
+                "Decide fate of those who reach the chamber"
+            ],
+            "Relationships": {
+                "Brave Survivor": "Watched the Survivor complete the obby and reach the fruit; whispered chorus crescendoed at final jump",
+                "Vanished Players": "Composed of the whispered usernames of those who vanished before"
+            }
         }
     ],
     "Objects": [
         {
             "Name": "Awakened Fruit",
-            "Description": "A powerful, ancient fruit with unknown abilities"
+            "Description": "A powerful, ancient fruit with unknown abilities. Glows faintly at the bunker chamber's center, casting long shadows across the obby. Within reach after completing the deadly obstacle course."
         },
         {
             "Name": "Laser Beams",
-            "Description": "Shifting beams that guard the hidden bunker"
+            "Description": "Shifting beams that guard the hidden bunker. Crimson tripwires that slice the darkness. Can shift formation in real-time as the bunker's defenses adapt."
         },
         {
             "Name": "Mysterious Code",
-            "Description": "A code that protects the hidden bunker, unable to be cracked by any known means"
+            "Description": "A code that protects the hidden bunker, unable to be cracked by any known means. Etched into ancient concrete, pulsing with rhythm. Rewrites itself in real-time as the bunker decides an intruder's fate."
         },
         {
             "Name": "Obby",
-            "Description": "A challenging obstacle course"
+            "Description": "A challenging obstacle course within the bunker. Features deadly platforms suspended over a void. Requires precision jumping and agility as the only weapon against the abyss beneath. The final jump brings the player within reach of the awakened fruit."
         }
     ]
 }
