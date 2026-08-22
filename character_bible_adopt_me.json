@@ -6,63 +6,144 @@
             "name": "Brave Survivor",
             "traits": [
                 "courageous",
-                "determined"
+                "determined",
+                "resourceful",
+                "quick-thinking"
             ],
             "stats": {
                 "health": 100,
-                "strength": 10,
-                "agility": 15,
-                "intelligence": 12
+                "strength": 12,
+                "agility": 18,
+                "intelligence": 15
             },
             "inventory": [
                 {
                     "name": "Awakened Fruit",
                     "type": "power-up",
-                    "description": "A mysterious fruit with unknown powers"
+                    "description": "A mysterious fruit now pulsing with activated energy, casting light that reveals hidden patterns. Its frequency attracts both lasers and enemy targeting systems."
                 }
             ],
             "goals": [
                 "Claim the awakened fruit",
-                "Conquer the obby"
+                "Conquer the obby",
+                "Solve the mystery code before the gate seals",
+                "Survive the rival's assault",
+                "Defeat the massive entity descending from above"
             ],
             "obstacles": [
-                "Shifting laser beams",
-                "Mystery code"
+                "Shifting laser beams that hunt and rewrite their patterns",
+                "Mystery code etched into the bunker's core",
+                "Rival's missile pods with fruit-frequency targeting",
+                "3-minute countdown until obby's final gate seals",
+                "Massive entity descending through blast doors"
             ],
             "allies": [],
             "enemies": [
+                "Darkness",
+                "The Rival",
+                "Massive Entity from Above"
+            ]
+        },
+        {
+            "name": "The Rival",
+            "traits": [
+                "ruthless",
+                "technologically advanced",
+                "strategic"
+            ],
+            "stats": {
+                "health": 120,
+                "strength": 15,
+                "agility": 10,
+                "intelligence": 18
+            },
+            "inventory": [
+                {
+                    "name": "Missile Pods",
+                    "type": "weapon",
+                    "description": "Mechanical flower-like pods that unfold to reveal targeting systems locked to the Awakened Fruit's frequency"
+                }
+            ],
+            "goals": [
+                "Claim the Awakened Fruit for themselves",
+                "Eliminate the Brave Survivor"
+            ],
+            "obstacles": [
+                "Brave Survivor's agility and fruit possession"
+            ],
+            "allies": [],
+            "enemies": [
+                "Brave Survivor",
                 "Darkness"
+            ]
+        },
+        {
+            "name": "Massive Entity",
+            "traits": [
+                "colossal",
+                "awakening",
+                "unstoppable"
+            ],
+            "stats": {
+                "health": 500,
+                "strength": 50,
+                "agility": 5,
+                "intelligence": 8
+            },
+            "inventory": [],
+            "goals": [
+                "Consume everything in the bunker",
+                "Claim the Awakened Fruit"
+            ],
+            "obstacles": [
+                "Blast doors (breaching)",
+                "Brave Survivor",
+                "The Rival"
+            ],
+            "allies": [
+                "Darkness"
+            ],
+            "enemies": [
+                "Brave Survivor",
+                "The Rival"
             ]
         }
     ],
     "locations": [
         {
             "name": "Hidden Bunker",
-            "description": "A secret underground bunker with a mystery to uncover",
+            "description": "A secret underground bunker with a mystery to uncover. Now a active combat zone with self-rewriting laser grids and a pulsing core mystery code.",
             "obstacles": [
-                "Shifting laser beams",
-                "Mystery code"
+                "Shifting laser beams that hunt and rewrite their patterns",
+                "Mystery code etched into the bunker's core",
+                "Rival's missile pods targeting the fruit",
+                "Massive entity breaching through blast doors"
             ],
             "rewards": [
-                "Awakened Fruit"
+                "Awakened Fruit (now active)",
+                "Mystery code solution",
+                "Obby access"
             ]
         },
         {
             "name": "Grid-based City",
-            "description": "The main city where players interact and play",
+            "description": "The main city where players interact and play. Something massive is descending from here into the bunker.",
             "locationsOfInterest": [
-                "Hidden Bunker"
+                "Hidden Bunker",
+                "Blast Doors (breach point)"
             ]
         },
         {
             "name": "Obby",
-            "description": "A challenging obstacle course to conquer",
-            "difficultyLevel": "High"
+            "description": "A challenging obstacle course to conquer. Final gate seals in 3 minutes.",
+            "difficultyLevel": "Extreme",
+            "timeLimit": "3 minutes until final gate seals forever"
         }
     ],
     "plot": {
-        "mainQuest": "Claim the awakened fruit and conquer the obby",
-        "timeLimit": "Countdown timer",
-        "consequencesOfFailure": "Darkness consumes everything"
+        "mainQuest": "Claim the awakened fruit, solve the mystery code, survive the rival and massive entity, and conquer the obby before the final gate seals",
+        "timeLimit": "3 minutes until obby's final gate seals forever",
+        "consequencesOfFailure": "Darkness consumes everything; the obby becomes inaccessible; the Awakened Fruit's power is lost to enemies",
+        "currentState": "The true battle hasn't started. It's just waking up. Three-way conflict: Brave Survivor vs Rival vs Massive Entity, with Darkness orchestrating."
     }
 }
