@@ -4,7 +4,8 @@
         "environment": "Murder Mystery 2 grid",
         "locations": [
             "hidden bunker",
-            "city"
+            "city",
+            "cobblestone streets"
         ]
     },
     "characters": [
@@ -12,54 +13,191 @@
             "characterName": "Brave Survivor",
             "traits": [
                 "brave",
-                "daring"
+                "daring",
+                "decisive",
+                "loyal",
+                "self-sacrificing"
+            ],
+            "inventory": [
+                "awakened fruit"
+            ],
+            "stats": {
+                "health": 100,
+                "speed": 10,
+                "intelligence": 5,
+                "power": 0
+            },
+            "allies": [
+                "Trusted Ally",
+                "Sheriff"
+            ],
+            "enemies": [
+                "The Murderer"
+            ],
+            "goals": [
+                "claim the awakened fruit",
+                "conquer the obby",
+                "save the trusted ally",
+                "stop the Murderer"
+            ]
+        },
+        {
+            "characterName": "Trusted Ally",
+            "traits": [
+                "trusted",
+                "targeted",
+                "cornered"
             ],
             "inventory": [],
             "stats": {
                 "health": 100,
-                "speed": 10,
-                "intelligence": 5
+                "speed": 8,
+                "intelligence": 6
+            },
+            "allies": [
+                "Brave Survivor"
+            ],
+            "enemies": [
+                "The Murderer"
+            ],
+            "goals": [
+                "survive the Murderer's blade",
+                "escape the city"
+            ]
+        },
+        {
+            "characterName": "The Murderer",
+            "traits": [
+                "malicious",
+                "deadly",
+                "hunting",
+                "blade-wielding"
+            ],
+            "inventory": [
+                "blade"
+            ],
+            "stats": {
+                "health": 100,
+                "speed": 12,
+                "intelligence": 7
             },
             "allies": [],
-            "enemies": [],
+            "enemies": [
+                "Brave Survivor",
+                "Trusted Ally",
+                "Sheriff"
+            ],
             "goals": [
+                "eliminate the trusted ally",
                 "claim the awakened fruit",
-                "conquer the obby"
+                "kill the Brave Survivor"
+            ]
+        },
+        {
+            "characterName": "Sheriff",
+            "traits": [
+                "authoritative",
+                "investigating",
+                "evidence-holder"
+            ],
+            "inventory": [
+                "badge",
+                "evidence"
+            ],
+            "stats": {
+                "health": 100,
+                "speed": 9,
+                "intelligence": 8
+            },
+            "allies": [
+                "Brave Survivor"
+            ],
+            "enemies": [
+                "The Murderer"
+            ],
+            "goals": [
+                "solve the mystery",
+                "apprehend the Murderer",
+                "protect the innocent"
             ]
         }
     ],
     "objects": [
         {
             "objectName": "awakened fruit",
-            "description": "ancient power",
+            "description": "ancient power older than the game itself, pulsing with energy that paints walls in colors no Roblox palette holds",
             "location": "hidden bunker",
             "properties": [
-                "grants unknown power"
+                "grants unknown power",
+                "energy surge on contact",
+                "ground trembles when touched",
+                "ancient power awakening",
+                "colors beyond Roblox palette"
             ]
         },
         {
             "objectName": "laser beams",
-            "description": "shifting laser beams",
+            "description": "shifting laser beams guarding the hidden bunker in shifting geometries",
             "location": "hidden bunker",
             "properties": [
-                "guarding the bunker"
+                "guarding the bunker",
+                "require precision to navigate",
+                "shift in geometric patterns",
+                "three-minute timer challenge"
             ]
         },
         {
             "objectName": "obby",
-            "description": "challenge to conquer",
+            "description": "challenge to conquer in the city",
             "location": "city",
             "properties": [
                 "requires bravery and skill to conquer"
+            ]
+        },
+        {
+            "objectName": "Sheriff's badge",
+            "description": "badge that catches flickering neon, holding crucial evidence",
+            "location": "city",
+            "properties": [
+                "holds evidence",
+                "identifies the Murderer",
+                "reveals trusted ally as next target"
+            ]
+        },
+        {
+            "objectName": "Murderer's blade",
+            "description": "deadly weapon rising to strike the cornered ally",
+            "location": "city",
+            "properties": [
+                "lethal",
+                "wielded by the Murderer"
             ]
         }
     ],
     "events": [
         {
             "eventName": "awakening of ancient power",
-            "description": "ancient power awakens in the hidden bunker",
+            "description": "ancient power awakens in the hidden bunker as the timer counts down",
             "location": "hidden bunker",
             "time": "as the timer counts down"
+        },
+        {
+            "eventName": "the crossroads choice",
+            "description": "Brave Survivor stands at the crossroads: claim the awakened fruit's power or save the trusted ally from the Murderer's blade",
+            "location": "hidden bunker and city",
+            "time": "timer at zero, simultaneous with ally's scream"
+        },
+        {
+            "eventName": "ally cornered",
+            "description": "trusted ally cornered in the city's heart, Murderer's blade rising as a scream tears through the night",
+            "location": "city",
+            "time": "simultaneous with fruit contact"
+        },
+        {
+            "eventName": "sheriff's revelation",
+            "description": "Sheriff's badge reveals evidence identifying the Murderer and marking the trusted ally as the next target",
+            "location": "city",
+            "time": "before the bunker race"
         }
     ]
 }
