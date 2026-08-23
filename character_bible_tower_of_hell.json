@@ -3,19 +3,27 @@
         "name": "The Survivor",
         "traits": [
             "brave",
-            "determined"
+            "determined",
+            "bravery"
         ],
         "stats": {
-            "agility": "untested",
-            "intelligence": "untested",
-            "strength": "untested"
+            "agility": "tested",
+            "intelligence": "tested",
+            "strength": "tested"
         },
-        "inventory": [],
-        "allies": null,
-        "enemies": null,
+        "inventory": [
+            "Awakened Fruit"
+        ],
+        "allies": [
+            "Forgotten Souls"
+        ],
+        "enemies": [
+            "The Tower"
+        ],
         "goals": [
-            " Claim the awakened fruit",
-            "Conquer the obby"
+            "Claim the awakened fruit",
+            "Conquer the obby",
+            "Crack the mystery code"
         ],
         "obstacles": [
             "Shifting laser beams",
@@ -23,16 +31,22 @@
             "Time limit"
         ]
     },
-    "npcs": [],
+    "npcs": [
+        {
+            "name": "Forgotten Soul",
+            "description": "Whispers from the void, guiding or misleading"
+        }
+    ],
     "locations": {
         "Tower of Hell grid": {
-            "description": "A server with a hidden secret",
+            "description": "A server with a hidden secret, shrouded in thunderous dread and a bruised sky",
             "notableFeatures": [
-                "Hidden bunker beneath the city"
+                "Hidden bunker beneath the city",
+                "Shifting laser beams carving the air like razors"
             ]
         },
         "Hidden Bunker": {
-            "description": "A guarded area with a mystery to crack",
+            "description": "A guarded area with a mystery to crack, guarded by shifting laser beams and a mystery code waiting to be cracked",
             "notableFeatures": [
                 "Shifting laser beams",
                 "Mystery code"
@@ -41,8 +55,12 @@
     },
     "items": {
         "Awakened Fruit": {
-            "description": "A powerful fruit with unknown abilities",
-            "properties": null
+            "description": "A powerful fruit with unknown abilities, dormant within The Survivor",
+            "properties": [
+                "dormant",
+                "awakening",
+                "powerful"
+            ]
         }
     }
 }
