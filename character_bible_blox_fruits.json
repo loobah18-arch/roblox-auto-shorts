@@ -4,20 +4,29 @@
             "name": "Brave Survivor",
             "traits": [
                 "courageous",
-                "determined"
+                "determined",
+                "resilient"
             ],
             "stats": {
                 "health": 100,
-                "energy": 100
+                "energy": 95
             },
-            "inventory": [],
-            "allies": [],
-            "enemies": [],
+            "inventory": [
+                "Awakened Sea Fruit"
+            ],
+            "allies": [
+                "Ancient Sea Spirits"
+            ],
+            "enemies": [
+                "Slumbering Darkness"
+            ],
             "storyProgress": {
-                "currentObjective": "Claim the awakened fruit and conquer the obby",
-                "currentChallenge": "Navigate the hidden bunker and avoid shifting laser beams"
+                "currentObjective": "Solve the riddle of shifting tides and claim the awakened fruit",
+                "currentChallenge": "Navigate the Sea God's Throne chamber before the ocean above cracks further"
             },
-            "fruitAwakenings": null
+            "fruitAwakenings": [
+                "Sea God's Throne fruit"
+            ]
         }
     ],
     "locations": [
@@ -28,6 +37,17 @@
             "notableFeatures": [
                 "Laser beam traps",
                 "Mystery code to crack"
+            ]
+        },
+        {
+            "name": "Sea God's Throne Chamber",
+            "description": "An ancient chamber with luminous sea serpent murals, cobalt energy pulsing from the throne, and shifting tides riddles",
+            "accessibility": "Restricted",
+            "notableFeatures": [
+                "Sea serpent murals that shift in torchlight",
+                "Cobalt energy throne with trident prongs",
+                "Riddle of shifting tides",
+                "Cracked stone allowing ocean water to seep through"
             ]
         },
         {
@@ -46,11 +66,17 @@
             "description": "A mysterious and ancient power with unknown abilities",
             "location": "Hidden Bunker",
             "acquired": false
+        },
+        {
+            "name": "Awakened Sea Fruit",
+            "description": "A cobalt-infused awakened fruit from the Sea God's Throne, pulsating with oceanic power",
+            "location": "Sea God's Throne Chamber",
+            "acquired": true
         }
     ],
     "storyArcs": {
         "mainStory": {
-            "description": "The brave survivor must navigate the hidden bunker, claim the awakened fruit, and conquer the obby before time runs out",
+            "description": "The brave survivor must navigate the hidden bunker, claim the awakened fruit, and conquer the obby before time runs out, now facing the Sea God's Throne and the riddle of shifting tides",
             "currentEpisode": 1,
             "totalEpisodes": null
         }
