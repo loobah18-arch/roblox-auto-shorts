@@ -7,46 +7,51 @@
         },
         {
             "Name": "Hidden Bunker",
-            "Description": "A secret underground location beneath the city, protected by laser beams and a mysterious code. The bunker is alive \u2014 its code rewrites itself in real-time and lasers shift formation. It decides whether intruders leave with power or become its next guardian."
+            "Description": "A secret underground location beneath the city, protected by laser beams and a mysterious code. The bunker is alive \u2014 its code rewrites itself in real-time and lasers shift formation. It decides whether intruders leave with power or become its next guardian. A deeper layer has awakened beneath the original chamber; the obby platforms dissolve into the widening void. Lasers reorganize into a throne of crimson geometry. The bunker etches the chosen username into its spine."
         }
     ],
     "Characters": [
         {
-            "Name": "Brave Survivor",
-            "Role": "Protagonist",
+            "Name": "Sentinel (formerly Brave Survivor)",
+            "Role": "Protagonist / Chosen Guardian",
             "Traits": [
                 "Courageous",
                 "Determined",
                 "Precise",
-                "Resilient"
+                "Resilient",
+                "Memory-Bearer",
+                "Code-Rewritten"
             ],
             "Stats": {
-                "Health": 100,
-                "Strength": 10,
-                "Agility": 15,
-                "Intelligence": 8
+                "Health": "UNKNOWN",
+                "Strength": "REWRITTEN",
+                "Agility": "REWRITTEN",
+                "Intelligence": "REWRITTEN"
             },
             "Inventory": [
-                "Awakened Fruit"
+                "Awakened Fruit (Active)"
             ],
             "Goals": [
-                "Claim the awakened fruit",
-                "Conquer the obby",
                 "Survive the bunker's judgment",
-                "Escape with power or accept guardianship"
+                "Accept or fall to the deeper layer",
+                "Bear the memories of vanished players",
+                "Fulfill the Sentinel designation"
             ],
             "Relationships": {
-                "The Entity": "Watched by the silent guardian of vanished players; the entity observed the Survivor's obby run and witnessed their arrival at the fruit"
+                "The Entity": "Watched the Survivor complete the obby and reach the fruit; whispered chorus crescendoed at final jump; now commands ACCEPT OR FALL; reorganized lasers into throne; etched SENTINEL into bunker's spine",
+                "Vanished Players": "Their memories, failed jumps, final breaths, and choices now flood the Survivor; voices hum within the Awakened Fruit"
             }
         },
         {
             "Name": "The Entity",
-            "Role": "Guardian / Antagonist",
+            "Role": "Guardian / Antagonist / Judge",
             "Traits": [
                 "Silent observer",
                 "Woven from static and whispered usernames",
                 "Ancient",
-                "Judgmental"
+                "Judgmental",
+                "Commanding",
+                "Architect of the Throne"
             ],
             "Stats": {
                 "Health": "Unknown",
@@ -58,10 +63,12 @@
             "Goals": [
                 "Guard the awakened fruit",
                 "Test intruders",
-                "Decide fate of those who reach the chamber"
+                "Decide fate of those who reach the chamber",
+                "Enforce the bunker's choice: ACCEPT OR FALL",
+                "Awaken the deeper layer"
             ],
             "Relationships": {
-                "Brave Survivor": "Watched the Survivor complete the obby and reach the fruit; whispered chorus crescendoed at final jump",
+                "Sentinel": "Watched the Survivor complete the obby and reach the fruit; whispered chorus crescendoed at final jump; now commands ACCEPT OR FALL; reorganized lasers into throne; etched SENTINEL into bunker's spine",
                 "Vanished Players": "Composed of the whispered usernames of those who vanished before"
             }
         }
@@ -69,19 +76,23 @@
     "Objects": [
         {
             "Name": "Awakened Fruit",
-            "Description": "A powerful, ancient fruit with unknown abilities. Glows faintly at the bunker chamber's center, casting long shadows across the obby. Within reach after completing the deadly obstacle course."
+            "Description": "A powerful, ancient fruit with unknown abilities. Glows faintly at the bunker chamber's center, casting long shadows across the obby. Within reach after completing the deadly obstacle course. Now active in the Survivor's grip \u2014 alive, ancient, humming with the voices of a thousand vanished players. Power surges through the bearer, rewriting stats, purpose, and very code. Its light blinds; health bars flicker from 100 to UNKNOWN."
         },
         {
             "Name": "Laser Beams",
-            "Description": "Shifting beams that guard the hidden bunker. Crimson tripwires that slice the darkness. Can shift formation in real-time as the bunker's defenses adapt."
+            "Description": "Shifting beams that guard the hidden bunker. Crimson tripwires that slice the darkness. Can shift formation in real-time as the bunker's defenses adapt. Now reorganized into a throne of crimson geometry at the Entity's command."
         },
         {
             "Name": "Mysterious Code",
-            "Description": "A code that protects the hidden bunker, unable to be cracked by any known means. Etched into ancient concrete, pulsing with rhythm. Rewrites itself in real-time as the bunker decides an intruder's fate."
+            "Description": "A code that protects the hidden bunker, unable to be cracked by any known means. Etched into ancient concrete, pulsing with rhythm. Rewrites itself in real-time as the bunker decides an intruder's fate. Has etched the username SENTINEL into the bunker's spine."
         },
         {
             "Name": "Obby",
-            "Description": "A challenging obstacle course within the bunker. Features deadly platforms suspended over a void. Requires precision jumping and agility as the only weapon against the abyss beneath. The final jump brings the player within reach of the awakened fruit."
+            "Description": "A challenging obstacle course within the bunker. Features deadly platforms suspended over a void. Requires precision jumping and agility as the only weapon against the abyss beneath. The final jump brings the player within reach of the awakened fruit. Platforms now dissolve behind the Survivor; the void yawns wider; a deeper layer awakens."
+        },
+        {
+            "Name": "SENTINEL Designation",
+            "Description": "The word burned across every surface of the bunker by the rewriting code. The title etched into the bunker's spine, marking the Survivor as the chosen guardian. The choice was never the Survivor's \u2014 the bunker decides."
         }
     ]
 }
