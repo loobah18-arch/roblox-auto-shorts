@@ -16,7 +16,9 @@
                 "daring",
                 "decisive",
                 "loyal",
-                "self-sacrificing"
+                "self-sacrificing",
+                "ancient-powered",
+                "promise-bound"
             ],
             "inventory": [
                 "awakened fruit"
@@ -24,8 +26,8 @@
             "stats": {
                 "health": 100,
                 "speed": 10,
-                "intelligence": 5,
-                "power": 0
+                "intelligence": 7,
+                "power": 8
             },
             "allies": [
                 "Trusted Ally",
@@ -38,7 +40,9 @@
                 "claim the awakened fruit",
                 "conquer the obby",
                 "save the trusted ally",
-                "stop the Murderer"
+                "stop the Murderer",
+                "master ancient abilities",
+                "fulfill promise to ally"
             ]
         },
         {
@@ -46,11 +50,12 @@
             "traits": [
                 "trusted",
                 "targeted",
-                "cornered"
+                "cornered",
+                "desperate"
             ],
             "inventory": [],
             "stats": {
-                "health": 100,
+                "health": 85,
                 "speed": 8,
                 "intelligence": 6
             },
@@ -62,7 +67,8 @@
             ],
             "goals": [
                 "survive the Murderer's blade",
-                "escape the city"
+                "escape the city",
+                "reach safety"
             ]
         },
         {
@@ -71,7 +77,8 @@
                 "malicious",
                 "deadly",
                 "hunting",
-                "blade-wielding"
+                "blade-wielding",
+                "relentless"
             ],
             "inventory": [
                 "blade"
@@ -98,7 +105,8 @@
             "traits": [
                 "authoritative",
                 "investigating",
-                "evidence-holder"
+                "evidence-holder",
+                "too-late"
             ],
             "inventory": [
                 "badge",
@@ -118,7 +126,8 @@
             "goals": [
                 "solve the mystery",
                 "apprehend the Murderer",
-                "protect the innocent"
+                "protect the innocent",
+                "redeem delayed evidence"
             ]
         }
     ],
@@ -132,7 +141,12 @@
                 "energy surge on contact",
                 "ground trembles when touched",
                 "ancient power awakening",
-                "colors beyond Roblox palette"
+                "colors beyond Roblox palette",
+                "grants abilities no Survivor has ever claimed",
+                "ancient light bleeds through fingers on contact",
+                "power surges through veins",
+                "burns hotter when ally in danger",
+                "screams when blade falls"
             ]
         },
         {
@@ -151,7 +165,8 @@
             "description": "challenge to conquer in the city",
             "location": "city",
             "properties": [
-                "requires bravery and skill to conquer"
+                "requires bravery and skill to conquer",
+                "waits in the city"
             ]
         },
         {
@@ -161,7 +176,9 @@
             "properties": [
                 "holds evidence",
                 "identifies the Murderer",
-                "reveals trusted ally as next target"
+                "reveals trusted ally as next target",
+                "catches flickering light",
+                "evidence clutched too late"
             ]
         },
         {
@@ -170,7 +187,10 @@
             "location": "city",
             "properties": [
                 "lethal",
-                "wielded by the Murderer"
+                "wielded by the Murderer",
+                "catches flickering light off Sheriff's badge",
+                "descends on cornered ally",
+                "falls at moment of choice"
             ]
         }
     ],
@@ -198,6 +218,24 @@
             "description": "Sheriff's badge reveals evidence identifying the Murderer and marking the trusted ally as the next target",
             "location": "city",
             "time": "before the bunker race"
+        },
+        {
+            "eventName": "fruit power awakening",
+            "description": "Brave Survivor touches awakened fruit, ancient light bleeds through fingers, ground trembles, power surges through veins granting abilities no Survivor has ever claimed",
+            "location": "hidden bunker",
+            "time": "timer hits zero"
+        },
+        {
+            "eventName": "the blade falls",
+            "description": "Murderer's blade descends on cornered Trusted Ally as fruit screams and Brave Survivor moves to intervene",
+            "location": "city",
+            "time": "simultaneous with fruit awakening"
+        },
+        {
+            "eventName": "the choice made",
+            "description": "Brave Survivor chooses to move - power or promise, ancient abilities or ally's life - the decision defines the path forward",
+            "location": "hidden bunker and city",
+            "time": "blade falls, fruit screams, Survivor moves"
         }
     ]
 }
