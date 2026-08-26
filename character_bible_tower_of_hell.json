@@ -4,10 +4,11 @@
         "traits": [
             "brave",
             "determined",
-            "bravery"
+            "resourceful",
+            "psychologically tested"
         ],
         "stats": {
-            "agility": "tested",
+            "agility": "highly tested",
             "intelligence": "tested",
             "strength": "tested"
         },
@@ -18,48 +19,59 @@
             "Forgotten Souls"
         ],
         "enemies": [
-            "The Tower"
+            "The Tower",
+            "The Mirror Self"
         ],
         "goals": [
             "Claim the awakened fruit",
             "Conquer the obby",
-            "Crack the mystery code"
+            "Crack the mystery code",
+            "Confront the Mirror Self"
         ],
         "obstacles": [
             "Shifting laser beams",
             "Mystery code",
-            "Time limit"
+            "Time limit",
+            "Mirror Self confrontation",
+            "Psychological whispers from Forgotten Souls"
         ]
     },
     "npcs": [
         {
             "name": "Forgotten Soul",
-            "description": "Whispers from the void, guiding or misleading"
+            "description": "Whispers from the void, now revealed as dual-natured\u2014some guide forward, others drag down. They screamed in unison during the code attempt."
+        },
+        {
+            "name": "The Mirror Self",
+            "description": "A doppelganger reflection wearing The Survivor's face, grinning and holding a blade, dwelling within the Hidden Bunker"
         }
     ],
     "locations": {
         "Tower of Hell grid": {
-            "description": "A server with a hidden secret, shrouded in thunderous dread and a bruised sky",
+            "description": "A server with a hidden secret, shrouded in thunderous dread and a bruised sky. The corridor now warps\u2014walls breathe, floors tilt.",
             "notableFeatures": [
                 "Hidden bunker beneath the city",
-                "Shifting laser beams carving the air like razors"
+                "Shifting laser beams carving the air like razors",
+                "Warping corridor with breathing walls and tilting floors"
             ]
         },
         "Hidden Bunker": {
-            "description": "A guarded area with a mystery to crack, guarded by shifting laser beams and a mystery code waiting to be cracked",
+            "description": "A guarded area with a mystery to crack, now breached. Inside: a mirror holding a sinister reflection wearing The Survivor's face.",
             "notableFeatures": [
                 "Shifting laser beams",
-                "Mystery code"
+                "Mystery code (breached)",
+                "Mirror with doppelganger reflection"
             ]
         }
     },
     "items": {
         "Awakened Fruit": {
-            "description": "A powerful fruit with unknown abilities, dormant within The Survivor",
+            "description": "A powerful fruit with unknown abilities, now actively surging within The Survivor like a waking beast during moments of extreme pressure",
             "properties": [
-                "dormant",
                 "awakening",
-                "powerful"
+                "powerful",
+                "surging",
+                "responsive to danger"
             ]
         }
     }
