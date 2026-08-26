@@ -5,24 +5,23 @@
             "traits": [
                 "courageous",
                 "determined",
-                "resilient"
+                "resilient",
+                "agile"
             ],
             "stats": {
-                "health": 100,
-                "energy": 95
+                "health": 80,
+                "energy": 70
             },
             "inventory": [
                 "Awakened Sea Fruit"
             ],
-            "allies": [
-                "Ancient Sea Spirits"
-            ],
+            "allies": [],
             "enemies": [
                 "Slumbering Darkness"
             ],
             "storyProgress": {
-                "currentObjective": "Solve the riddle of shifting tides and claim the awakened fruit",
-                "currentChallenge": "Navigate the Sea God's Throne chamber before the ocean above cracks further"
+                "currentObjective": "Escape the collapsing Sea God's Throne Chamber and survive the Slumbering Darkness's assault",
+                "currentChallenge": "Evade the massive tentacle of Darkness and reach safety while the ocean dome cracks"
             },
             "fruitAwakenings": [
                 "Sea God's Throne fruit"
@@ -32,22 +31,21 @@
     "locations": [
         {
             "name": "Hidden Bunker",
-            "description": "A secret underground facility with shifting laser beams and a mystery to uncover",
+            "description": "A secret underground facility with activated laser grids and a mystery to uncover",
             "accessibility": "Restricted",
             "notableFeatures": [
-                "Laser beam traps",
+                "Activated laser beam traps",
                 "Mystery code to crack"
             ]
         },
         {
-            "name": "Sea God's Throne Chamber",
-            "description": "An ancient chamber with luminous sea serpent murals, cobalt energy pulsing from the throne, and shifting tides riddles",
+            "name": "Flooded Bunker Corridor",
+            "description": "A corridor in the bunker flooded with water, sliced by activated laser beams creating deadly light and shadow corridors",
             "accessibility": "Restricted",
             "notableFeatures": [
-                "Sea serpent murals that shift in torchlight",
-                "Cobalt energy throne with trident prongs",
-                "Riddle of shifting tides",
-                "Cracked stone allowing ocean water to seep through"
+                "Activated laser grid",
+                "Rising water level",
+                "Crumbling stone platforms"
             ]
         },
         {
@@ -69,15 +67,15 @@
         },
         {
             "name": "Awakened Sea Fruit",
-            "description": "A cobalt-infused awakened fruit from the Sea God's Throne, pulsating with oceanic power",
-            "location": "Sea God's Throne Chamber",
+            "description": "A cobalt-infused awakened fruit from the Sea God's Throne, now depleted after unleashing a shockwave to freeze water",
+            "location": "Flooded Bunker Corridor",
             "acquired": true
         }
     ],
     "storyArcs": {
         "mainStory": {
-            "description": "The brave survivor must navigate the hidden bunker, claim the awakened fruit, and conquer the obby before time runs out, now facing the Sea God's Throne and the riddle of shifting tides",
-            "currentEpisode": 1,
+            "description": "The Brave Survivor must navigate the collapsing chamber, evade the Slumbering Darkness, and survive the flood activated by the laser grid, now with the fruit's power temporarily spent",
+            "currentEpisode": 2,
             "totalEpisodes": null
         }
     }
