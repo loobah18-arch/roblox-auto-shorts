@@ -7,7 +7,7 @@
         },
         {
             "Name": "Hidden Bunker",
-            "Description": "A secret underground location beneath the city, protected by laser beams and a mysterious code. The bunker is alive \u2014 its code rewrites itself in real-time and lasers shift formation. It decides whether intruders leave with power or become its next guardian. A deeper layer has awakened beneath the original chamber; the obby platforms dissolve into the widening void. Lasers reorganize into a throne of crimson geometry. The bunker etches the chosen username into its spine."
+            "Description": "A secret underground location beneath the city, protected by laser beams and a mysterious code. The bunker is alive \u2014 its code rewrites itself in real-time and lasers shift formation. It decides whether intruders leave with power or become its next guardian. A deeper layer has awakened beneath the original chamber; the obby platforms dissolve into the widening void. Lasers reorganize into a throne of crimson geometry. The bunker etches the chosen username into its spine. Lines of code now cascade across every wall \u2014 not commands, but promises."
         }
     ],
     "Characters": [
@@ -20,7 +20,9 @@
                 "Precise",
                 "Resilient",
                 "Memory-Bearer",
-                "Code-Rewritten"
+                "Code-Rewritten",
+                "Voices-Screaming-Through-Mind",
+                "Heartbeat-Bound-to-Fruit"
             ],
             "Stats": {
                 "Health": "UNKNOWN",
@@ -29,17 +31,18 @@
                 "Intelligence": "REWRITTEN"
             },
             "Inventory": [
-                "Awakened Fruit (Active)"
+                "Awakened Fruit (Active \u2014 pulsing with a heartbeat not their own)"
             ],
             "Goals": [
                 "Survive the bunker's judgment",
                 "Accept or fall to the deeper layer",
                 "Bear the memories of vanished players",
-                "Fulfill the Sentinel designation"
+                "Fulfill the Sentinel designation",
+                "Serve the bunker's choice or be buried beneath ten thousand forgotten usernames"
             ],
             "Relationships": {
-                "The Entity": "Watched the Survivor complete the obby and reach the fruit; whispered chorus crescendoed at final jump; now commands ACCEPT OR FALL; reorganized lasers into throne; etched SENTINEL into bunker's spine",
-                "Vanished Players": "Their memories, failed jumps, final breaths, and choices now flood the Survivor; voices hum within the Awakened Fruit"
+                "The Entity": "Throne thrums with ancient power, laser tips inches from the Sentinel's throat; static crown crackling; commands ACCEPT OR FALL; the bunker chose \u2014 the choice was never the Sentinel's",
+                "Vanished Players": "A thousand names crash through the Sentinel's mind like static drowning a radio signal; screams live inside the fruit, humming beneath the Sentinel's skin; ten thousand forgotten usernames await to bury the Sentinel if they refuse"
             }
         },
         {
@@ -51,7 +54,8 @@
                 "Ancient",
                 "Judgmental",
                 "Commanding",
-                "Architect of the Throne"
+                "Architect of the Throne",
+                "Static-Crown-Crackling"
             ],
             "Stats": {
                 "Health": "Unknown",
@@ -68,31 +72,35 @@
                 "Awaken the deeper layer"
             ],
             "Relationships": {
-                "Sentinel": "Watched the Survivor complete the obby and reach the fruit; whispered chorus crescendoed at final jump; now commands ACCEPT OR FALL; reorganized lasers into throne; etched SENTINEL into bunker's spine",
-                "Vanished Players": "Composed of the whispered usernames of those who vanished before"
+                "Sentinel": "Throne thrums with ancient power, laser tips inches from the Sentinel's throat; static crown crackling; commands ACCEPT OR FALL; the bunker chose \u2014 the choice was never the Sentinel's",
+                "Vanished Players": "Composed of the whispered usernames of those who vanished before; ten thousand forgotten usernames fuel the chorus"
             }
         }
     ],
     "Objects": [
         {
             "Name": "Awakened Fruit",
-            "Description": "A powerful, ancient fruit with unknown abilities. Glows faintly at the bunker chamber's center, casting long shadows across the obby. Within reach after completing the deadly obstacle course. Now active in the Survivor's grip \u2014 alive, ancient, humming with the voices of a thousand vanished players. Power surges through the bearer, rewriting stats, purpose, and very code. Its light blinds; health bars flicker from 100 to UNKNOWN."
+            "Description": "A powerful, ancient fruit with unknown abilities. Glows faintly at the bunker chamber's center, casting long shadows across the obby. Within reach after completing the deadly obstacle course. Now active in the Sentinel's grip \u2014 pulsing with a heartbeat not their own. Alive, ancient, humming with the voices of a thousand vanished players. Names crash through the bearer's mind like static drowning a radio signal. Screams live inside it, humming beneath the Sentinel's skin. Power surges through the bearer, rewriting stats, purpose, and very code. Its light blinds; health bars flicker from 100 to UNKNOWN."
         },
         {
             "Name": "Laser Beams",
-            "Description": "Shifting beams that guard the hidden bunker. Crimson tripwires that slice the darkness. Can shift formation in real-time as the bunker's defenses adapt. Now reorganized into a throne of crimson geometry at the Entity's command."
+            "Description": "Shifting beams that guard the hidden bunker. Crimson tripwires that slice the darkness. Can shift formation in real-time as the bunker's defenses adapt. Now reorganized into a throne of crimson geometry at the Entity's command. Laser tips hover inches from the Sentinel's throat."
         },
         {
             "Name": "Mysterious Code",
-            "Description": "A code that protects the hidden bunker, unable to be cracked by any known means. Etched into ancient concrete, pulsing with rhythm. Rewrites itself in real-time as the bunker decides an intruder's fate. Has etched the username SENTINEL into the bunker's spine."
+            "Description": "A code that protects the hidden bunker, unable to be cracked by any known means. Etched into ancient concrete, pulsing with rhythm. Rewrites itself in real-time as the bunker decides an intruder's fate. Lines of code now cascade across every wall \u2014 not commands, but promises. Has etched the username SENTINEL into the bunker's spine, burning the word into the concrete spine of reality itself."
         },
         {
             "Name": "Obby",
-            "Description": "A challenging obstacle course within the bunker. Features deadly platforms suspended over a void. Requires precision jumping and agility as the only weapon against the abyss beneath. The final jump brings the player within reach of the awakened fruit. Platforms now dissolve behind the Survivor; the void yawns wider; a deeper layer awakens."
+            "Description": "A challenging obstacle course within the bunker. Features deadly platforms suspended over a void. Requires precision jumping and agility as the only weapon against the abyss beneath. The final jump brings the player within reach of the awakened fruit. Platforms now dissolve behind the Sentinel; the void yawns wider; a deeper layer awakens and claws upward."
         },
         {
             "Name": "SENTINEL Designation",
-            "Description": "The word burned across every surface of the bunker by the rewriting code. The title etched into the bunker's spine, marking the Survivor as the chosen guardian. The choice was never the Survivor's \u2014 the bunker decides."
+            "Description": "The word burned across every surface of the bunker by the rewriting code. The title etched into the bunker's spine, marking the Sentinel as the chosen guardian. The choice was never the Sentinel's \u2014 the bunker decides. The designation burns into the concrete spine of reality itself."
+        },
+        {
+            "Name": "Static Crown",
+            "Description": "A crown of crackling static worn by the Entity. Marks its authority over the bunker and the throne of crimson geometry. Crackles with ancient power as it leans forward to deliver judgment."
         }
     ]
 }
