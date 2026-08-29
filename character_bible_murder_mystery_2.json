@@ -5,7 +5,9 @@
         "locations": [
             "hidden bunker",
             "city",
-            "cobblestone streets"
+            "cobblestone streets",
+            "alley",
+            "city's heart"
         ]
     },
     "characters": [
@@ -18,16 +20,16 @@
                 "loyal",
                 "self-sacrificing",
                 "ancient-powered",
-                "promise-bound"
+                "promise-bound",
+                "power-abandoning",
+                "ally-over-power"
             ],
-            "inventory": [
-                "awakened fruit"
-            ],
+            "inventory": [],
             "stats": {
                 "health": 100,
                 "speed": 10,
-                "intelligence": 7,
-                "power": 8
+                "intelligence": 8,
+                "power": 6
             },
             "allies": [
                 "Trusted Ally",
@@ -37,12 +39,11 @@
                 "The Murderer"
             ],
             "goals": [
-                "claim the awakened fruit",
-                "conquer the obby",
                 "save the trusted ally",
                 "stop the Murderer",
                 "master ancient abilities",
-                "fulfill promise to ally"
+                "fulfill promise to ally",
+                "contain the unleashed fruit power"
             ]
         },
         {
@@ -51,7 +52,9 @@
                 "trusted",
                 "targeted",
                 "cornered",
-                "desperate"
+                "desperate",
+                "survivor",
+                "transfixed"
             ],
             "inventory": [],
             "stats": {
@@ -68,7 +71,8 @@
             "goals": [
                 "survive the Murderer's blade",
                 "escape the city",
-                "reach safety"
+                "reach safety",
+                "understand the ancient power"
             ]
         },
         {
@@ -78,7 +82,9 @@
                 "deadly",
                 "hunting",
                 "blade-wielding",
-                "relentless"
+                "relentless",
+                "frozen",
+                "transfixed"
             ],
             "inventory": [
                 "blade"
@@ -97,7 +103,8 @@
             "goals": [
                 "eliminate the trusted ally",
                 "claim the awakened fruit",
-                "kill the Brave Survivor"
+                "kill the Brave Survivor",
+                "escape the ancient power"
             ]
         },
         {
@@ -106,7 +113,8 @@
                 "authoritative",
                 "investigating",
                 "evidence-holder",
-                "too-late"
+                "too-late",
+                "truth-bearer"
             ],
             "inventory": [
                 "badge",
@@ -127,15 +135,16 @@
                 "solve the mystery",
                 "apprehend the Murderer",
                 "protect the innocent",
-                "redeem delayed evidence"
+                "redeem delayed evidence",
+                "contain the ancient power"
             ]
         }
     ],
     "objects": [
         {
             "objectName": "awakened fruit",
-            "description": "ancient power older than the game itself, pulsing with energy that paints walls in colors no Roblox palette holds",
-            "location": "hidden bunker",
+            "description": "ancient power older than the game itself, pulsing with energy that paints walls in colors no Roblox palette holds. Abandoned by the Survivor, it now claims itself - ungifted, unclaimed, rising from a crack in the ground",
+            "location": "hidden bunker, then city ground crack",
             "properties": [
                 "grants unknown power",
                 "energy surge on contact",
@@ -146,7 +155,13 @@
                 "ancient light bleeds through fingers on contact",
                 "power surges through veins",
                 "burns hotter when ally in danger",
-                "screams when blade falls"
+                "screams when blade falls",
+                "now claiming itself",
+                "ungifted and unclaimed",
+                "rises from ground crack",
+                "causes city-wide tremors",
+                "freezes the Murderer's blade",
+                "transfixes both killer and prey"
             ]
         },
         {
@@ -178,19 +193,22 @@
                 "identifies the Murderer",
                 "reveals trusted ally as next target",
                 "catches flickering light",
-                "evidence clutched too late"
+                "evidence clutched too late",
+                "casts light on the Murderer's blade"
             ]
         },
         {
             "objectName": "Murderer's blade",
-            "description": "deadly weapon rising to strike the cornered ally",
+            "description": "deadly weapon rising to strike the cornered ally, stopped by ancient power",
             "location": "city",
             "properties": [
                 "lethal",
                 "wielded by the Murderer",
                 "catches flickering light off Sheriff's badge",
                 "descends on cornered ally",
-                "falls at moment of choice"
+                "falls at moment of choice",
+                "stopped by ancient power",
+                "catches neon as it falls"
             ]
         }
     ],
@@ -236,6 +254,24 @@
             "description": "Brave Survivor chooses to move - power or promise, ancient abilities or ally's life - the decision defines the path forward",
             "location": "hidden bunker and city",
             "time": "blade falls, fruit screams, Survivor moves"
+        },
+        {
+            "eventName": "power abandoned",
+            "description": "Brave Survivor abandons the awakened fruit's power to save Trusted Ally, phantom heat burning through veins that never claimed it",
+            "location": "hidden bunker and cobblestone streets",
+            "time": "after fruit contact, during sprint to city"
+        },
+        {
+            "eventName": "blade stopped by ancient power",
+            "description": "The Murderer's blade stops not from intervention but from something ancient stirring in the abandoned fruit's wake, a tremor rippling through cobblestone and code alike",
+            "location": "city alley",
+            "time": "as Survivor reaches alley's mouth"
+        },
+        {
+            "eventName": "fruit claims itself",
+            "description": "The ground splits and from the crack rises the fruit's power - ungifted, unclaimed, now claiming itself. Both killer and prey stand transfixed as the city trembles",
+            "location": "city",
+            "time": "after blade stops, simultaneous with city tremors"
         }
     ]
 }
