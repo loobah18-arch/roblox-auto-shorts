@@ -9,7 +9,8 @@
                 "determined",
                 "resourceful",
                 "quick-thinking",
-                "pattern-recognition"
+                "pattern-recognition",
+                "sprinting"
             ],
             "stats": {
                 "health": 100,
@@ -21,31 +22,31 @@
                 {
                     "name": "Awakened Fruit",
                     "type": "power-up",
-                    "description": "A mysterious fruit now pulsing with activated energy like a second heartbeat, casting light that reveals hidden patterns in the chaos. Its frequency attracts both lasers and enemy targeting systems, serving as a beacon to missile pods."
+                    "description": "A mysterious fruit now blazing like a stolen sun with a deafening roar of activated energy. Its light reveals fragments of the mystery code clicking into place\u2014hidden patterns in the chaos becoming legible. Its frequency still attracts enemy targeting systems, serving as a beacon to missile pods."
                 }
             ],
             "goals": [
-                "Claim the awakened fruit",
+                "Reach the obby gate before it seals",
+                "Solve the mystery code using fragments revealed by the fruit",
+                "Survive the three-way war between Rival, Entity, and Darkness",
+                "Decipher the remaining code etched into crumbling steel",
                 "Conquer the obby",
-                "Solve the mystery code before the gate seals",
-                "Survive the rival's assault",
-                "Defeat the massive entity descending from above",
-                "Decipher patterns revealed by the fruit's light"
+                "Escape the bunker alive"
             ],
             "obstacles": [
-                "Shifting laser beams that hunt and rewrite their patterns in nanoseconds",
-                "Mystery code etched into the bunker's core, flickering and unsolved",
-                "Rival's missile pods with fruit-frequency targeting (mechanical flowers blooming with death)",
-                "2 minutes 50 seconds until obby's final gate seals forever",
-                "Massive entity (500 tons of waking nightmare, Darkness given form) breaching through blast doors",
-                "Something ancient watching from above"
+                "Shifting laser beams hunting and rewriting patterns in nanoseconds",
+                "Mystery code partially revealed but still incomplete\u2014fragments clicking into place",
+                "Rival's missile pods locked onto fruit's frequency",
+                "Massive Entity fully breached\u2014consuming walls, patterns, and hope",
+                "2 minutes 40 seconds until obby's final gate seals forever",
+                "Darkness orchestrating the three-way war from the shadows"
             ],
             "allies": [],
             "enemies": [
                 "Darkness",
                 "The Rival",
-                "Massive Entity from Above",
-                "Ancient Watcher from Above"
+                "Massive Entity",
+                "Ancient Watcher"
             ]
         },
         {
@@ -54,7 +55,8 @@
                 "ruthless",
                 "technologically advanced",
                 "strategic",
-                "mechanical precision"
+                "mechanical precision",
+                "relentless"
             ],
             "stats": {
                 "health": 120,
@@ -66,7 +68,7 @@
                 {
                     "name": "Missile Pods",
                     "type": "weapon",
-                    "description": "Mechanical flower-like pods that unfold to reveal targeting systems locked to the Awakened Fruit's frequency, blooming with death"
+                    "description": "Mechanical flower-like pods that unfold to reveal targeting systems locked to the Awakened Fruit's deafening frequency, blooming with death. Rockets scream through smoke."
                 }
             ],
             "goals": [
@@ -76,8 +78,8 @@
             ],
             "obstacles": [
                 "Brave Survivor's agility and fruit possession",
-                "Massive Entity",
-                "Darkness"
+                "Massive Entity consuming everything",
+                "Darkness orchestrating the conflict"
             ],
             "allies": [],
             "enemies": [
@@ -90,9 +92,10 @@
             "name": "Massive Entity",
             "traits": [
                 "colossal",
-                "awakening",
+                "fully awakened",
                 "unstoppable",
-                "darkness incarnate"
+                "darkness incarnate",
+                "consuming"
             ],
             "stats": {
                 "health": 500,
@@ -104,10 +107,10 @@
             "goals": [
                 "Consume everything in the bunker",
                 "Claim the Awakened Fruit",
-                "Smash the patterns the fruit reveals"
+                "Smash the patterns the fruit reveals",
+                "Devour hope itself"
             ],
             "obstacles": [
-                "Blast doors (breaching)",
                 "Brave Survivor",
                 "The Rival"
             ],
@@ -120,11 +123,12 @@
             ]
         },
         {
-            "name": "Ancient Watcher",
+            "name": "Darkness",
             "traits": [
-                "ancient",
-                "observing",
-                "mysterious"
+                "orchestrating",
+                "patient",
+                "manipulative",
+                "shadowy"
             ],
             "stats": {
                 "health": 999,
@@ -134,7 +138,36 @@
             },
             "inventory": [],
             "goals": [
-                "Observe the conflict below"
+                "Orchestrate the three-way war below",
+                "Consume everything through proxy forces"
+            ],
+            "obstacles": [],
+            "allies": [
+                "Massive Entity"
+            ],
+            "enemies": [
+                "Brave Survivor",
+                "The Rival"
+            ]
+        },
+        {
+            "name": "Ancient Watcher",
+            "traits": [
+                "ancient",
+                "observing",
+                "mysterious",
+                "patient",
+                "unblinking"
+            ],
+            "stats": {
+                "health": 999,
+                "strength": 999,
+                "agility": 999,
+                "intelligence": 999
+            },
+            "inventory": [],
+            "goals": [
+                "Observe the conflict below with patient, unblinking gaze"
             ],
             "obstacles": [],
             "allies": [],
@@ -144,41 +177,42 @@
     "locations": [
         {
             "name": "Hidden Bunker",
-            "description": "A secret underground bunker with a mystery to uncover. Now an active combat zone with self-rewriting laser grids hunting in nanoseconds, a pulsing core mystery code flickering unsolved, and blast doors splintering under a massive entity's breach.",
+            "description": "A secret underground bunker now an active three-way warzone. Blast doors exploded inward. Walls are being consumed by the Entity. Laser grids rewrite geometry in nanoseconds. Mystery code fragments click into place on crumbling steel as the fruit blazes through.",
             "obstacles": [
-                "Shifting laser beams that hunt and rewrite their patterns in nanoseconds",
-                "Mystery code etched into the bunker's core, flickering and mocking",
-                "Rival's missile pods targeting the fruit (mechanical flowers blooming with death)",
-                "Massive entity (500 tons, Darkness given form) breaching through blast doors",
-                "2 minutes 50 seconds until obby's final gate seals forever"
+                "Shifting laser beams hunting and rewriting patterns in nanoseconds",
+                "Mystery code fragments on crumbling steel\u2014partially solved",
+                "Rival's missile pods locked on fruit frequency",
+                "Massive Entity fully inside\u2014consuming walls, patterns, hope",
+                "2 minutes 40 seconds until obby's final gate seals forever",
+                "Darkness orchestrating all combat from the shadows"
             ],
             "rewards": [
-                "Awakened Fruit (now active, pulsing like a second heartbeat)",
-                "Mystery code solution",
+                "Awakened Fruit (blazing like a stolen sun, deafening roar)",
+                "Mystery code fragments clicking into place",
                 "Obby access",
                 "Patterns revealed by fruit's light"
             ]
         },
         {
             "name": "Grid-based City",
-            "description": "The main city where players interact and play. Something massive is descending from here into the bunker. The grid-city trembles with the entity's approach. Something ancient watches from above.",
+            "description": "The main city where players interact and play. Trembles with the entity's approach. Something ancient watches from above, patient and unblinking.",
             "locationsOfInterest": [
                 "Hidden Bunker",
-                "Blast Doors (breach point)",
+                "Blast Doors (breached)",
                 "Ancient Watcher's vantage point"
             ]
         },
         {
             "name": "Obby",
-            "description": "A challenging obstacle course to conquer. Final gate groans shut, each second a hammer strike against fate.",
+            "description": "A challenging obstacle course to conquer. Final gate groaning shut, each second a hammer strike against fate.",
             "difficultyLevel": "Extreme",
-            "timeLimit": "2 minutes 50 seconds until final gate seals forever"
+            "timeLimit": "2 minutes 40 seconds until final gate seals forever"
         }
     ],
     "plot": {
-        "mainQuest": "Claim the awakened fruit, solve the mystery code, survive the rival and massive entity, and conquer the obby before the final gate seals",
-        "timeLimit": "2 minutes 50 seconds until obby's final gate seals forever",
-        "consequencesOfFailure": "Darkness consumes everything; the obby becomes inaccessible; the Awakened Fruit's power is lost to enemies; the ancient watcher's purpose remains unknown",
-        "currentState": "The true battle hasn't started. It's just waking up. Three-way conflict: Brave Survivor vs Rival vs Massive Entity, with Darkness orchestrating. The laser grid screams alive, rewriting geometry in nanoseconds. The fruit's light reveals patterns in chaos\u2014patterns the Entity smashes, patterns the Rival burns. The grid-city trembles. Something ancient watches from above. Run. Think. Survive."
+        "mainQuest": "Claim the awakened fruit, solve the mystery code using revealed fragments, survive the three-way war, and conquer the obby before the final gate seals",
+        "timeLimit": "2 minutes 40 seconds until obby's final gate seals forever",
+        "consequencesOfFailure": "Darkness consumes everything through its orchestrated war; the obby becomes inaccessible; the Awakened Fruit's power is lost to enemies; the ancient watcher's purpose remains unknown",
+        "currentState": "Three-way war fully engaged. Brave Survivor clutches the blazing fruit\u2014fragments of mystery code clicking into place on crumbling steel. The Rival fires relentless volleys. Massive Entity has breached\u2014each footstep an extinction, consuming walls, patterns, hope. Darkness orchestrates from above. The obby gate groans shut. Two minutes forty seconds. Every second hammers against fate. Something ancient watches, patient and unblinking. Run. Think. Survive."
     }
 }
