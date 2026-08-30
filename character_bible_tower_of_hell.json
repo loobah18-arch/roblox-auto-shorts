@@ -5,12 +5,14 @@
             "brave",
             "determined",
             "resourceful",
-            "psychologically tested"
+            "psychologically tested",
+            "identity-fractured"
         ],
         "stats": {
-            "agility": "highly tested",
-            "intelligence": "tested",
-            "strength": "tested"
+            "agility": "battle-tested (dodged lethal swing, rolled across shifting tile)",
+            "intelligence": "tested (navigated mirror confrontation)",
+            "strength": "tested (endured blade clash)",
+            "willpower": "pressured (stood after memory loss)"
         },
         "inventory": [
             "Awakened Fruit"
@@ -26,24 +28,26 @@
             "Claim the awakened fruit",
             "Conquer the obby",
             "Crack the mystery code",
-            "Confront the Mirror Self"
+            "Confront the Mirror Self (battle in progress)",
+            "Recover lost memories"
         ],
         "obstacles": [
             "Shifting laser beams",
-            "Mystery code",
+            "Mystery code (breached)",
             "Time limit",
-            "Mirror Self confrontation",
-            "Psychological whispers from Forgotten Souls"
+            "Mirror Self confrontation (ongoing)",
+            "Psychological whispers from Forgotten Souls",
+            "Memory extraction by Mirror Self"
         ]
     },
     "npcs": [
         {
             "name": "Forgotten Soul",
-            "description": "Whispers from the void, now revealed as dual-natured\u2014some guide forward, others drag down. They screamed in unison during the code attempt."
+            "description": "Whispers from the void, now revealed as dual-natured\u2014some scream WARNING, others whisper EMBRACE IT. Their divided voices echo through the warping corridor during the mirror battle."
         },
         {
             "name": "The Mirror Self",
-            "description": "A doppelganger reflection wearing The Survivor's face, grinning and holding a blade, dwelling within the Hidden Bunker"
+            "description": "A sentient doppelganger wielding a blade, wearing The Survivor's face. Taunts with 'You think you earned this?' and claims to know everything The Survivor has forgotten. Catches lost memories midair. Dwell within the Hidden Bunker."
         }
     ],
     "locations": {
@@ -56,22 +60,41 @@
             ]
         },
         "Hidden Bunker": {
-            "description": "A guarded area with a mystery to crack, now breached. Inside: a mirror holding a sinister reflection wearing The Survivor's face.",
+            "description": "A guarded area with a mystery to crack, now breached and warping. Inside: a mirror holding a sinister reflection. The battle for identity rages within\u2014steel meets will across shifting tile.",
             "notableFeatures": [
                 "Shifting laser beams",
                 "Mystery code (breached)",
-                "Mirror with doppelganger reflection"
+                "Mirror with doppelganger reflection",
+                "Battle-scarred walls that breathe",
+                "Floors that tilt during confrontation"
             ]
         }
     },
     "items": {
         "Awakened Fruit": {
-            "description": "A powerful fruit with unknown abilities, now actively surging within The Survivor like a waking beast during moments of extreme pressure",
+            "description": "A powerful fruit with unknown abilities, now actively surging within The Survivor like a waking beast during moments of extreme pressure. Erupted with heat during the mirror confrontation, pulsing like a second heartbeat.",
             "properties": [
                 "awakening",
                 "powerful",
                 "surging",
-                "responsive to danger"
+                "responsive to danger",
+                "heat-emitting under duress"
+            ]
+        },
+        "Blade (Mirror Self)": {
+            "description": "A blade wielded by the Mirror Self, its edge catching pale light. Used to slash at The Survivor and extract memories.",
+            "properties": [
+                "lethal",
+                "memory-extracting",
+                "wielded by doppelganger"
+            ]
+        },
+        "Lost Memory": {
+            "description": "A memory that fell from The Survivor during the blade clash\u2014caught midair by the Mirror Self, who claims to know everything The Survivor has forgotten.",
+            "properties": [
+                "extractable",
+                "exploitable",
+                "key to identity"
             ]
         }
     }
