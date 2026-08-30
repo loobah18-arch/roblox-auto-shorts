@@ -6,46 +6,60 @@
                 "courageous",
                 "determined",
                 "resilient",
-                "agile"
+                "agile",
+                "resourceful"
             ],
             "stats": {
-                "health": 80,
-                "energy": 70
+                "health": 75,
+                "energy": 55
             },
             "inventory": [
-                "Awakened Sea Fruit"
+                "Awakened Sea Fruit (Depleted)"
             ],
             "allies": [],
             "enemies": [
                 "Slumbering Darkness"
             ],
             "storyProgress": {
-                "currentObjective": "Escape the collapsing Sea God's Throne Chamber and survive the Slumbering Darkness's assault",
-                "currentChallenge": "Evade the massive tentacle of Darkness and reach safety while the ocean dome cracks"
+                "currentObjective": "Find a way to recharge the depleted Awakened Sea Fruit and locate a safe path forward beyond the exit tunnel",
+                "currentChallenge": "Navigate unknown territory with a nearly powerless fruit while the Slumbering Darkness may still be in pursuit"
             },
             "fruitAwakenings": [
-                "Sea God's Throne fruit"
+                "Sea God's Throne fruit (Depleted - expended final charge creating a seawater shield to escape the Slumbering Darkness)"
             ]
         }
     ],
     "locations": [
         {
             "name": "Hidden Bunker",
-            "description": "A secret underground facility with activated laser grids and a mystery to uncover",
-            "accessibility": "Restricted",
+            "description": "A secret underground facility now partially destroyed; laser grids have died, walls are cracked from the Darkness's roar, and floodwater surges through the corridors",
+            "accessibility": "Compromised",
             "notableFeatures": [
-                "Activated laser beam traps",
-                "Mystery code to crack"
+                "Deactivated laser beam traps",
+                "Cracked and crumbling walls",
+                "Rising floodwater",
+                "Shattered stone platforms"
             ]
         },
         {
             "name": "Flooded Bunker Corridor",
-            "description": "A corridor in the bunker flooded with water, sliced by activated laser beams creating deadly light and shadow corridors",
-            "accessibility": "Restricted",
+            "description": "A corridor fully flooded with churning water, lasers dead, ceiling partially collapsed from the Darkness's assault",
+            "accessibility": "Compromised",
             "notableFeatures": [
-                "Activated laser grid",
-                "Rising water level",
-                "Crumbling stone platforms"
+                "Fully flooded with rising water",
+                "Deactivated laser grid",
+                "Crumbling stone platforms",
+                "Debris-strewn passage"
+            ]
+        },
+        {
+            "name": "Exit Tunnel",
+            "description": "A dimly lit tunnel glimpsed through the chaos, offering a path out of the collapsing bunker into unknown territory",
+            "accessibility": "Accessible",
+            "notableFeatures": [
+                "Last escape route from the bunker",
+                "Unknown destination",
+                "Partially blocked by shadow tendrils"
             ]
         },
         {
@@ -66,16 +80,17 @@
             "acquired": false
         },
         {
-            "name": "Awakened Sea Fruit",
-            "description": "A cobalt-infused awakened fruit from the Sea God's Throne, now depleted after unleashing a shockwave to freeze water",
-            "location": "Flooded Bunker Corridor",
-            "acquired": true
+            "name": "Awakened Sea Fruit (Depleted)",
+            "description": "A cobalt-infused awakened fruit from the Sea God's Throne, now fully depleted after expending its final charge to create a seawater shield that held back the Slumbering Darkness's shadow tendrils long enough to escape",
+            "location": "Brave Survivor's Inventory",
+            "acquired": true,
+            "status": "Depleted - requires recharging"
         }
     ],
     "storyArcs": {
         "mainStory": {
-            "description": "The Brave Survivor must navigate the collapsing chamber, evade the Slumbering Darkness, and survive the flood activated by the laser grid, now with the fruit's power temporarily spent",
-            "currentEpisode": 2,
+            "description": "Brave Survivor escaped the collapsing Sea God's Throne Chamber by sacrificing the Awakened Sea Fruit's final power to breach the Slumbering Darkness's wall of shadow tendrils. The bunker is destroyed, the lasers are dead, and the fruit is spent. Now they must find safety and a way to restore the fruit's power before the Darkness catches up.",
+            "currentEpisode": 3,
             "totalEpisodes": null
         }
     }
