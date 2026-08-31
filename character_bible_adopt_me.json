@@ -10,36 +10,30 @@
                 "resourceful",
                 "quick-thinking",
                 "pattern-recognition",
-                "sprinting"
+                "sprinting",
+                "battle-scarred",
+                "code-breaker"
             ],
             "stats": {
-                "health": 100,
-                "strength": 12,
+                "health": 68,
+                "strength": 10,
                 "agility": 17,
-                "intelligence": 15
+                "intelligence": 18
             },
-            "inventory": [
-                {
-                    "name": "Awakened Fruit",
-                    "type": "power-up",
-                    "description": "A mysterious fruit now blazing like a stolen sun with a deafening roar of activated energy. Its light reveals fragments of the mystery code clicking into place\u2014hidden patterns in the chaos becoming legible. Its frequency still attracts enemy targeting systems, serving as a beacon to missile pods."
-                }
-            ],
+            "inventory": [],
             "goals": [
-                "Reach the obby gate before it seals",
-                "Solve the mystery code using fragments revealed by the fruit",
-                "Survive the three-way war between Rival, Entity, and Darkness",
-                "Decipher the remaining code etched into crumbling steel",
-                "Conquer the obby",
-                "Escape the bunker alive"
+                "Survive the three-way war now complicated by a fourth player",
+                "Escape the bunker beyond the shattered obby gate",
+                "Understand what the Ancient Watcher truly wants",
+                "Protect the revealed code fragments from enemies"
             ],
             "obstacles": [
-                "Shifting laser beams hunting and rewriting patterns in nanoseconds",
-                "Mystery code partially revealed but still incomplete\u2014fragments clicking into place",
-                "Rival's missile pods locked onto fruit's frequency",
-                "Massive Entity fully breached\u2014consuming walls, patterns, and hope",
-                "2 minutes 40 seconds until obby's final gate seals forever",
-                "Darkness orchestrating the three-way war from the shadows"
+                "Injured shoulder from missile clip\u2014reduced combat effectiveness",
+                "Awakened Fruit expended to shatter the obby gate\u2014no longer in possession",
+                "Massive Entity's claw slammed shut behind\u2014bunker may be sealed or consumed",
+                "Three-way war now has a fourth player with unknown intentions",
+                "Ancient Watcher has blinked\u2014transitioning from observer to participant",
+                "Darkness still orchestrating from the shadows"
             ],
             "allies": [],
             "enemies": [
@@ -56,10 +50,11 @@
                 "technologically advanced",
                 "strategic",
                 "mechanical precision",
-                "relentless"
+                "relentless",
+                "volley-specialist"
             ],
             "stats": {
-                "health": 120,
+                "health": 110,
                 "strength": 15,
                 "agility": 10,
                 "intelligence": 18
@@ -68,24 +63,28 @@
                 {
                     "name": "Missile Pods",
                     "type": "weapon",
-                    "description": "Mechanical flower-like pods that unfold to reveal targeting systems locked to the Awakened Fruit's deafening frequency, blooming with death. Rockets scream through smoke."
+                    "description": "Mechanical flower-like pods that unfold to reveal targeting systems locked to the Awakened Fruit's deafening frequency. Missiles scream through smoke and shrapnel. One clipped the Survivor's shoulder."
                 }
             ],
             "goals": [
-                "Claim the Awakened Fruit for themselves",
-                "Eliminate the Brave Survivor",
-                "Burn the patterns the fruit reveals"
+                "Reclaim the Awakened Fruit's power\u2014now potentially lost or consumed",
+                "Eliminate the Brave Survivor who escaped the bunker",
+                "Purge the revealed code fragments before they can be used",
+                "Prevent the fourth player from tipping the war's balance"
             ],
             "obstacles": [
-                "Brave Survivor's agility and fruit possession",
-                "Massive Entity consuming everything",
+                "Brave Survivor escaped through the shattered obby gate",
+                "Awakened Fruit's frequency may be lost\u2014missile lock compromised",
+                "Massive Entity consuming everything in the bunker",
+                "Ancient Watcher entering the war as a fourth player",
                 "Darkness orchestrating the conflict"
             ],
             "allies": [],
             "enemies": [
                 "Brave Survivor",
                 "Darkness",
-                "Massive Entity"
+                "Massive Entity",
+                "Ancient Watcher"
             ]
         },
         {
@@ -95,7 +94,8 @@
                 "fully awakened",
                 "unstoppable",
                 "darkness incarnate",
-                "consuming"
+                "consuming",
+                "gaping-maw"
             ],
             "stats": {
                 "health": 500,
@@ -105,21 +105,25 @@
             },
             "inventory": [],
             "goals": [
-                "Consume everything in the bunker",
-                "Claim the Awakened Fruit",
-                "Smash the patterns the fruit reveals",
+                "Consume everything in the bunker and beyond",
+                "Claim the Awakened Fruit\u2014now possibly expended",
+                "Smash the patterns the fruit revealed",
                 "Devour hope itself"
             ],
             "obstacles": [
-                "Brave Survivor",
-                "The Rival"
+                "Brave Survivor escaped through the obby gate",
+                "Claw slammed shut mere moments behind the Survivor",
+                "The Rival's ongoing assault",
+                "Ancient Watcher entering the war as fourth player",
+                "Obby gate shattered\u2014escape route now open"
             ],
             "allies": [
                 "Darkness"
             ],
             "enemies": [
                 "Brave Survivor",
-                "The Rival"
+                "The Rival",
+                "Ancient Watcher"
             ]
         },
         {
@@ -128,35 +132,7 @@
                 "orchestrating",
                 "patient",
                 "manipulative",
-                "shadowy"
-            ],
-            "stats": {
-                "health": 999,
-                "strength": 999,
-                "agility": 999,
-                "intelligence": 999
-            },
-            "inventory": [],
-            "goals": [
-                "Orchestrate the three-way war below",
-                "Consume everything through proxy forces"
-            ],
-            "obstacles": [],
-            "allies": [
-                "Massive Entity"
-            ],
-            "enemies": [
-                "Brave Survivor",
-                "The Rival"
-            ]
-        },
-        {
-            "name": "Ancient Watcher",
-            "traits": [
-                "ancient",
-                "observing",
-                "mysterious",
-                "patient",
+                "shadowy",
                 "unblinking"
             ],
             "stats": {
@@ -167,52 +143,94 @@
             },
             "inventory": [],
             "goals": [
-                "Observe the conflict below with patient, unblinking gaze"
+                "Orchestrate the three-way war below\u2014now a four-way conflict",
+                "Consume everything through proxy forces",
+                "React to the Ancient Watcher's activation"
             ],
-            "obstacles": [],
+            "obstacles": [
+                "Ancient Watcher has blinked\u2014fourth player disrupts the orchestrated balance"
+            ],
+            "allies": [
+                "Massive Entity"
+            ],
+            "enemies": [
+                "Brave Survivor",
+                "The Rival",
+                "Ancient Watcher"
+            ]
+        },
+        {
+            "name": "Ancient Watcher",
+            "traits": [
+                "ancient",
+                "observing",
+                "mysterious",
+                "patient",
+                "unblinking",
+                "newly-awakened",
+                "fourth-player"
+            ],
+            "stats": {
+                "health": 999,
+                "strength": 999,
+                "agility": 999,
+                "intelligence": 999
+            },
+            "inventory": [],
+            "goals": [
+                "Transition from observer to active participant in the war",
+                "Assert itself as the fourth player in the conflict",
+                "Pursue unknown ancient purpose now that the code is broken"
+            ],
+            "obstacles": [
+                "Three entrenched factions already at war",
+                "Brave Survivor escaped the bunker\u2014target may have shifted"
+            ],
             "allies": [],
-            "enemies": []
+            "enemies": [
+                "Brave Survivor",
+                "The Rival",
+                "Massive Entity",
+                "Darkness"
+            ]
         }
     ],
     "locations": [
         {
             "name": "Hidden Bunker",
-            "description": "A secret underground bunker now an active three-way warzone. Blast doors exploded inward. Walls are being consumed by the Entity. Laser grids rewrite geometry in nanoseconds. Mystery code fragments click into place on crumbling steel as the fruit blazes through.",
+            "description": "A secret underground bunker now a consumed warzone. The Entity's shadow devours everything within. Blast doors exploded inward. Walls consumed. Laser grids rewrote reality mid-step. Mystery code fully solved\u2014golden fire etched the answer into the gate. The obby gate shattered open and was escaped through. The Entity's claw slammed shut behind the Survivor. Silence follows.",
             "obstacles": [
-                "Shifting laser beams hunting and rewriting patterns in nanoseconds",
-                "Mystery code fragments on crumbling steel\u2014partially solved",
-                "Rival's missile pods locked on fruit frequency",
-                "Massive Entity fully inside\u2014consuming walls, patterns, hope",
-                "2 minutes 40 seconds until obby's final gate seals forever",
-                "Darkness orchestrating all combat from the shadows"
+                "Massive Entity has consumed most of the interior",
+                "Obby gate shattered\u2014path now open but Entity looms behind",
+                "Darkness still orchestrating from the shadows",
+                "The war rages on even as the bunker falls"
             ],
             "rewards": [
-                "Awakened Fruit (blazing like a stolen sun, deafening roar)",
-                "Mystery code fragments clicking into place",
-                "Obby access",
-                "Patterns revealed by fruit's light"
+                "Mystery code fully solved\u2014three symbols matched, final fragment etched in golden fire",
+                "Obby gate shattered open\u2014escape route created",
+                "Code fragments preserved in the Survivor's memory"
             ]
         },
         {
             "name": "Grid-based City",
-            "description": "The main city where players interact and play. Trembles with the entity's approach. Something ancient watches from above, patient and unblinking.",
+            "description": "The main city where players interact and play. Trembles with the Entity's approach and the war's escalation. Something ancient has blinked\u2014no longer watching from above, now descending into the conflict.",
             "locationsOfInterest": [
-                "Hidden Bunker",
-                "Blast Doors (breached)",
-                "Ancient Watcher's vantage point"
+                "Hidden Bunker (consumed)",
+                "Shattered Obby Gate",
+                "Ancient Watcher's descent point"
             ]
         },
         {
             "name": "Obby",
-            "description": "A challenging obstacle course to conquer. Final gate groaning shut, each second a hammer strike against fate.",
+            "description": "A challenging obstacle course to conquer. The final gate shattered open under the golden fire of the Awakened Fruit's light. The Survivor leaped through as the Entity's claw slammed shut behind. The gate is broken\u2014escape achieved, but the war follows.",
             "difficultyLevel": "Extreme",
-            "timeLimit": "2 minutes 40 seconds until final gate seals forever"
+            "timeLimit": "Completed\u2014gate shattered with seconds to spare"
         }
     ],
     "plot": {
-        "mainQuest": "Claim the awakened fruit, solve the mystery code using revealed fragments, survive the three-way war, and conquer the obby before the final gate seals",
-        "timeLimit": "2 minutes 40 seconds until obby's final gate seals forever",
-        "consequencesOfFailure": "Darkness consumes everything through its orchestrated war; the obby becomes inaccessible; the Awakened Fruit's power is lost to enemies; the ancient watcher's purpose remains unknown",
-        "currentState": "Three-way war fully engaged. Brave Survivor clutches the blazing fruit\u2014fragments of mystery code clicking into place on crumbling steel. The Rival fires relentless volleys. Massive Entity has breached\u2014each footstep an extinction, consuming walls, patterns, hope. Darkness orchestrates from above. The obby gate groans shut. Two minutes forty seconds. Every second hammers against fate. Something ancient watches, patient and unblinking. Run. Think. Survive."
+        "mainQuest": "Survive the three-way war now complicated by a fourth player, escape the consumed bunker, and uncover the Ancient Watcher's true purpose as it transitions from observer to active combatant",
+        "timeLimit": "Gate shattered\u2014no formal time limit remains, but the war continues unabated",
+        "consequencesOfFailure": "Darkness consumes everything through its orchestrated four-way war; the Ancient Watcher's ancient purpose is unleashed unopposed; the revealed code fragments are lost; the bunker is fully consumed",
+        "currentState": "The obby gate shattered open under golden fire. The Brave Survivor leaped through as the Entity's claw slammed shut behind. Silence. Then\u2014from above, something ancient blinked. The three-way war has found its fourth player. The Survivor is injured, the fruit expended, the bunker consumed. The war is no longer three-sided. Something older has awakened."
     }
 }
