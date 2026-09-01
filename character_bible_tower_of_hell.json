@@ -6,83 +6,94 @@
             "determined",
             "resourceful",
             "psychologically tested",
-            "identity-fractured"
+            "identity-fractured",
+            "memory-awakened"
         ],
         "stats": {
-            "agility": "battle-tested (dodged lethal swing, rolled across shifting tile)",
-            "intelligence": "tested (navigated mirror confrontation)",
-            "strength": "tested (endured blade clash)",
-            "willpower": "pressured (stood after memory loss)"
+            "agility": "battle-tested (barely dodged blade slash as floor tilted ninety degrees)",
+            "intelligence": "tested (received fleeting vision of boy before obsidian tower)",
+            "strength": "tested (endured blade clash, gripped Awakened Fruit under extreme duress)",
+            "willpower": "resonating (Awakened Fruit burning white-hot, synced with extracted memory)",
+            "memoryIntegrity": "unstable (saw fleeting vision of past, identity still fractured)"
         },
         "inventory": [
             "Awakened Fruit"
         ],
         "allies": [
-            "Forgotten Souls"
+            "Forgotten Souls (divided)"
         ],
         "enemies": [
             "The Tower",
-            "The Mirror Self"
+            "The Mirror Self (now wielding stolen recollection)"
         ],
         "goals": [
+            "Survive the collapsing corridor",
             "Claim the awakened fruit",
             "Conquer the obby",
             "Crack the mystery code",
-            "Confront the Mirror Self (battle in progress)",
-            "Recover lost memories"
+            "Confront the Mirror Self (battle ongoing)",
+            "Recover lost memories (partially seen\u2014boy before obsidian tower)",
+            "Claim the truth from the Mirror Self"
         ],
         "obstacles": [
+            "Collapsing corridor (reality fracturing)",
             "Shifting laser beams",
             "Mystery code (breached)",
             "Time limit",
-            "Mirror Self confrontation (ongoing)",
-            "Psychological whispers from Forgotten Souls",
-            "Memory extraction by Mirror Self"
+            "Mirror Self confrontation (ongoing, now with stolen memories)",
+            "Divided Forgotten Souls (FIGHT BACK vs LET IT CONSUME)",
+            "Memory extraction by Mirror Self (ongoing)",
+            "Psychological whispers from divided Forgotten Souls"
         ]
     },
     "npcs": [
         {
             "name": "Forgotten Soul",
-            "description": "Whispers from the void, now revealed as dual-natured\u2014some scream WARNING, others whisper EMBRACE IT. Their divided voices echo through the warping corridor during the mirror battle."
+            "description": "Whispers from the void, now divided\u2014some shriek FIGHT BACK! while others murmur Let it consume you. They erupt from cracking walls, their voices warping through the collapsing corridor."
         },
         {
             "name": "The Mirror Self",
-            "description": "A sentient doppelganger wielding a blade, wearing The Survivor's face. Taunts with 'You think you earned this?' and claims to know everything The Survivor has forgotten. Catches lost memories midair. Dwell within the Hidden Bunker."
+            "description": "A sentient doppelganger wielding a blade, wearing The Survivor's face. Catches stolen memories midair, its face twisting into something almost compassionate. Eyes now flickering with stolen recollection. Snarls: 'You want the truth? Prove you can survive it.' Dwells within the Hidden Bunker."
         }
     ],
     "locations": {
         "Tower of Hell grid": {
-            "description": "A server with a hidden secret, shrouded in thunderous dread and a bruised sky. The corridor now warps\u2014walls breathe, floors tilt.",
+            "description": "A server with a hidden secret, shrouded in thunderous dread and a bruised sky. Walls now crack open like wounds, revealing flickering memories trapped beneath\u2014childhood laughter, a door slamming shut, a voice screaming DON'T FORGET.",
             "notableFeatures": [
                 "Hidden bunker beneath the city",
                 "Shifting laser beams carving the air like razors",
-                "Warping corridor with breathing walls and tilting floors"
+                "Warping corridor with breathing walls and tilting floors",
+                "Walls cracking open to reveal flickering memories"
             ]
         },
         "Hidden Bunker": {
-            "description": "A guarded area with a mystery to crack, now breached and warping. Inside: a mirror holding a sinister reflection. The battle for identity rages within\u2014steel meets will across shifting tile.",
+            "description": "A guarded area with a mystery to crack, now breached and warping. Inside: a mirror holding a sinister reflection. The corridor is COLLAPSING inward, reality fracturing around the combatants. Steel meets will across shifting, tilting tile.",
             "notableFeatures": [
                 "Shifting laser beams",
                 "Mystery code (breached)",
                 "Mirror with doppelganger reflection",
                 "Battle-scarred walls that breathe",
-                "Floors that tilt during confrontation"
+                "Floors that tilt ninety degrees during confrontation",
+                "Corridor collapsing inward",
+                "Reality fracturing"
             ]
         }
     },
     "items": {
         "Awakened Fruit": {
-            "description": "A powerful fruit with unknown abilities, now actively surging within The Survivor like a waking beast during moments of extreme pressure. Erupted with heat during the mirror confrontation, pulsing like a second heartbeat.",
+            "description": "A powerful fruit with unknown abilities, now burning white-hot against The Survivor's chest. Resonates with extracted memory, pulsing like a second heartbeat. Erupted with heat during the mirror confrontation.",
             "properties": [
                 "awakening",
                 "powerful",
                 "surging",
                 "responsive to danger",
-                "heat-emitting under duress"
+                "heat-emitting under duress",
+                "memory-resonant",
+                "white-hot when under extreme pressure"
             ]
         },
         "Blade (Mirror Self)": {
-            "description": "A blade wielded by the Mirror Self, its edge catching pale light. Used to slash at The Survivor and extract memories.",
+            "description": "A blade wielded by the Mirror Self, its edge catching pale light. Used to slash at The Survivor and extract memories. Raised again after the fleeting vision.",
             "properties": [
                 "lethal",
                 "memory-extracting",
@@ -90,11 +101,21 @@
             ]
         },
         "Lost Memory": {
-            "description": "A memory that fell from The Survivor during the blade clash\u2014caught midair by the Mirror Self, who claims to know everything The Survivor has forgotten.",
+            "description": "A memory that fell from The Survivor during the blade clash\u2014caught midair by the Mirror Self, who claims to know everything The Survivor has forgotten. The Mirror Self's face twists into something almost compassionate while holding it.",
             "properties": [
                 "extractable",
                 "exploitable",
-                "key to identity"
+                "key to identity",
+                "held by Mirror Self"
+            ]
+        },
+        "Memory Fragment": {
+            "description": "A fleeting vision that blazed through The Survivor's mind for one blinding second\u2014a boy standing before an obsidian tower, clutching something glowing. Then it vanished.",
+            "properties": [
+                "fleeting",
+                "visionary",
+                "key to origin",
+                "triggered by Awakened Fruit resonance"
             ]
         }
     }
