@@ -7,11 +7,12 @@
                 "determined",
                 "resilient",
                 "agile",
-                "resourceful"
+                "resourceful",
+                "keen-eyed"
             ],
             "stats": {
-                "health": 75,
-                "energy": 55
+                "health": 72,
+                "energy": 50
             },
             "inventory": [
                 "Awakened Sea Fruit (Depleted)"
@@ -21,11 +22,16 @@
                 "Slumbering Darkness"
             ],
             "storyProgress": {
-                "currentObjective": "Find a way to recharge the depleted Awakened Sea Fruit and locate a safe path forward beyond the exit tunnel",
-                "currentChallenge": "Navigate unknown territory with a nearly powerless fruit while the Slumbering Darkness may still be in pursuit"
+                "currentObjective": "Complete the three trials revealed in the ancient journal to restore the Awakened Sea Fruit's power",
+                "currentChallenge": "Navigate the Hidden Laboratory, acquire the pulsing blue potion, and survive while the Slumbering Darkness's tendrils infiltrate the lab searching for prey"
             },
             "fruitAwakenings": [
-                "Sea God's Throne fruit (Depleted - expended final charge creating a seawater shield to escape the Slumbering Darkness)"
+                "Sea God's Throne fruit (Depleted - expended final charge creating a seawater shield to escape the Slumbering Darkness)",
+                "Restoration Path Revealed - three trials required to restore the fruit's oceanic power"
+            ],
+            "discoveredLore": [
+                "Journal reveals a three-trial restoration ritual for awakened fruits",
+                "The Slumbering Darkness fears something within the Hidden Laboratory"
             ]
         }
     ],
@@ -63,6 +69,18 @@
             ]
         },
         {
+            "name": "Hidden Laboratory",
+            "description": "A secret lab untouched by time, accessible through coral and barnacle-crusted twin doors at the passage's end. Alchemical tanks bubble with strange potions, and a pulsing electric blue tank dominates the room like a heartbeat. An ancient journal on a rusted desk contains knowledge of a three-trial restoration ritual.",
+            "accessibility": "Accessible",
+            "notableFeatures": [
+                "Coral and barnacle-crusted twin doors",
+                "Alchemical bubbling tanks",
+                "Pulsing electric blue potion tank",
+                "Ancient restoration journal on rusted desk",
+                "Tendrils of the Slumbering Darkness seeping through cracks"
+            ]
+        },
+        {
             "name": "Blox Fruits Grid",
             "description": "A vast server filled with unknown dangers and opportunities",
             "accessibility": "Open",
@@ -81,17 +99,36 @@
         },
         {
             "name": "Awakened Sea Fruit (Depleted)",
-            "description": "A cobalt-infused awakened fruit from the Sea God's Throne, now fully depleted after expending its final charge to create a seawater shield that held back the Slumbering Darkness's shadow tendrils long enough to escape",
+            "description": "A cobalt-infused awakened fruit from the Sea God's Throne, now fully depleted after expending its final charge to create a seawater shield that held back the Slumbering Darkness's shadow tendrils long enough to escape. Cobalt veins are pale and lifeless.",
             "location": "Brave Survivor's Inventory",
             "acquired": true,
-            "status": "Depleted - requires recharging"
+            "status": "Depleted - three trials required for restoration per ancient journal"
+        },
+        {
+            "name": "Pulsing Electric Blue Potion",
+            "description": "A mysterious potion housed in an alchemical tank that pulses like a heartbeat. Its purpose is unknown but it emanates a faint electric blue luminescence that may be connected to the restoration trials.",
+            "location": "Hidden Laboratory",
+            "acquired": false,
+            "status": "Untouched - potential key to restoration"
+        },
+        {
+            "name": "Ancient Restoration Journal",
+            "description": "A journal clamped to a rusted desk containing critical knowledge: 'To restore what the sea gives\u2014three trials must be faced.' Details the path to restoring awakened fruit power.",
+            "location": "Hidden Laboratory",
+            "acquired": true,
+            "status": "Read - three trials identified"
         }
     ],
     "storyArcs": {
         "mainStory": {
-            "description": "Brave Survivor escaped the collapsing Sea God's Throne Chamber by sacrificing the Awakened Sea Fruit's final power to breach the Slumbering Darkness's wall of shadow tendrils. The bunker is destroyed, the lasers are dead, and the fruit is spent. Now they must find safety and a way to restore the fruit's power before the Darkness catches up.",
-            "currentEpisode": 3,
+            "description": "Brave Survivor escaped the collapsing Sea God's Throne Chamber by sacrificing the Awakened Sea Fruit's final power to breach the Slumbering Darkness's wall of shadow tendrils. They stumbled into a hidden laboratory untouched by time, where an ancient journal revealed the path forward: three trials must be faced to restore the fruit's power. The Slumbering Darkness is still hunting, its tendrils seeping through the lab's cracks, but it fears something within. The fight is far from over.",
+            "currentEpisode": 4,
             "totalEpisodes": null
+        },
+        "restorationSaga": {
+            "description": "The three-trial restoration arc. The Awakened Sea Fruit must be revived through trials yet to be defined. The ancient journal provides the framework; the laboratory may hold the tools.",
+            "currentEpisode": 1,
+            "status": "Trials pending"
         }
     }
 }
