@@ -1,6 +1,6 @@
 {
     "gameName": "Adopt Me!",
-    "setting": "Grid-based city with a hidden bunker",
+    "setting": "Grid-based city with a hidden bunker, now expanded to the entire trembling city grid",
     "characters": [
         {
             "name": "Brave Survivor",
@@ -12,28 +12,37 @@
                 "pattern-recognition",
                 "sprinting",
                 "battle-scarred",
-                "code-breaker"
+                "code-breaker",
+                "city-hardened"
             ],
             "stats": {
-                "health": 68,
+                "health": 65,
                 "strength": 10,
                 "agility": 17,
-                "intelligence": 18
+                "intelligence": 19
             },
-            "inventory": [],
+            "inventory": [
+                {
+                    "name": "Code Fragments",
+                    "type": "consumable",
+                    "description": "Three matched symbols and a final fragment etched in golden fire from the Awakened Fruit. Burns in memory\u2014cannot be dropped or stolen."
+                }
+            ],
             "goals": [
-                "Survive the three-way war now complicated by a fourth player",
-                "Escape the bunker beyond the shattered obby gate",
-                "Understand what the Ancient Watcher truly wants",
-                "Protect the revealed code fragments from enemies"
+                "Survive the four-way war now spreading across the entire city grid",
+                "Determine which side the Ancient Watcher has chosen",
+                "Protect the code fragments from enemies who seek to purge them",
+                "Find safety beyond the collapsing bunker perimeter",
+                "Understand the Watcher's ancient purpose"
             ],
             "obstacles": [
-                "Injured shoulder from missile clip\u2014reduced combat effectiveness",
-                "Awakened Fruit expended to shatter the obby gate\u2014no longer in possession",
-                "Massive Entity's claw slammed shut behind\u2014bunker may be sealed or consumed",
-                "Three-way war now has a fourth player with unknown intentions",
-                "Ancient Watcher has blinked\u2014transitioning from observer to participant",
-                "Darkness still orchestrating from the shadows"
+                "Injured shoulder aggravated from hard landing on pavement\u2014reduced combat effectiveness",
+                "Awakened Fruit expended\u2014no more golden fire or frequency power",
+                "Entity sealed the bunker behind\u2014no retreat possible",
+                "Four-way war now raging across the city grid",
+                "Ancient Watcher descending and has chosen an unknown side",
+                "Darkness still orchestrating from everywhere",
+                "The Rival's missile pods reloaded above"
             ],
             "allies": [],
             "enemies": [
@@ -51,7 +60,8 @@
                 "strategic",
                 "mechanical precision",
                 "relentless",
-                "volley-specialist"
+                "volley-specialist",
+                "aerial-reloaded"
             ],
             "stats": {
                 "health": 110,
@@ -63,21 +73,22 @@
                 {
                     "name": "Missile Pods",
                     "type": "weapon",
-                    "description": "Mechanical flower-like pods that unfold to reveal targeting systems locked to the Awakened Fruit's deafening frequency. Missiles scream through smoke and shrapnel. One clipped the Survivor's shoulder."
+                    "description": "Mechanical flower-like pods that unfold to reveal targeting systems. Reloaded and ready. Locked to the Awakened Fruit's deafening frequency\u2014now hunting new targets."
                 }
             ],
             "goals": [
-                "Reclaim the Awakened Fruit's power\u2014now potentially lost or consumed",
-                "Eliminate the Brave Survivor who escaped the bunker",
                 "Purge the revealed code fragments before they can be used",
-                "Prevent the fourth player from tipping the war's balance"
+                "Eliminate the Brave Survivor now exposed on city streets",
+                "Prevent the Ancient Watcher from tipping the war's balance",
+                "Control the expanded battlefield across the city grid"
             ],
             "obstacles": [
-                "Brave Survivor escaped through the shattered obby gate",
+                "Brave Survivor escaped and is now in the open city",
                 "Awakened Fruit's frequency may be lost\u2014missile lock compromised",
-                "Massive Entity consuming everything in the bunker",
-                "Ancient Watcher entering the war as a fourth player",
-                "Darkness orchestrating the conflict"
+                "Massive Entity sealed below but still roaring",
+                "Ancient Watcher descending as fourth player",
+                "Darkness orchestrating the four-way war",
+                "City grid trembling\u2014unstable terrain for missile deployment"
             ],
             "allies": [],
             "enemies": [
@@ -95,7 +106,8 @@
                 "unstoppable",
                 "darkness incarnate",
                 "consuming",
-                "gaping-maw"
+                "gaping-maw",
+                "sealed-below"
             ],
             "stats": {
                 "health": 500,
@@ -105,17 +117,19 @@
             },
             "inventory": [],
             "goals": [
-                "Consume everything in the bunker and beyond",
-                "Claim the Awakened Fruit\u2014now possibly expended",
-                "Smash the patterns the fruit revealed",
+                "Break free from the sealed bunker",
+                "Consume everything beyond the city grid",
+                "Claim the Awakened Fruit's power if it still exists somewhere",
+                "Smash the patterns the code fragments reveal",
                 "Devour hope itself"
             ],
             "obstacles": [
-                "Brave Survivor escaped through the obby gate",
-                "Claw slammed shut mere moments behind the Survivor",
+                "Sealed behind the collapsed obby gate\u2014trapped in consumed bunker",
+                "Claw slammed shut but Survivor escaped",
                 "The Rival's ongoing assault",
-                "Ancient Watcher entering the war as fourth player",
-                "Obby gate shattered\u2014escape route now open"
+                "Ancient Watcher descending as fourth player",
+                "Darkness orchestrating but Entity may be a pawn",
+                "City grid trembling above\u2014may trigger collapse"
             ],
             "allies": [
                 "Darkness"
@@ -133,7 +147,8 @@
                 "patient",
                 "manipulative",
                 "shadowy",
-                "unblinking"
+                "unblinking",
+                "everywhere-present"
             ],
             "stats": {
                 "health": 999,
@@ -143,12 +158,16 @@
             },
             "inventory": [],
             "goals": [
-                "Orchestrate the three-way war below\u2014now a four-way conflict",
+                "Orchestrate the four-way war across the expanded city grid",
                 "Consume everything through proxy forces",
-                "React to the Ancient Watcher's activation"
+                "React to the Ancient Watcher's descent and unknown allegiance",
+                "Maintain control as the battlefield expands beyond the bunker"
             ],
             "obstacles": [
-                "Ancient Watcher has blinked\u2014fourth player disrupts the orchestrated balance"
+                "Ancient Watcher has chosen a side\u2014allegiance unknown",
+                "War now spreading beyond controlled bunker environment",
+                "Entity sealed below\u2014proxy force temporarily contained",
+                "Four factions complicating orchestration"
             ],
             "allies": [
                 "Massive Entity"
@@ -168,7 +187,9 @@
                 "patient",
                 "unblinking",
                 "newly-awakened",
-                "fourth-player"
+                "fourth-player",
+                "descending",
+                "side-chosen"
             ],
             "stats": {
                 "health": 999,
@@ -178,13 +199,18 @@
             },
             "inventory": [],
             "goals": [
-                "Transition from observer to active participant in the war",
-                "Assert itself as the fourth player in the conflict",
-                "Pursue unknown ancient purpose now that the code is broken"
+                "Descend fully into the four-way war",
+                "Assert itself as the dominant fourth player",
+                "Pursue its ancient purpose now that the code is revealed",
+                "Choose and commit to a side in the conflict",
+                "Confront whoever holds the code fragments"
             ],
             "obstacles": [
                 "Three entrenched factions already at war",
-                "Brave Survivor escaped the bunker\u2014target may have shifted"
+                "Brave Survivor in open city\u2014target acquisition in progress",
+                "Its chosen side is unknown to all others",
+                "Descending from above\u2014exposed during descent",
+                "Ancient code pulsing\u2014purpose unclear even to itself"
             ],
             "allies": [],
             "enemies": [
@@ -198,39 +224,41 @@
     "locations": [
         {
             "name": "Hidden Bunker",
-            "description": "A secret underground bunker now a consumed warzone. The Entity's shadow devours everything within. Blast doors exploded inward. Walls consumed. Laser grids rewrote reality mid-step. Mystery code fully solved\u2014golden fire etched the answer into the gate. The obby gate shattered open and was escaped through. The Entity's claw slammed shut behind the Survivor. Silence follows.",
+            "description": "A consumed warzone, now sealed shut. The Entity's claw slammed against stone like a coffin lid. No way back. No way down. The obby gate shattered and was escaped through, but the Entity sealed the entrance behind. Silence reigns below as the Entity rages in its prison.",
             "obstacles": [
-                "Massive Entity has consumed most of the interior",
-                "Obby gate shattered\u2014path now open but Entity looms behind",
-                "Darkness still orchestrating from the shadows",
-                "The war rages on even as the bunker falls"
+                "Massive Entity sealed inside\u2014trapped but still active",
+                "Entrance collapsed and sealed by Entity's claw",
+                "Darkness's influence may seep through cracks",
+                "War rages on above even as the bunker falls silent"
             ],
             "rewards": [
-                "Mystery code fully solved\u2014three symbols matched, final fragment etched in golden fire",
-                "Obby gate shattered open\u2014escape route created",
-                "Code fragments preserved in the Survivor's memory"
+                "Mystery code fully solved\u2014fragments preserved in Survivor's memory",
+                "Obby gate shattered\u2014proof the impossible was accomplished",
+                "Survivor escaped with code fragments intact"
             ]
         },
         {
             "name": "Grid-based City",
-            "description": "The main city where players interact and play. Trembles with the Entity's approach and the war's escalation. Something ancient has blinked\u2014no longer watching from above, now descending into the conflict.",
+            "description": "The main city where players interact and play. Now trembling beneath an unblinking ancient gaze. The battlefield has expanded from one consumed bunker to the entire grid. Cracked pavement. Collapsed walls. Missile pods reloading in the sky. And something ancient descending through fractured clouds.",
             "locationsOfInterest": [
-                "Hidden Bunker (consumed)",
-                "Shattered Obby Gate",
-                "Ancient Watcher's descent point"
+                "Shattered Obby Gate (sealed behind)",
+                "Collapsed Wall (Survivor's temporary cover)",
+                "Ancient Watcher's descent point",
+                "The Rival's aerial position",
+                "The Entity's sealed bunker entrance"
             ]
         },
         {
             "name": "Obby",
-            "description": "A challenging obstacle course to conquer. The final gate shattered open under the golden fire of the Awakened Fruit's light. The Survivor leaped through as the Entity's claw slammed shut behind. The gate is broken\u2014escape achieved, but the war follows.",
-            "difficultyLevel": "Extreme",
-            "timeLimit": "Completed\u2014gate shattered with seconds to spare"
+            "description": "A challenging obstacle course conquered under fire. The final gate shattered under golden fire from the Awakened Fruit. The Survivor leaped through as the Entity's claw slammed shut behind. The gate is broken. The escape achieved. But the war follows through the shattered remains.",
+            "difficultyLevel": "Completed\u2014gate shattered with seconds to spare",
+            "timeLimit": "No limit\u2014the gate is destroyed, the war continues"
         }
     ],
     "plot": {
-        "mainQuest": "Survive the three-way war now complicated by a fourth player, escape the consumed bunker, and uncover the Ancient Watcher's true purpose as it transitions from observer to active combatant",
-        "timeLimit": "Gate shattered\u2014no formal time limit remains, but the war continues unabated",
-        "consequencesOfFailure": "Darkness consumes everything through its orchestrated four-way war; the Ancient Watcher's ancient purpose is unleashed unopposed; the revealed code fragments are lost; the bunker is fully consumed",
-        "currentState": "The obby gate shattered open under golden fire. The Brave Survivor leaped through as the Entity's claw slammed shut behind. Silence. Then\u2014from above, something ancient blinked. The three-way war has found its fourth player. The Survivor is injured, the fruit expended, the bunker consumed. The war is no longer three-sided. Something older has awakened."
+        "mainQuest": "Survive the four-way war spreading across the entire city grid, determine the Ancient Watcher's chosen allegiance, protect the code fragments from all factions, and find a path forward now that retreat is impossible",
+        "timeLimit": "No formal time limit\u2014the bunker is sealed, the war continues across the city grid",
+        "consequencesOfFailure": "Darkness consumes everything through its orchestrated four-way war; the Ancient Watcher's ancient purpose and chosen side reshapes the conflict; code fragments are lost to enemies; the sealed Entity breaks free and consumes the city; the Survivor has nowhere left to run",
+        "currentState": "Brave Survivor lies against cracked pavement, shoulder screaming, code fragments burning in memory. The bunker is sealed behind\u2014the Entity's claw a coffin lid. The silence lasted three heartbeats. Then the Ancient Watcher blinked. Twice. Stone eyes older than the city itself. Its massive form descended through fractured clouds, ancient code pulsing across its chest like a heartbeat. The Rival's missile pods reloaded above. The Entity roared from below. Darkness watched from everywhere. And the Watcher\u2014descending\u2014had chosen its side. No one knew which one yet. The war is no longer three-sided. Something older has awakened. The battlefield is the city now."
     }
 }
