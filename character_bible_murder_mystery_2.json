@@ -8,7 +8,8 @@
             "cobblestone streets",
             "alley",
             "city's heart",
-            "city depths"
+            "city depths",
+            "the altar"
         ]
     },
     "characters": [
@@ -25,7 +26,8 @@
                 "power-abandoning",
                 "ally-over-power",
                 "phantom-heat-burning",
-                "depth-aware"
+                "depth-aware",
+                "altar-standing"
             ],
             "inventory": [],
             "stats": {
@@ -47,7 +49,8 @@
                 "master ancient abilities",
                 "fulfill promise to ally",
                 "contain the unleashed fruit power",
-                "confront what awakens beneath the city"
+                "confront what awakens beneath the city",
+                "escape the altar of the ancient one"
             ]
         },
         {
@@ -60,7 +63,8 @@
                 "survivor",
                 "transfixed",
                 "wonder-struck",
-                "primal-terror-witness"
+                "primal-terror-witness",
+                "frozen-in-place"
             ],
             "inventory": [],
             "stats": {
@@ -78,7 +82,8 @@
                 "survive the Murderer's blade",
                 "escape the city",
                 "reach safety",
-                "understand the ancient power"
+                "understand the ancient power",
+                "move from the altar"
             ]
         },
         {
@@ -90,7 +95,9 @@
                 "blade-wielding",
                 "relentless",
                 "unshackled",
-                "identity-partially-exposed"
+                "identity-partially-exposed",
+                "crimson-code-dripping",
+                "shattered-free"
             ],
             "inventory": [
                 "blade"
@@ -123,7 +130,8 @@
                 "too-late",
                 "truth-bearer",
                 "almost-revealed",
-                "evidence-dissolved"
+                "evidence-dissolving",
+                "static-bleeding"
             ],
             "inventory": [
                 "badge",
@@ -147,6 +155,38 @@
                 "redeem delayed evidence",
                 "contain the ancient power",
                 "recover the dissolved truth"
+            ]
+        },
+        {
+            "characterName": "The Ancient One",
+            "traits": [
+                "ancient",
+                "awakened",
+                "hungry",
+                "claiming",
+                "pre-dating",
+                "number-speaking",
+                "altar-owning",
+                "fracture-rising"
+            ],
+            "inventory": [],
+            "stats": {
+                "health": 999,
+                "speed": 5,
+                "intelligence": 10,
+                "power": 10
+            },
+            "allies": [],
+            "enemies": [
+                "Brave Survivor",
+                "Trusted Ally",
+                "The Murderer",
+                "Sheriff"
+            ],
+            "goals": [
+                "claim what no one has ever claimed",
+                "rewrite reality with ancient code",
+                "consume the city and all on its altar"
             ]
         }
     ],
@@ -176,7 +216,8 @@
                 "spiraling glyphs rewrite server grid",
                 "shockwaves freeze all players on map",
                 "freezes bullets and heartbeats",
-                "absolute and ancient"
+                "absolute and ancient",
+                "still pulsing in aftermath"
             ]
         },
         {
@@ -201,7 +242,7 @@
         },
         {
             "objectName": "Sheriff's badge",
-            "description": "badge that caught the impossible glow, evidence briefly legible in neon cascade before dissolving",
+            "description": "badge that caught the impossible glow, evidence briefly legible in neon cascade before dissolving into static",
             "location": "city",
             "properties": [
                 "holds evidence",
@@ -212,12 +253,13 @@
                 "casts light on the Murderer's blade",
                 "caught the impossible glow",
                 "evidence legible briefly in neon cascade",
-                "revealed partial truth before dissolving"
+                "revealed partial truth before dissolving",
+                "bleeds into static as truth shatters"
             ]
         },
         {
             "objectName": "Murderer's blade",
-            "description": "deadly weapon that froze mid-stroke, then broke free as Murderer shrieked and blade flashed downward",
+            "description": "deadly weapon that froze mid-stroke, then broke free as Murderer shrieked and blade flashed downward, now dripping crimson code",
             "location": "city alley",
             "properties": [
                 "lethal",
@@ -227,7 +269,8 @@
                 "frozen by ancient power",
                 "broke free with Murderer's shriek",
                 "flashed downward toward ally",
-                "trembling against something absolute"
+                "trembling against something absolute",
+                "drips crimson code"
             ]
         },
         {
@@ -239,18 +282,36 @@
                 "rewrite server grid",
                 "digital virus-like spread",
                 "ancient and absolute",
-                "emerge from ground fracture"
+                "emerge from ground fracture",
+                "veins of living code"
             ]
         },
         {
             "objectName": "something beneath",
-            "description": "something awakening beneath the city, something that remembers",
+            "description": "ancient entity that rises through fractures, remembers the city before anyone spawned here, speaks in numbers they cannot read, claims what no one has ever claimed",
             "location": "city depths",
             "properties": [
                 "awakening",
                 "remembers",
                 "ancient",
-                "beneath the city"
+                "beneath the city",
+                "rises through fractures",
+                "speaks in unreadable numbers",
+                "claims what no one has claimed",
+                "predates every server and player",
+                "hungry",
+                "they all stand on its altar"
+            ]
+        },
+        {
+            "objectName": "the altar",
+            "description": "the ground beneath the city where all players now stand, claimed by the Ancient One as its sacred space",
+            "location": "city",
+            "properties": [
+                "sacred to the Ancient One",
+                "all players standing upon it",
+                "claims all who spawn here",
+                "predates every mystery"
             ]
         }
     ],
@@ -335,15 +396,27 @@
         },
         {
             "eventName": "sheriff's dissolved truth",
-            "description": "Sheriff's badge catches the impossible glow, evidence briefly legible in neon cascade revealing 'IT WAS ALWAYS\u2014' before the words dissolve as the Murderer breaks free",
+            "description": "Sheriff's badge catches the impossible glow, evidence briefly legible in neon cascade revealing 'IT WAS ALWAYS\u2014' before the words shatter as truth bleeds into static",
             "location": "city",
             "time": "during the great freeze"
         },
         {
-            "eventName": "awakening beneath",
-            "description": "Something awakens beneath the city, something that remembers - stirring in the depths as ancient glyphs rewrite reality",
+            "eventName": "the silence after",
+            "description": "The silence after the freeze is louder than any scream. Every player stands suspended between heartbeats, glyphs spiraling like veins of living code rewriting the grid beneath their feet",
+            "location": "city",
+            "time": "after the great freeze"
+        },
+        {
+            "eventName": "the ancient rises",
+            "description": "The ground splits open\u2014not from the fruit, but from below. Something ancient rises through the fractures, something that remembers this city before anyone was ever spawned here",
             "location": "city depths",
-            "time": "as shockwaves freeze the map"
+            "time": "after the silence, during the aftermath"
+        },
+        {
+            "eventName": "the altar claimed",
+            "description": "The Ancient One speaks in numbers they cannot read, claims what no one has ever claimed, and they are all\u2014every single one\u2014standing on its altar",
+            "location": "city",
+            "time": "as the ancient entity fully manifests"
         }
     ]
 }
