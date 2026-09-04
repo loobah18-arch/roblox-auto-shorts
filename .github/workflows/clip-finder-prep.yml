@@ -1,0 +1,30 @@
+name: Prepare Clip Finder Prompt
+
+on:
+  workflow_dispatch:
+    inputs:
+      campaign:
+        description: 'Campaign folder name (e.g., higgsfield-ai)'
+        required: true
+        type: string
+      transcript:
+        description: 'Transcript filename in transcript/ folder'
+        required: true
+        type: string
+
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare Clip Finder input
+        run: |
+          python3 scripts/prepare_transcript.py \
+            "transcript/${{ github.event.inputs.transcript }}" \
+            --campaign "${{ github.event.inputs.campaign }}" \
+            --output clip_finder_input.txt
+      - name: Upload Clip Finder prompt
+        uses: actions/upload-artifact@v4
+        with:
+          name: clip-finder-prompt
+          path: clip_finder_input.txt

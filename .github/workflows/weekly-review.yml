@@ -1,0 +1,61 @@
+name: Weekly Review Reminder
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  remind-and-prep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Prepare Weekly Review input
+        run: python3 scripts/weekly_review_prep.py tracker/tracker.csv --output weekly_review_input.txt
+
+      - name: Upload Weekly Review prompt as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-review-prompt
+          path: weekly_review_input.txt
+
+      - name: Lint tracker CSV
+        run: |
+          python3 - <<'EOF'
+          import csv, sys
+          required = ['date','campaign','source_timecode','hook_style','value_layer','platform','views','approval','cap_notes','next_test']
+          with open('tracker/tracker.csv') as f:
+              reader = csv.DictReader(f)
+              if reader.fieldnames != required:
+                  print(f'ERROR: columns mismatch. Got {reader.fieldnames}')
+                  sys.exit(1)
+              for i, row in enumerate(reader, 2):
+                  if not row['date'] or not row['campaign']:
+                      print(f'Row {i}: missing required date/campaign')
+                      sys.exit(1)
+          print('Tracker OK')
+          EOF
+
+      - name: Create weekly reminder issue
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Weekly Review — ${new Date().toISOString().split('T')[0]}`;
+            const body = `## Weekly Review Reminder
+
+            1. Download the **weekly-review-prompt** artifact from this run.
+            2. Paste its contents into claude.ai (use the Weekly Review prompt).
+            3. Apply the 5 single-variable tests to next week's clips.
+            4. Update \`tracker/tracker.csv\` with new data.
+
+            **Don't claim causation from small samples.**`;
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['weekly-review']
+            });
