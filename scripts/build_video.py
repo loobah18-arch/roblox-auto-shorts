@@ -13,7 +13,9 @@ Output:
 Slide rendering:
   - text-card / notes-app: Pillow render on dark gradient bg
   - lifestyle-photo / product-photo / retail-shot / persona-selfie:
-      * if asset.src == "local": load campaign-provided image, fit to 1080x1920
+      * if asset.src == "local" and media == "image": load campaign photo, fit to 1080x1920
+      * if asset.src == "local" and media == "video": use the campaign video clip
+        (scaled/cropped to 1080x1920, slide text burned in) as a moving slide
       * if asset.src == "render": Pillow text-card fallback
 
 Audio:
@@ -28,7 +30,6 @@ import os
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 
 # Pillow
 from PIL import Image, ImageDraw, ImageFont
@@ -44,6 +45,7 @@ MAX_TEXT_W = int(W * 0.88)
 FONT_PATH = None
 
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac"}
+VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi"}
 BGM_VOLUME = "0.3"  # ffmpeg volume filter — background music should be quiet
 
 
@@ -187,6 +189,70 @@ def render_slide(slide: dict, asset: dict, campaign_dir: str) -> Image.Image:
     return render_text_card(text, visual, notes)
 
 
+def render_text_overlay(text: str, visual: str, notes: str = "") -> Image.Image:
+    """Transparent RGBA overlay of centered white text (with shadow), badge,
+    and notes. Burned on top of a campaign video clip."""
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    font = pick_font(72)
+    lines = wrap_text(draw, text, font, MAX_TEXT_W)
+    line_h = font.getbbox("Ay")[3] - font.getbbox("Ay")[1]
+    total_h = line_h * len(lines) + 16 * (len(lines) - 1)
+    y_start = (H - total_h) // 2
+
+    for i, line in enumerate(lines):
+        bbox = draw.textbbox((0, 0), line, font=font)
+        x = (W - (bbox[2] - bbox[0])) // 2
+        y = y_start + i * (line_h + 16)
+        draw.text((x + 3, y + 3), line, font=font, fill=(0, 0, 0, 200))
+        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+
+    badge_font = pick_font(28)
+    draw.text((40, H - 60), f"[{visual}]", font=badge_font, fill=(200, 200, 200, 220))
+
+    if notes:
+        note_font = pick_font(24)
+        note_lines = wrap_text(draw, notes, note_font, MAX_TEXT_W)
+        ny = H - 40 - (note_font.getbbox("Ay")[3] + 6) * len(note_lines)
+        for nl in note_lines:
+            bbox = draw.textbbox((0, 0), nl, font=note_font)
+            draw.text((W - bbox[2] - 40, ny), nl, font=note_font, fill=(200, 200, 200, 220))
+            ny += note_font.getbbox("Ay")[3] + 6
+
+    return img
+
+
+def video_slide_to_mp4(slide: dict, video_path: str, out_path: str):
+    """Use a campaign video clip as a moving slide: scale/crop to 1080x1920,
+    loop to fill SLIDE_SEC, burn the slide text in as an overlay."""
+    text = slide.get("text", "")
+    visual = slide.get("visual", "video")
+    notes = slide.get("notes", "")
+    overlay = render_text_overlay(text, visual, notes)
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        overlay.save(tmp.name, "PNG")
+        ov_path = tmp.name
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-stream_loop", "-1", "-i", video_path,
+            "-i", ov_path,
+            "-filter_complex",
+            "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,"
+            "crop=1080:1920,format=rgba[bv];"
+            "[bv][1:v]overlay=0:0:format=auto,format=yuv420p[vout]",
+            "-map", "[vout]",
+            "-t", str(SLIDE_SEC), "-r", str(FPS),
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            out_path,
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+    finally:
+        os.unlink(ov_path)
+
+
 def slide_to_mp4(img: Image.Image, out_path: str):
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         img.save(tmp.name, "PNG")
@@ -296,9 +362,16 @@ def main() -> int:
         for i, slide in enumerate(script["slides"]):
             n = slide.get("n", i + 1)
             asset = assets.get(str(n), {"src": "render"})
-            print(f"  slide {n}: visual={slide.get('visual')} src={asset.get('src')}")
-            img = render_slide(slide, asset, args.dir)
             mp4_path = os.path.join(tmpdir, f"slide_{n}.mp4")
+            media = asset.get("media")
+            print(f"  slide {n}: visual={slide.get('visual')} src={asset.get('src')} media={media}")
+            if media == "video" and asset.get("src") == "local" and asset.get("path"):
+                full = os.path.join(args.dir, asset["path"])
+                if os.path.exists(full) and os.path.splitext(full)[1].lower() in VIDEO_EXTS:
+                    video_slide_to_mp4(slide, full, mp4_path)
+                    slide_files.append(mp4_path)
+                    continue
+            img = render_slide(slide, asset, args.dir)
             slide_to_mp4(img, mp4_path)
             slide_files.append(mp4_path)
 

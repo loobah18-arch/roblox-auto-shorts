@@ -25,8 +25,18 @@ on:
         description: "Campaign slug (if already in tracker/campaigns/)"
         required: false
         type: string
+      upload_to_youtube:
+        description: "Upload the finished video to YouTube (default: OFF — preview only). LEAVE OFF unless you've reviewed the video."
+        required: false
+        type: boolean
+        default: false
       live_upload:
-        description: "Actually upload to YouTube (default: preview)"
+        description: "(Deprecated — use upload_to_youtube instead)"
+        required: false
+        type: boolean
+        default: false
+      skip_script_generation:
+        description: "Use the script.json already committed for this campaign (skip the free LLM call)"
         required: false
         type: boolean
         default: false
@@ -106,32 +116,45 @@ jobs:
 
       - name: 4 — Generate script (free LLM, self-healing)
         run: |
-          EXTRA=""
-          if [ -n "${{ inputs.persona }}" ]; then
-            EXTRA="--persona \"${{ inputs.persona }}\""
+          if [ "${{ inputs.skip_script_generation }}" = "true" ]; then
+            echo "skip_script_generation=true — using existing script.json (if present)"
+            if [ ! -f "${{ steps.ctx.outputs.dir }}/script.json" ]; then
+              echo "ERROR: script.json not found but skip_script_generation=true" && exit 1
+            fi
+          else
+            EXTRA=""
+            if [ -n "${{ inputs.persona }}" ]; then
+              EXTRA="--persona \"${{ inputs.persona }}\""
+            fi
+            python3 scripts/make_script.py \
+              --dir "${{ steps.ctx.outputs.dir }}" \
+              --output "${{ steps.ctx.outputs.dir }}/script.json" \
+              $EXTRA
           fi
-          python3 scripts/make_script.py \
-            --dir "${{ steps.ctx.outputs.dir }}" \
-            --output "${{ steps.ctx.outputs.dir }}/script.json" \
-            $EXTRA
 
-      - name: 5 — Fetch visual assets (Pexels)
+      - name: 5 — Fetch campaign media (photos + videos + BGM)
         run: |
           python3 scripts/fetch_assets.py \
             --dir "${{ steps.ctx.outputs.dir }}"
 
-      - name: 6 — Build video (Pillow + ffmpeg)
+      - name: 6 — Build video (Pillow + ffmpeg, campaign footage only)
         run: |
           python3 scripts/build_video.py \
             --dir "${{ steps.ctx.outputs.dir }}" \
             --output video.mp4
 
-      - name: 7 — Upload to YouTube
+      - name: 7 — Upload to YouTube (gated by upload_to_youtube toggle)
         run: |
-          if [ "${{ inputs.live_upload }}" = "true" ]; then
+          do_upload="${{ inputs.upload_to_youtube }}"
+          if [ "$do_upload" != "true" ] && [ "${{ inputs.live_upload }}" = "true" ]; then
+            do_upload=true
+          fi
+          if [ "$do_upload" = "true" ]; then
+            echo "upload_to_youtube=true — WILL UPLOAD LIVE"
             python3 scripts/upload_youtube.py \
               --dir "${{ steps.ctx.outputs.dir }}" --live
           else
+            echo "upload_to_youtube=false — PREVIEW ONLY, nothing goes live"
             python3 scripts/upload_youtube.py \
               --dir "${{ steps.ctx.outputs.dir }}"
           fi

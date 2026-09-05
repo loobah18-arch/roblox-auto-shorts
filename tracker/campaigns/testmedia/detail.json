@@ -1,0 +1,30 @@
+{
+  "slug": "testmedia",
+  "title": "Test Campaign — Goli NAD+ gummy at Target",
+  "id": "testmedia-fixture",
+  "url": "https://contentrewards.com/discover/testmedia-fixture",
+  "platforms": ["youtube"],
+  "reference_materials": [
+    {
+      "url": "https://docs.google.com/document/d/1X73hTD8fS_HphnWdrrjJQmQhyZb96wpFppNwx9E6fcQ/edit?usp=sharing",
+      "type": "brandAsset"
+    }
+  ],
+  "reference_links": [
+    "https://docs.google.com/document/d/1X73hTD8fS_HphnWdrrjJQmQhyZb96wpFppNwx9E6fcQ/edit?usp=sharing"
+  ],
+  "payouts": [
+    {
+      "platform": "youtube",
+      "payoutType": "per_1k",
+      "rate_per_1k_usd": 1.0,
+      "min_payout_usd": 1.0,
+      "max_payout_usd": 400.0
+    }
+  ],
+  "primary_rate_per_1k_usd": 1.0,
+  "payout_min_usd": 1.0,
+  "payout_max_usd": 400.0,
+  "requires_application": false,
+  "status": "active"
+}

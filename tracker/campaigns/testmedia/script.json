@@ -1,0 +1,23 @@
+{
+  "title": "skeptical wellness girl actually reads the NAD+ label — full breakdown",
+  "format_name": "research montage into product reveal",
+  "persona": "skeptical wellness girl doing her research",
+  "slides": [
+    {"n": 1, "text": "wait… NAD+ gummies are at TARGET now?", "visual": "text-card", "notes": "hook card, fast cut"},
+    {"n": 2, "text": "read every ingredient for 3 weeks", "visual": "lifestyle-photo", "notes": "show you holding the bottle"},
+    {"n": 3, "text": "most brands hide the dose. goli shows 300mg.", "visual": "text-card", "notes": "comparison callout"},
+    {"n": 4, "text": "this is me actually taking it every morning", "visual": "persona-selfie", "notes": "casual selfie, you look skeptical"},
+    {"n": 5, "text": "found it in the target vitamin aisle", "visual": "product-photo", "notes": "shot in store, use video clip"},
+    {"n": 6, "text": "quiet head. real focus. try it?", "visual": "text-card", "notes": "soft closer, end with comment question"}
+  ],
+  "caption": "ok i went full research mode on this goli nad+ gummy. the quiet-head thing was the part that got me. got mine at Target. anyone else tried this?",
+  "hashtags": ["GOLINAD", "nad", "target"],
+  "retail_line": "got mine at Target, vitamin aisle",
+  "_meta": {
+    "provider": "test",
+    "model": "fixture",
+    "attempt": 1,
+    "persona": "skeptical wellness girl doing her research",
+    "checks": []
+  }
+}

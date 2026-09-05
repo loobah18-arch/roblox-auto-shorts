@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fetch visual assets for a generated script.
+Fetch visual + video assets for a generated script.
 
 Slide visuals map to assets like this:
     text-card / notes-app   -> no photo needed (renderer draws them)
@@ -16,6 +16,10 @@ Source priority per campaign:
   3. FAIL — pipeline stops and tells the human to download the assets manually.
      We NEVER substitute stock photos. Campaign reviewers reject anything
      not from the official campaign media kit.
+
+IMPORTANT: Google Docs (docs.google.com/document) are brief TEXT, not media.
+Skip them as asset sources. Only use Drive files/folders that actually contain
+images, videos, or audio.
 
 Writes assets/index.json: { "n": {"kind": "...", "src": "local|drive|render",
                                   "path": "...", "query": "..."} }
@@ -37,6 +41,8 @@ import time
 UA = "Mozilla/5.0 whop-producer/1.0"
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".ogg"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi"}
+MEDIA_EXTS = IMAGE_EXTS | VIDEO_EXTS | AUDIO_EXTS
 
 
 def download(url: str, dest: str) -> bool:
@@ -68,8 +74,25 @@ def extract_drive_file_id(url: str) -> str | None:
     return None
 
 
+def extension_from_type(content_type: str) -> str | None:
+    """Map a mime content type to a file extension for IMAGE/VIDEO/AUDIO."""
+    ct = (content_type or "").lower().split(";")[0].strip()
+    mapping = {
+        "image/jpeg": ".jpg", "image/jpg": ".jpg", "image/png": ".png",
+        "image/webp": ".webp", "image/gif": ".gif", "image/bmp": ".bmp",
+        "video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm",
+        "video/x-matroska": ".mkv", "video/avi": ".avi", "video/x-msvideo": ".avi",
+        "audio/mpeg": ".mp3", "audio/mp3": ".mp3", "audio/wav": ".wav",
+        "audio/x-wav": ".wav", "audio/mp4": ".m4a", "audio/aac": ".aac",
+        "audio/ogg": ".ogg", "application/octet-stream": None,
+    }
+    return mapping.get(ct)
+
+
 def download_drive_file(url: str, dest: str) -> bool:
-    """Try to download a Google Drive file via direct download link."""
+    """Try to download a Google Drive file via direct download link.
+    Sniffs the Content-Type header to append a real extension, so the
+    pipeline can tell images from videos from audio."""
     file_id = extract_drive_file_id(url)
     if not file_id:
         print(f"[warn] can't extract Drive file ID from: {url}", file=sys.stderr)
@@ -77,7 +100,38 @@ def download_drive_file(url: str, dest: str) -> bool:
 
     # direct download URL (works for public files)
     direct = f"https://drive.usercontent.google.com/download?id={file_id}&export=download"
-    return download(direct, dest)
+    try:
+        req = urllib.request.Request(direct, headers={"User-Agent": UA})
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            ctype = resp.headers.get("Content-Type", "")
+            # Drive sometimes hands a 302 page as a download confirmation
+            if ctype.startswith("text/html") and "download" in direct:
+                # retry with confirm token — Drive serves the real bytes on 2nd hop
+                req2 = urllib.request.Request(direct + "&confirm=t", headers={"User-Agent": UA})
+                with urllib.request.urlopen(req2, timeout=120) as resp2:
+                    ctype = resp2.headers.get("Content-Type", "")
+                    data = resp2.read()
+            else:
+                data = resp.read()
+    except Exception as e:
+        print(f"[warn] Drive download failed {url}: {e}", file=sys.stderr)
+        return False
+
+    ext = extension_from_type(ctype)
+    if not ext:
+        # no useful content-type — keep the caller's dest name (no extension)
+        pass
+    elif os.path.splitext(dest)[1] != ext:
+        dest = dest + ext
+
+    try:
+        if len(data) > 2000:
+            with open(dest, "wb") as f:
+                f.write(data)
+            return True
+    except Exception as e:
+        print(f"[warn] writing {dest} failed: {e}", file=sys.stderr)
+    return False
 
 
 def download_drive_folder(url: str, dest_dir: str) -> list[str]:
@@ -170,14 +224,16 @@ def main() -> int:
     os.makedirs(asset_dir, exist_ok=True)
     os.makedirs(raw_dir, exist_ok=True)
 
-    # 1) local raw files already present
+    # 1) local raw files already present (images AND videos)
     raw_files = sorted(
-        [f for f in os.listdir(raw_dir) if os.path.splitext(f)[1].lower() in IMAGE_EXTS]
+        [f for f in os.listdir(raw_dir) if os.path.splitext(f)[1].lower() in (IMAGE_EXTS | VIDEO_EXTS)]
     ) if os.path.isdir(raw_dir) else []
 
-    # 2) campaign-provided assets (download from Drive links in brief)
+    # 2) campaign-provided assets (download from Drive links in brief).
+    #    Google DOCS are brief text, not media — skip them. Only Drive
+    #    folders/files can actually hold images/videos/audio.
     drive_links = [r["url"] for r in detail.get("reference_materials", [])
-                   if r.get("url") and ("drive." in r["url"] or "docs.google.com" in r["url"])]
+                   if r.get("url") and "drive.google.com" in r["url"]]
     drive_files = []
     drive_audio = []
 
@@ -193,15 +249,15 @@ def main() -> int:
                 if download_drive_file(link, dest):
                     drive_files.append(dest)
 
-        # separate audio from images
+        # separate audio from image/video
         for f in drive_files:
             ext = os.path.splitext(f)[1].lower()
             if ext in AUDIO_EXTS:
                 drive_audio.append(f)
 
-        # refresh raw_files after download
+        # refresh raw_files after download (images AND videos)
         raw_files = sorted(
-            [f for f in os.listdir(raw_dir) if os.path.splitext(f)[1].lower() in IMAGE_EXTS]
+            [f for f in os.listdir(raw_dir) if os.path.splitext(f)[1].lower() in (IMAGE_EXTS | VIDEO_EXTS)]
         )
 
         # copy audio to assets/ for BGM
@@ -211,7 +267,7 @@ def main() -> int:
                 os.rename(af, dest)
             print(f"  audio asset: {os.path.basename(af)}")
 
-    # 3) build index — raw files only, no stock photos
+    # 3) build index — campaign media only, no stock photos
     index = {}
     photo_slots = [s for s in script["slides"]
                    if s.get("visual") in ("lifestyle-photo", "product-photo",
@@ -220,26 +276,31 @@ def main() -> int:
     for s in photo_slots:
         if used < len(raw_files):
             src = os.path.join("assets", "raw", raw_files[used])
-            index[s["n"]] = {"kind": s["visual"], "src": "local", "path": src, "query": None}
+            ext = os.path.splitext(raw_files[used])[1].lower()
+            kind = "video" if ext in VIDEO_EXTS else "image"
+            index[s["n"]] = {"kind": s["visual"], "media": kind, "src": "local",
+                             "path": src, "query": None}
             used += 1
         else:
             # no more campaign footage — flag it, don't fake it
-            index[s["n"]] = {"kind": s["visual"], "src": "render", "path": None,
-                             "query": None, "needs_media": True}
+            index[s["n"]] = {"kind": s["visual"], "media": "image", "src": "render",
+                             "path": None, "query": None, "needs_media": True}
 
     # fill non-photo slides (text-card, notes-app — renderer handles these)
     for s in script["slides"]:
         if s["n"] not in index:
-            index[s["n"]] = {"kind": s["visual"], "src": "render", "path": None, "query": None}
+            index[s["n"]] = {"kind": s["visual"], "media": "image", "src": "render",
+                             "path": None, "query": None}
 
     # report what we got
     local_count = sum(1 for v in index.values() if v["src"] == "local")
+    video_count = sum(1 for v in index.values() if v.get("media") == "video")
     need_media = [n for n, v in index.items() if v.get("needs_media")]
     audio_files = [f for f in os.listdir(asset_dir) if os.path.splitext(f)[1].lower() in AUDIO_EXTS]
 
     notes = []
     if drive_links and not raw_files:
-        notes.append(f"Drive links found but no images downloaded — check links manually: {drive_links[0]}")
+        notes.append(f"Drive links found but no images/videos downloaded — check links manually: {drive_links[0]}")
     if need_media:
         notes.append(f"slides {need_media} need campaign media but no raw files available — download from campaign Drive")
     if audio_files:
@@ -250,7 +311,8 @@ def main() -> int:
     with open(os.path.join(asset_dir, "index.json"), "w", encoding="utf-8") as f:
         json.dump({"slides": index, "notes": notes, "audio": audio_files}, f, indent=2)
 
-    print(f"assets/index.json: {len(index)} slides -> {local_count} campaign-media, "
+    print(f"assets/index.json: {len(index)} slides -> {local_count} campaign-media "
+          f"({video_count} video, {local_count - video_count} image), "
           f"{len(index) - local_count} text-card render)")
     for note in notes:
         print(f"note: {note}")
