@@ -119,25 +119,34 @@ def openrouter_score(campaigns: list[dict], model: str) -> dict[str, dict]:
         "rewarding high rate + large remaining budget + clear clippable source), "
         "note (one short sentence). Only return the JSON array, nothing else."
     )
-    body = json.dumps({
+    body = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(payload)},
         ],
-        "response_format": {"type": "json_object"},
         "temperature": 0,
-    }).encode()
-    req = urllib.request.Request(
-        "https://openrouter.ai/api/v1/chat/completions",
-        data=body,
-        headers={"Authorization": f"Bearer {key}",
-                 "Content-Type": "application/json"},
-    )
-    try:
+    }
+    req_headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+    def _post(extra: dict) -> dict:
+        req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/chat/completions",
+            data=json.dumps({**body, **extra}).encode(),
+            headers=req_headers,
+        )
         with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read().decode())
-        content = data["choices"][0]["message"]["content"]
+            return json.loads(resp.read().decode())
+
+    try:
+        try:
+            # Prefer structured JSON, but not all models support response_format
+            content = _post({"response_format": {"type": "json_object"}})["choices"][0]["message"]["content"]
+        except urllib.error.HTTPError as e:
+            if e.code != 400:
+                raise
+            print(f"[warn] {model} rejects response_format json_object — retrying without it", file=sys.stderr)
+            content = _post({})["choices"][0]["message"]["content"]
         # tolerate fenced json
         content = re.sub(r"^```(?:json)?|```$", "", content.strip()).strip()
         arr = json.loads(content)
@@ -162,6 +171,7 @@ def main() -> int:
     ap.add_argument("--keywords", default="", help="optional comma list to bias ranking (not filter)")
     ap.add_argument("--platform", default="", help="only keep campaigns with this platform (e.g. youtube). Fetches detail pages to verify.")
     ap.add_argument("--output", default="shortlist.md")
+    ap.add_argument("--json", default="", help="also write machine-readable shortlist answers (id/brand/rate/remaining) for automation")
     ap.add_argument("--html", default="", help="local html file to parse instead of fetching")
     args = ap.parse_args()
 
@@ -186,27 +196,45 @@ def main() -> int:
                 c["model_score"] = row.get("score")
                 c["model_note"] = row.get("note", "")
 
+    # ---- filter: ACTIVE (cheap, local data) BEFORE the expensive detail fetches ----
+    campaigns = [c for c in campaigns if c["remaining"] >= args.min_remaining]
+    print(f"After active filter (≥ ${args.min_remaining:,.0f} remaining): {len(campaigns)} campaigns")
+
     # ---- filter: platform (fetches detail pages) ----
+    # campaign_detail.py has tested escaped-JSON extraction — reuse its logic.
+    try:
+        from campaign_detail import extract as _detail_extract, DETAIL_URL as _BASE
+    except ImportError:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        try:
+            from campaign_detail import extract as _detail_extract
+            _BASE = "https://contentrewards.com/discover/{}"
+        except ImportError:
+            _BASE = "https://contentrewards.com/discover/{}"
+            def _detail_extract(html):
+                return {}
+
     if args.platform:
         want = args.platform.lower()
-        print(f"Checking {len(active) if active else len(campaigns)} campaigns for platform='{want}'...")
+        print(f"Checking {len(campaigns)} campaigns for platform='{want}'...")
         platform_ok = []
-        to_check = active if active else campaigns
-        for c in to_check:
+        for c in campaigns:
             if not c.get("id"):
                 continue
             try:
-                detail_url = f"https://contentrewards.com/discover/{c['id']}"
-                detail_html = fetch_html(detail_url)
-                # extract platforms from detail page
-                known = {"tiktok","instagram","youtube","facebook","twitter","x","snapchat","pinterest","threads"}
-                plat_raw = re.findall(r'"platforms":\s*\[([^\]]*)\]', detail_html)
-                if plat_raw:
-                    tokens = re.findall(r'([A-Za-z0-9_]+)', plat_raw[0])
-                    platforms = [t.lower() for t in tokens if t.lower() in known]
-                else:
-                    platforms = []
+                detail_html = fetch_html(_BASE.replace("{id}", c["id"]))
+                detail = _detail_extract(detail_html)
+                platforms = detail.get("platforms", [])
                 c["platforms"] = platforms
+                # Authoritative platform-specific rate from the payouts array
+                for p in detail.get("payouts", []):
+                    if p.get("platform") == want:
+                        c["rate"] = p["rate_per_1k_usd"]
+                # Drive media links from reference_materials
+                refs = detail.get("reference_links") or []
+                c["drive_refs"] = len([u for u in refs if "drive.google.com" in u])
+                c["has_media"] = c["drive_refs"] > 0
+                c["detail_refs"] = refs  # preserve for JSON output
                 if want in platforms:
                     platform_ok.append(c)
                 else:
@@ -214,12 +242,10 @@ def main() -> int:
             except Exception as e:
                 print(f"  skip {c['brand']}: detail fetch failed ({e})")
         campaigns = platform_ok
-        active = platform_ok
 
-    # ---- filter: ACTIVE + HIGH-PAYING ----
-    active = [c for c in campaigns if c["remaining"] >= args.min_remaining]
+    # ---- filter: HIGH-PAYING (rate already refined per-platform from detail) ----
     high = []
-    for c in active:
+    for c in campaigns:
         if c["rate"] is None:
             c["rate_flag"] = "?"   # rate not stated locally/model; keep but flag
             high.append(c)
@@ -228,8 +254,10 @@ def main() -> int:
             high.append(c)
         # below-rate campaigns are dropped
 
-    # ranking: remaining budget desc, then rate desc
-    high.sort(key=lambda c: (-(c["remaining"]), -(c["rate"] or 0)))
+    # ranking: campaigns that ship raw media first (drive_refs>0), then rate
+    # desc (high-paying first), then remaining budget desc as a tie-break.
+    high.sort(key=lambda c: (0 if c.get("drive_refs") else 1,
+                             -(c["rate"] or 0), -(c["remaining"])))
 
     # de-duplicate by brand (keep highest-remaining entry)
     seen = set()
@@ -281,6 +309,23 @@ def main() -> int:
     Path = __import__("pathlib").Path
     Path(args.output).write_text("\n".join(lines) + "\n")
     print(f"Shortlisted {len(high)} campaigns → {args.output}")
+
+    if args.json:
+        top = []
+        for c in high[: args.max_results]:
+            top.append({
+                "brand": c["brand"], "id": c.get("id"),
+                "rate_per_1k": c["rate"], "remaining": c["remaining"],
+                "total": c["total"], "category": c["category"],
+                "has_media": bool(c.get("drive_refs")),
+                "platforms": c.get("platforms") or [],
+                "media_refs": c.get("detail_refs") or [],
+            })
+        Path(args.json).write_text(json.dumps({
+            "generated_utc": __import__("datetime").datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "count": len(high), "top": top,
+        }, indent=2) + "\n")
+        print(f"Wrote machine-readable shortlist → {args.json}")
     return 0
 
 

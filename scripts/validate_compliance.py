@@ -130,21 +130,55 @@ def validate(rules: dict, script: dict) -> dict:
         errors.append(f"slide count {n} outside [{lo},{hi}]")
 
     # ---- 4. retail push / destination ----
+    # Non-retail campaigns (digital products, services, trading props) don't have
+    # a buying destination — skip the retail check entirely when brief has none.
     retail = list(rules.get("retail_keywords") or [])
     generic_retail = ["target", "amazon", "walmart", "costco", "store", "shelf",
                       "aisle", "cart", "got mine at", "buy it at", "in-store"]
-    if not retail:
-        retail = generic_retail
-        detail_retail = f"no brief retail keywords; using generic set"
-    else:
+    if retail:
         detail_retail = f"brief retail keywords: {', '.join(retail[:6])}"
-    blob_retail = (slide_text(script) + "\n" + full).lower()
-    ok_retail = any(k.lower() in blob_retail for k in retail) or \
-                any(k in blob_retail for k in generic_retail)
-    checks.append(check("retail_push", ok_retail,
-                        detail_retail + ("; destination named ✓" if ok_retail else "; NO buying-destination named")))
-    if not ok_retail:
-        errors.append("generated script never names a purchase destination (store/shelf/cart)")
+        blob_retail = (slide_text(script) + "\n" + full).lower()
+        ok_retail = any(k.lower() in blob_retail for k in retail) or \
+                    any(k in blob_retail for k in generic_retail)
+        checks.append(check("retail_push", ok_retail,
+                            detail_retail + ("; destination named ✓" if ok_retail else "; NO buying-destination named")))
+        if not ok_retail:
+            errors.append("generated script never names a purchase destination (store/shelf/cart)")
+    else:
+        checks.append(check("retail_push", True, "non-retail campaign — no buying destination required"))
+
+    # ---- 4b. required_elements presence ----
+    # The brief may mandate exact overlay text or caption wording. Check that
+    # each full-sentence required element (e.g. "Required overlay text on reel: …")
+    # appears (in part) in the script.
+    req_els = rules.get("required_elements") or []
+    missing_req = []
+    for req in req_els:
+        m = re.match(r'(?i).*?\brequired\b.*?(?:overlay text|caption wording).*?[:](.*)$', req)
+        if m:
+            phrase = m.group(1)
+        else:
+            m = re.match(r'(?i).*?must\s+add\s+text\s*[:](.*)$', req)
+            phrase = m.group(1) if m else None
+        if not phrase:
+            continue
+        phrase = re.sub(r'(?i)^.*?add\s+text\s*[:]?\s*', '', phrase)
+        phrase = re.sub(r'\s+', ' ', phrase).strip('"“”\'').strip('.')
+        if len(phrase) < 12:
+            continue
+        phrase_lower = phrase.lower()
+        # token-hit heuristic: ≥2 of the key content words must appear in the script
+        tokens = re.findall(r'[a-z0-9]+', phrase_lower)
+        key_tokens = [t for t in tokens if len(t) >= 3][:6]
+        hits = sum(1 for t in key_tokens if t in blob)
+        if hits < min(2, len(key_tokens)):
+            missing_req.append(phrase[:80])
+    if missing_req:
+        detail_req = f"missing required text in script: {'; '.join(missing_req[:2])}"
+        checks.append(check("required_elements", False, detail_req))
+        errors.append(detail_req)
+    else:
+        checks.append(check("required_elements", True, "required overlay/caption text present"))
 
     # ---- 5. registry / ad-sound hygiene ----
     title = script.get("title") or ""

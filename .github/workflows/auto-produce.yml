@@ -1,0 +1,224 @@
+# auto-produce.yml — run the full pipeline from scout to video (preview only)
+#
+# Trigger: scheduled (daily at 02:30 UTC) OR manual (workflow_dispatch)
+# What it does:
+#   1. shortlist_campaigns.py → .scratch/shortlist.json  (scout for best YouTube campaigns)
+#   2. Pick top campaign from shortlist.json (highest rate/1K with Drive media)
+#   3. campaign_detail.py     → detail.json
+#   4. fetch_brief.py         → brief.txt
+#   5. parse_brief.py         → rules.json  (with --detail for authoritative platforms)
+#   6. make_script.py         → script.json   (free LLM chain, skip_script_generation=false)
+#   7. fetch_assets.py        → assets/index.json + downloaded raw clips from Drive
+#   8. build_video.py         → video.mp4  (campaign footage only, 1080x1920/30fps)
+#   9. upload_youtube.py      → preview only (upload_to_youtube=false)
+#  10. update_tracker.py      → tracker.csv + state.json
+#  11. make_submit_issue.py   → submit_issue.md
+#
+# YouTube upload is ALWAYS disabled in this workflow (testing phase).
+# When you're ready to go live, run the producer.yml manually with upload_to_youtube=true.
+
+name: "Auto-Produce — Scout & Build Top YouTube Clip"
+
+on:
+  schedule:
+    - cron: "30 2 * * *"   # daily at 02:30 UTC (off-peak)
+  workflow_dispatch:
+    inputs:
+      min_rate:
+        description: "Minimum $/1K (default 1.00)"
+        required: false
+        type: string
+        default: "1.00"
+      min_remaining:
+        description: "Minimum $ remaining budget (default 500)"
+        required: false
+        type: string
+        default: "500"
+      max_results:
+        description: "How many campaigns to shortlist (default 8)"
+        required: false
+        type: string
+        default: "8"
+
+env:
+  PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  CLIENT_ID: ${{ secrets.CLIENT_ID }}
+  CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+  REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+
+jobs:
+  scout:
+    name: "Scout → pick top YouTube campaign with Drive media"
+    runs-on: ubuntu-latest
+    outputs:
+      campaign_id: ${{ steps.pick.outputs.campaign_id }}
+      campaign_brand: ${{ steps.pick.outputs.campaign_brand }}
+      campaign_dir: ${{ steps.pick.outputs.campaign_dir }}
+      campaign_rate: ${{ steps.pick.outputs.campaign_rate }}
+      campaign_media_refs: ${{ steps.pick.outputs.campaign_media_refs }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run scout for YouTube campaigns with Drive media
+        id: scout
+        run: |
+          mkdir -p .scratch
+          python3 scripts/shortlist_campaigns.py \
+            --min-rate ${{ github.event.inputs.min_rate || '1.00' }} \
+            --min-remaining ${{ github.event.inputs.min_remaining || '500' }} \
+            --platform youtube \
+            --max-results ${{ github.event.inputs.max_results || '8' }} \
+            --json .scratch/shortlist.json \
+            --output .scratch/shortlist.md
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: deepseek/deepseek-chat
+
+      - name: Pick top campaign with Drive media (highest rate)
+        id: pick
+        run: |
+          import json, os, sys
+          data = json.load(open(".scratch/shortlist.json"))
+          top = data.get("top", [])
+          if not top:
+              print("::error::No campaigns shortlisted")
+              sys.exit(1)
+          # Filter to those with Drive media (has_media=true) — raw clips on Drive
+          with_media = [c for c in top if c.get("has_media")]
+          if not with_media:
+              print("::error::No campaigns with Drive media found")
+              sys.exit(1)
+          # shortlist is already sorted by rate desc (scout ranking)
+          best = with_media[0]
+          lines = [
+              f"campaign_id={best['id']}",
+              f"campaign_brand={best['brand']}",
+              f"campaign_dir=tracker/campaigns/{best['id']}",
+              f"campaign_rate={best['rate_per_1k']}",
+              f"campaign_media_refs={json.dumps(best.get('media_refs', []))}",
+          ]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("\n".join(lines) + "\n")
+          print("✅ Picked: " + best["brand"] + f" (${best['rate_per_1k']}/1K, {best['remaining']:.0f} remaining, "
+                + str(len(best.get("media_refs", []))) + " Drive refs)")
+        shell: python
+
+  produce:
+    name: "Produce clip for picked campaign"
+    needs: scout
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          pip install -r requirements.txt
+
+      - name: Set campaign dir from scout
+        id: ctx
+        run: |
+          echo "slug=${{ needs.scout.outputs.campaign_id }}" >> $GITHUB_OUTPUT
+          echo "dir=tracker/campaigns/${{ needs.scout.outputs.campaign_id }}" >> $GITHUB_OUTPUT
+          echo "brand=${{ needs.scout.outputs.campaign_brand }}" >> $GITHUB_OUTPUT
+          echo "rate=${{ needs.scout.outputs.campaign_rate }}" >> $GITHUB_OUTPUT
+
+      - name: 1 — Fetch campaign detail
+        run: |
+          mkdir -p "${{ steps.ctx.outputs.dir }}"
+          python3 scripts/campaign_detail.py \
+            --id "${{ steps.ctx.outputs.slug }}" \
+            --output "${{ steps.ctx.outputs.dir }}/detail.json"
+
+      - name: 2 — Fetch campaign brief
+        run: |
+          python3 scripts/fetch_brief.py \
+            --dir "${{ steps.ctx.outputs.dir }}" || echo "Brief fetch failed — continuing with rules only"
+
+      - name: 3 — Parse brief into rules (with authoritative platforms from detail)
+        run: |
+          if [ -f "${{ steps.ctx.outputs.dir }}/brief.txt" ]; then
+            python3 scripts/parse_brief.py \
+              --brief "${{ steps.ctx.outputs.dir }}/brief.txt" \
+              --output "${{ steps.ctx.outputs.dir }}/rules.json" \
+              --detail "${{ steps.ctx.outputs.dir }}/detail.json"
+          else
+            echo "No brief.txt — creating minimal rules.json"
+            echo '{"slides_min":5,"slides_max":8,"hashtags":[],"banned_claim_phrases":[],"retail_keywords":["store","shelf","cart"]}' \
+              > "${{ steps.ctx.outputs.dir }}/rules.json"
+          fi
+
+      - name: 4 — Generate script (free LLM chain: Groq → Gemini → OpenRouter:free)
+        run: |
+          python3 scripts/make_script.py \
+            --dir "${{ steps.ctx.outputs.dir }}" \
+            --output "${{ steps.ctx.outputs.dir }}/script.json"
+
+      - name: 5 — Fetch campaign media (photos + videos + BGM from Drive)
+        run: |
+          python3 scripts/fetch_assets.py \
+            --dir "${{ steps.ctx.outputs.dir }}"
+
+      - name: 6 — Build video (Pillow + ffmpeg, campaign footage only)
+        run: |
+          python3 scripts/build_video.py \
+            --dir "${{ steps.ctx.outputs.dir }}" \
+            --output video.mp4
+
+      - name: 7 — YouTube preview (NO LIVE UPLOAD — testing phase)
+        run: |
+          echo "upload_to_youtube=false — PREVIEW ONLY, nothing goes live"
+          python3 scripts/upload_youtube.py \
+            --dir "${{ steps.ctx.outputs.dir }}"
+
+      - name: 8 — Update tracker
+        run: |
+          python3 scripts/update_tracker.py \
+            --dir "${{ steps.ctx.outputs.dir }}" --repo-root .
+
+      - name: 9 — Create submit issue draft
+        run: |
+          python3 scripts/make_submit_issue.py \
+            --dir "${{ steps.ctx.outputs.dir }}"
+
+      - name: Upload artifacts (video + all intermediate files)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-produce-${{ steps.ctx.outputs.slug }}
+          path: |
+            ${{ steps.ctx.outputs.dir }}/
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Auto-Produce Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Campaign**: ${{ needs.scout.outputs.campaign_brand }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **ID**: ${{ needs.scout.outputs.campaign_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Rate**: ${{ needs.scout.outputs.campaign_rate }}/1K" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dir**: ${{ steps.ctx.outputs.dir }}" >> $GITHUB_STEP_SUMMARY
+          if [ -f "${{ steps.ctx.outputs.dir }}/video.mp4" ]; then
+            echo "- **Video**: ✅ built ($(du -h "${{ steps.ctx.outputs.dir }}/video.mp4" | cut -f1))" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Video**: ❌ not produced" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Artifacts**: uploaded (30-day retention)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_YouTube upload DISABLED (testing phase). To go live, run producer.yml manually with upload_to_youtube=true._" >> $GITHUB_STEP_SUMMARY

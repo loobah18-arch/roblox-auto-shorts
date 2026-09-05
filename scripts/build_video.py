@@ -271,18 +271,28 @@ def slide_to_mp4(img: Image.Image, out_path: str):
 
 
 def concat_slides(slide_mp4s: list[str], out_path: str):
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        for p in slide_mp4s:
-            f.write(f"file '{os.path.abspath(p)}'\n")
-        list_path = f.name
-    try:
-        cmd = [
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path,
-            "-c", "copy", "-movflags", "+faststart", out_path
-        ]
-        subprocess.run(cmd, check=True, capture_output=True)
-    finally:
-        os.unlink(list_path)
+    """Join slide MP4s with the concat FILTER (re-encode). More robust than the
+    concat demuxer + `-c copy`, which can fail across different libx264 parameter
+    sets (cards vs. clip slides encode with different timebases). Short video, so
+    a veryfast x264 re-encode here is cheap and guarantees compatibility."""
+    if not slide_mp4s:
+        raise RuntimeError("no slides rendered")
+    ins, chains = [], []
+    for i, p in enumerate(slide_mp4s):
+        ins += ["-i", p]
+        chains.append(
+            f"[{i}:v]scale={W}:{H}:force_original_aspect_ratio=decrease,"
+            f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v{i}]")
+    chains.append(
+        "".join(f"[v{i}]" for i in range(len(slide_mp4s)))
+        + f"concat=n={len(slide_mp4s)}:v=1:a=0,format=yuv420p[vout]")
+    cmd = [
+        "ffmpeg", "-y", *ins, "-filter_complex", ";".join(chains),
+        "-map", "[vout]", "-c:v", "libx264", "-preset", "veryfast",
+        "-pix_fmt", "yuv420p", "-r", str(FPS), "-movflags", "+faststart",
+        out_path,
+    ]
+    subprocess.run(cmd, check=True, capture_output=True)
 
 
 def find_bgm(campaign_dir: str) -> str | None:
@@ -338,7 +348,7 @@ def main() -> int:
 
     script_path = os.path.join(args.dir, "script.json")
     assets_path = os.path.join(args.dir, "assets", "index.json")
-    out_path = os.path.join(args.dir, args.output)
+    out_path = args.output if os.path.isabs(args.output) else os.path.join(args.dir, args.output)
 
     if not os.path.exists(script_path):
         print(f"ERROR: {script_path} not found", file=sys.stderr)

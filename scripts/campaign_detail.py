@@ -39,8 +39,10 @@ def fetch(url: str) -> str:
 
 
 def unesc(s: str) -> str:
-    """RSC payloads double-quote strings; peel the escaping so plain JSON regex works."""
-    return s.replace('\\"', '"').replace('\\/', '/')
+    """RSC payloads double-quote strings; peel the escaping so plain JSON regex works.
+    Also decodes \\uXXXX escapes (e.g. Drive URLs carry \\u0026 for &)."""
+    s = s.replace('\\"', '"').replace('\\/', '/')
+    return re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m.group(1), 16)), s)
 
 
 def extract(html: str) -> dict:

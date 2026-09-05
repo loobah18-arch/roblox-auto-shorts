@@ -107,7 +107,8 @@ jobs:
           if [ -f "${{ steps.ctx.outputs.dir }}/brief.txt" ]; then
             python3 scripts/parse_brief.py \
               --brief "${{ steps.ctx.outputs.dir }}/brief.txt" \
-              --output "${{ steps.ctx.outputs.dir }}/rules.json"
+              --output "${{ steps.ctx.outputs.dir }}/rules.json" \
+              --detail "${{ steps.ctx.outputs.dir }}/detail.json"
           else
             echo "No brief.txt — creating minimal rules.json"
             echo '{"slides_min":5,"slides_max":8,"hashtags":[],"banned_claim_phrases":[],"retail_keywords":["store","shelf","cart"]}' \

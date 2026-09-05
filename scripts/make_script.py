@@ -128,7 +128,9 @@ HARD RULES:
 - 5-8 slides. Slide 1 is a hook card. On persona pages product appears late (slide >=5). Last slide is a soft closer + one comment question.
 - Text must be short and low-case-y, like a person talking, never an ad.
 - Lip-stick to the brief's exact claims. NEVER use any BANNED CLAIM. Never pretend to be a doctor, never health-claim, never weight-loss, never 'boost/natural/organic/etc' unless the brief explicitly allows.
-- MUST name the purchase destination (retail_line / a slide/caption): you will not be paid if it's missing.
+- NEVER write "link in bio", "check my bio", "comment below", "follow me", or any invitation to click an external link — it is an AUTOMATIC rejection every time.
+- MUST name the campaign brand / where people get it (retail_line or a slide/caption naming the brand like 'FundingPips' or 'got mine at Target'): you will not be paid if the destination is missing.
+- If the brief lists REQUIRED overlay text or REQUIRED caption wording, include that exact wording (or close to it) verbatim in the relevant slide/caption.
 - caption excludes hashtags; we append them separately. In slides, if captions/hashtag-like '#word' appear, that's fine only if the brief requires it."""
     return user
 

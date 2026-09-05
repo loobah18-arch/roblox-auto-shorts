@@ -26,6 +26,82 @@ import os
 import re
 import sys
 
+# Phrases that make an extracted "requirement/format/ban" useless for downstream
+# LLM prompt or the compliance validator. Heuristics below drop anything that
+# reads like strategy prose rather than an actual rule.
+NOISE = [
+    "just inspiration", "you are encouraged", "rough format ideas", "run it again",
+    "rerun your winner", "do not reinvent", "strongest one", "ship this first",
+    "proven videos", "start with the", "in the campaign", "s - they are",
+    "s:", "main goal", "not supposed to fix", "general very rough",
+    "learn from them", "how to do it", "not the point", "open gemini",
+]
+GENERIC_RETAIL = ["store", "shelf", "aisle", "cart", "got mine at", "in store",
+                  "buy it at", "where to buy", "checkout", "retail push", "red bag"]
+
+
+def harvest_formats(text: str) -> list[str]:
+    """Extract real format/lane titles. Whop briefs list them as:
+      FORMAT 1
+      I Didn't Know How Bad It Was   ← title
+      The strongest one.              ← comment (skip)
+    """
+    formats: list[str] = []
+    seen: set[str] = set()
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+
+    # — "LANE X — Title. Subtitle." pattern —
+    for line in lines:
+        m = re.match(r'(?:LANE|RECIPE)\s*[A-Z0-9]*?\s*[—:\-]\s*(.+)$', line, re.I)
+        if not m:
+            continue
+        # take first clause before a period or long comma
+        title = re.split(r'[.](?:\s|$)|[;]\s', m.group(1))[0].strip().rstrip('.,').strip()
+        tkey = title.lower()
+        if len(title.split()) < 2 or not title[0].isupper():
+            continue
+        if tkey in seen or any(n in tkey for n in NOISE):
+            continue
+        seen.add(tkey)
+        formats.append(title)
+
+    # — "FORMAT IDEAS: A, B, C" header —
+    for line in lines:
+        m = re.match(r'^FORMAT\s+IDEAS?\s*[:.]\s*(.+)$', line, re.I)
+        if m:
+            ideas = [a.strip() for a in re.split(r'[,/]', m.group(1)) if a.strip()]
+            for idea in ideas:
+                title = re.split(r'[.!?]', idea, maxsplit=1)[0].strip().rstrip('.').strip()
+                if not title or len(title) < 3:
+                    continue
+                if any(n in title.lower() for n in NOISE):
+                    continue
+                tkey = title.lower()
+                if tkey not in seen:
+                    seen.add(tkey)
+                    formats.append(title)
+
+    # — "FORMAT N" on its own line → next non-empty line is the title —
+    for i, line in enumerate(lines):
+        if not re.match(r'^FORMAT\s+\d+$', line, re.I):
+            continue
+        for nxt in lines[i + 1: i + 3]:
+            # skip sub-comments ("The strongest one. Ship this first.")
+            if re.match(r'^(?:the\s|\d|we|ship|proven|start|run|great|funny|target)', nxt, re.I):
+                continue
+            t = nxt.split('.')[0].strip().rstrip(',').strip()
+            if len(t) < 3 or len(t) > 65 or not t[0].isupper():
+                continue
+            tkey = t.lower()
+            if tkey in seen or any(n in tkey for n in NOISE):
+                continue
+            seen.add(tkey)
+            formats.append(t)
+            break
+
+    return formats[:10]
+
+
 # A generic, conservative claim list used when the brief doesn't spell one out.
 # These are the categories whop briefs most commonly reject post-clipping.
 GENERIC_BANNED = [
@@ -50,11 +126,22 @@ def harvest(text: str) -> dict:
     rules["hashtags"] = sorted(set(tag.lstrip("#") for tag in tags))
 
     # ---- platforms ----
+    # Only trust EXPLICIT platform directives ("post to:", "platform:", "upload to:"),
+    # not passing mentions inside strategy prose ("clean eats pages on Pinterest").
+    # The authoritative source is detail.json["platforms"] (merged in main()).
     low = text.lower()
     found = []
-    for p in ["tiktok", "instagram", "youtube", "facebook", "twitter", "snapchat", "pinterest"]:
-        if re.search(r'\b' + p + r'\b', low):
-            found.append(p)
+    known = ["tiktok", "instagram", "youtube", "facebook", "twitter", "snapchat",
+             "pinterest", "threads"]
+    directive = re.compile(
+        r'(?:post\s*(?:to|on|at)|upload\s*(?:to|on)|publish\s*(?:on|to)|'
+        r'submit\s*(?:to|on)|platforms?\s*(?:are|:|:and|include)?|'
+        r'best\s*on|optimized\s*for)\s*[:\s]*([^.\n]{0,80})', re.I)
+    for m in directive.finditer(low):
+        seg = m.group(1)
+        for p in known:
+            if re.search(r'\b' + p + r'\b', seg) and p not in found:
+                found.append(p)
     rules["platforms"] = found
 
     # ---- slide / post count ("5 to 8 slides", "5-8")
@@ -81,26 +168,31 @@ def harvest(text: str) -> dict:
     if m:
         rules["payout_max_usd"] = float(m.group(1))
 
-    # ---- required elements: lines with MUST / REQUIRED / no exceptions / every post ----
+    # ---- required elements: full SENTENCES that mandate something ----
     required = []
     seen = set()
-    for m in re.finditer(r'([^.\n]{1,200}?(?:must|required|no exceptions|every post|will not get paid)[^.\n]{1,200}?)', text, re.I):
-        s = re.sub(r'\s+', " ", m.group(0)).strip()
-        if 12 <= len(s) <= 220 and s not in seen:
-            seen.add(s)
-            required.append(s)
-    rules["required_elements"] = required[:40]
+    mand = re.compile(r'(must|required|no exceptions|every post|will not get paid|non-negotiable)', re.I)
+    for piece in re.split(r'(?<=[.!?])\s+|\n+', text):
+        s = re.sub(r'\s+', " ", piece).strip().strip('"“”')
+        if not (12 <= len(s) <= 260) or s in seen:
+            continue
+        if not mand.search(s):
+            continue
+        if any(n in s.lower() for n in NOISE):
+            continue
+        seen.add(s)
+        required.append(s)
+    rules["required_elements"] = required[:12]
 
     # ---- banned claim lines: text after marker words like "never say"/"you will not get paid"/"❌" ----
     banned = get_banned_block(text)
 
     # merge with generic list conservatively
     merged = list(dict.fromkeys(banned + GENERIC_BANNED))
-    rules["banned_claim_phrases"] = merged
+    rules["banned_claim_phrases"] = merged[:60]
 
-    # ---- format names: "FORMAT 1" section headers and the like ----
-    formats = re.findall(r'(?i)(format|lane|recipe)\s*[0-9A-F]*:?\s*([A-Za-z][A-Za-z ._-]{3,50})', text)
-    rules["format_names"] = [f[1].strip() for f in formats[:12]]
+    # ---- format names: real "FORMAT N" / "LANE X" header titles, deduped ----
+    rules["format_names"] = harvest_formats(text)
 
     # ---- retail push keywords (brand/store/shelf talk) ----
     rules["retail_keywords"] = harvest_retail(text)
@@ -128,7 +220,7 @@ def harvest_retail(text):
 
 
 def get_banned_block(text: str):
-    """Collect ban-zone lines. Whop briefs denote them inconsistently."""
+    """Collect ban-zone claims. Whop briefs denote them inconsistently."""
     banned = []
     markers = ["you will not get paid", "never say", "do not", "can't say",
                "not allowed", "❌", "✖"]
@@ -137,18 +229,26 @@ def get_banned_block(text: str):
     for i, line in enumerate(lines):
         low = line.lower()
         if any(mk in low for mk in markers):
-            # take the line and up to the next 4 clean lines as the ban sentence
-            chunk = [line]
-            for nxt in lines[i + 1:i + 5]:
-                if len(nxt) < 200 and nxt and not re.match(r'^[0-9]+[.)]', nxt):
-                    if any(mk in nxt.lower() for mk in ["never say", "do not", "not allowed", "required", "must"]):
-                        break
-                    chunk.append(nxt)
-                else:
-                    break
-            sentence = re.sub(r'\s+', " ", " ".join(chunk)).strip().strip("•-* ")
-            if 4 <= len(sentence) <= 220:
-                banned.append(sentence)
+            # Keep only the FIRST sentence of the marker line — the actual ban
+            # statement. The following lines are strategy/format prose, not claims.
+            first = re.split(r'(?<=[.!?])\s+', line, maxsplit=1)[0]
+            first = re.sub(r'^[❌✖•\-*\s]+|[❌✖\s]+$', "", first).strip()
+            first = re.sub(r'\s+', " ", first)
+            # A "you will not get paid if X" clause is a rule but useless as a
+            # substring check — collapse to its claim core when present.
+            if any(mk in first.lower() for mk in ("you will not get paid", "will not get paid",
+                                                  "never say")):
+                # keep the clause after the marker, capped short
+                cut = re.split(r'(?:you will not get paid if|never say|do not|not allowed)', first, flags=re.I)
+                core = cut[-1].strip().strip(':')
+                core = re.split(r'[.…]', core, maxsplit=1)[0].strip()
+                if 4 <= len(core) <= 90 and not any(n in core.lower() for n in NOISE):
+                    banned.append(core)
+                continue
+            if first.rstrip().endswith(":") and len(first) < 45:
+                continue  # a bare section header, not a claim
+            if 4 <= len(first) <= 160 and not any(n in first.lower() for n in NOISE):
+                banned.append(first)
     return banned
 
 
@@ -156,10 +256,23 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--brief", required=True, help="path to brief.txt")
     ap.add_argument("--output", required=True, help="path to write rules.json")
+    ap.add_argument("--detail", default="", help="path to detail.json to merge the authoritative platform list")
     args = ap.parse_args()
 
     text = open(args.brief, encoding="utf-8", errors="ignore").read()
     rules = harvest(text)
+
+    # The AUTHORITATIVE source for allowed platforms is the campaign detail page,
+    # not regex heuristics over the brief. Merge it in when available.
+    if args.detail and os.path.exists(args.detail):
+        try:
+            detail = json.load(open(args.detail, encoding="utf-8"))
+            dp = [p.lower() for p in detail.get("platforms") or []]
+            if dp:
+                rules["platforms"] = dp
+                rules["platforms_source"] = "detail.json"
+        except Exception:
+            pass
     # Always keep full text alongside for the model step / human audit.
     rules["brief_chars"] = len(text)
 
