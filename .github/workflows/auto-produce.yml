@@ -1,4 +1,4 @@
-# auto-produce.yml — run the full pipeline from scout to video (preview only)
+# auto-produce.yml - run the full pipeline from scout to video (preview only)
 #
 # Trigger: scheduled (daily at 02:30 UTC) OR manual (workflow_dispatch)
 # What it does:
@@ -17,7 +17,7 @@
 # YouTube upload is ALWAYS disabled in this workflow (testing phase).
 # When you're ready to go live, run the producer.yml manually with upload_to_youtube=true.
 
-name: "Auto-Produce — Scout & Build Top YouTube Clip"
+name: "Auto-Produce - Scout & Build Top YouTube Clip"
 
 on:
   schedule:
@@ -51,7 +51,7 @@ env:
 
 jobs:
   scout:
-    name: "Scout → pick top YouTube campaign with Drive media"
+    name: "Scout -> pick top YouTube campaign with Drive media"
     runs-on: ubuntu-latest
     outputs:
       campaign_id: ${{ steps.pick.outputs.campaign_id }}
@@ -94,7 +94,7 @@ jobs:
           if not top:
               print("::error::No campaigns shortlisted")
               sys.exit(1)
-          # Filter to those with Drive media (has_media=true) — raw clips on Drive
+          # Filter to those with Drive media (has_media=true) - raw clips on Drive
           with_media = [c for c in top if c.get("has_media")]
           if not with_media:
               print("::error::No campaigns with Drive media found")
@@ -139,19 +139,19 @@ jobs:
           echo "brand=${{ needs.scout.outputs.campaign_brand }}" >> $GITHUB_OUTPUT
           echo "rate=${{ needs.scout.outputs.campaign_rate }}" >> $GITHUB_OUTPUT
 
-      - name: 1 — Fetch campaign detail
+      - name: 1 - Fetch campaign detail
         run: |
           mkdir -p "${{ steps.ctx.outputs.dir }}"
           python3 scripts/campaign_detail.py \
             --id "${{ steps.ctx.outputs.slug }}" \
             --output "${{ steps.ctx.outputs.dir }}/detail.json"
 
-      - name: 2 — Fetch campaign brief
+      - name: 2 - Fetch campaign brief
         run: |
           python3 scripts/fetch_brief.py \
-            --dir "${{ steps.ctx.outputs.dir }}" || echo "Brief fetch failed — continuing with rules only"
+            --dir "${{ steps.ctx.outputs.dir }}" || echo "Brief fetch failed - continuing with rules only"
 
-      - name: 3 — Parse brief into rules (with authoritative platforms from detail)
+      - name: 3 - Parse brief into rules (with authoritative platforms from detail)
         run: |
           if [ -f "${{ steps.ctx.outputs.dir }}/brief.txt" ]; then
             python3 scripts/parse_brief.py \
@@ -159,40 +159,40 @@ jobs:
               --output "${{ steps.ctx.outputs.dir }}/rules.json" \
               --detail "${{ steps.ctx.outputs.dir }}/detail.json"
           else
-            echo "No brief.txt — creating minimal rules.json"
+            echo "No brief.txt - creating minimal rules.json"
             echo '{"slides_min":5,"slides_max":8,"hashtags":[],"banned_claim_phrases":[],"retail_keywords":["store","shelf","cart"]}' \
               > "${{ steps.ctx.outputs.dir }}/rules.json"
           fi
 
-      - name: 4 — Generate script (free LLM chain: Groq → Gemini → OpenRouter:free)
+      - name: "4 - Generate script (free LLM chain: Groq -> Gemini -> OpenRouter:free)"
         run: |
           python3 scripts/make_script.py \
             --dir "${{ steps.ctx.outputs.dir }}" \
             --output "${{ steps.ctx.outputs.dir }}/script.json"
 
-      - name: 5 — Fetch campaign media (photos + videos + BGM from Drive)
+      - name: 5 - Fetch campaign media (photos + videos + BGM from Drive)
         run: |
           python3 scripts/fetch_assets.py \
             --dir "${{ steps.ctx.outputs.dir }}"
 
-      - name: 6 — Build video (Pillow + ffmpeg, campaign footage only)
+      - name: 6 - Build video (Pillow + ffmpeg, campaign footage only)
         run: |
           python3 scripts/build_video.py \
             --dir "${{ steps.ctx.outputs.dir }}" \
             --output video.mp4
 
-      - name: 7 — YouTube preview (NO LIVE UPLOAD — testing phase)
+      - name: 7 - YouTube preview (NO LIVE UPLOAD - testing phase)
         run: |
-          echo "upload_to_youtube=false — PREVIEW ONLY, nothing goes live"
+          echo "upload_to_youtube=false - PREVIEW ONLY, nothing goes live"
           python3 scripts/upload_youtube.py \
             --dir "${{ steps.ctx.outputs.dir }}"
 
-      - name: 8 — Update tracker
+      - name: 8 - Update tracker
         run: |
           python3 scripts/update_tracker.py \
             --dir "${{ steps.ctx.outputs.dir }}" --repo-root .
 
-      - name: 9 — Create submit issue draft
+      - name: 9 - Create submit issue draft
         run: |
           python3 scripts/make_submit_issue.py \
             --dir "${{ steps.ctx.outputs.dir }}"
