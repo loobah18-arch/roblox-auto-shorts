@@ -160,6 +160,7 @@ def main() -> int:
     ap.add_argument("--min-remaining", type=float, default=1000, help="drop below $ remaining budget")
     ap.add_argument("--max-results", type=int, default=15)
     ap.add_argument("--keywords", default="", help="optional comma list to bias ranking (not filter)")
+    ap.add_argument("--platform", default="", help="only keep campaigns with this platform (e.g. youtube). Fetches detail pages to verify.")
     ap.add_argument("--output", default="shortlist.md")
     ap.add_argument("--html", default="", help="local html file to parse instead of fetching")
     args = ap.parse_args()
@@ -184,6 +185,36 @@ def main() -> int:
                 c["rate"] = row.get("rate_per_1k", c["rate"])
                 c["model_score"] = row.get("score")
                 c["model_note"] = row.get("note", "")
+
+    # ---- filter: platform (fetches detail pages) ----
+    if args.platform:
+        want = args.platform.lower()
+        print(f"Checking {len(active) if active else len(campaigns)} campaigns for platform='{want}'...")
+        platform_ok = []
+        to_check = active if active else campaigns
+        for c in to_check:
+            if not c.get("id"):
+                continue
+            try:
+                detail_url = f"https://contentrewards.com/discover/{c['id']}"
+                detail_html = fetch_html(detail_url)
+                # extract platforms from detail page
+                known = {"tiktok","instagram","youtube","facebook","twitter","x","snapchat","pinterest","threads"}
+                plat_raw = re.findall(r'"platforms":\s*\[([^\]]*)\]', detail_html)
+                if plat_raw:
+                    tokens = re.findall(r'([A-Za-z0-9_]+)', plat_raw[0])
+                    platforms = [t.lower() for t in tokens if t.lower() in known]
+                else:
+                    platforms = []
+                c["platforms"] = platforms
+                if want in platforms:
+                    platform_ok.append(c)
+                else:
+                    print(f"  skip {c['brand']}: platforms={platforms}")
+            except Exception as e:
+                print(f"  skip {c['brand']}: detail fetch failed ({e})")
+        campaigns = platform_ok
+        active = platform_ok
 
     # ---- filter: ACTIVE + HIGH-PAYING ----
     active = [c for c in campaigns if c["remaining"] >= args.min_remaining]

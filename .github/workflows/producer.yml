@@ -1,0 +1,153 @@
+# producer.yml — run the full clip-producing pipeline for a campaign
+#
+# Trigger:  manually (workflow_dispatch) with campaign_url or campaign_slug
+# What it does:
+#   1. campaign_detail.py  → detail.json
+#   2. fetch_brief.py      → brief.txt
+#   3. parse_brief.py      → rules.json
+#   4. make_script.py      → script.json   (free LLM, self-healing)
+#   5. fetch_assets.py     → assets/index.json + downloaded photos
+#   6. build_video.py      → video.mp4
+#   7. upload_youtube.py   → upload_result.json
+#   8. update_tracker.py   → tracker.csv + state.json
+#   9. make_submit_issue.py → submit_issue.md (+ optional gh issue)
+
+name: "Producer — Build & Upload Clip"
+
+on:
+  workflow_dispatch:
+    inputs:
+      campaign_url:
+        description: "Whop campaign detail page URL (public)"
+        required: false
+        type: string
+      campaign_slug:
+        description: "Campaign slug (if already in tracker/campaigns/)"
+        required: false
+        type: string
+      live_upload:
+        description: "Actually upload to YouTube (default: preview)"
+        required: false
+        type: boolean
+        default: false
+      persona:
+        description: "Override persona for the script"
+        required: false
+        type: string
+
+env:
+  PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  CLIENT_ID: ${{ secrets.CLIENT_ID }}
+  CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+  REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Set campaign dir
+        id: ctx
+        run: |
+          if [ -n "${{ inputs.campaign_slug }}" ]; then
+            echo "slug=${{ inputs.campaign_slug }}" >> $GITHUB_OUTPUT
+            echo "dir=tracker/campaigns/${{ inputs.campaign_slug }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ inputs.campaign_url }}" ]; then
+            # derive slug from URL
+            slug=$(echo "${{ inputs.campaign_url }}" | grep -oP '[0-9a-f-]{36}$' | cut -c1-8)
+            echo "slug=$slug" >> $GITHUB_OUTPUT
+            echo "dir=tracker/campaigns/$slug" >> $GITHUB_OUTPUT
+            echo "url=${{ inputs.campaign_url }}" >> $GITHUB_OUTPUT
+          else
+            echo "ERROR: provide campaign_url or campaign_slug" && exit 1
+          fi
+
+      - name: 1 — Fetch campaign detail
+        run: |
+          mkdir -p "${{ steps.ctx.outputs.dir }}"
+          if [ -n "${{ steps.ctx.outputs.url }}" ]; then
+            python3 scripts/campaign_detail.py \
+              --url "${{ steps.ctx.outputs.url }}" \
+              --output "${{ steps.ctx.outputs.dir }}/detail.json"
+          else
+            echo "Using existing detail.json"
+          fi
+
+      - name: 2 — Fetch campaign brief
+        run: |
+          python3 scripts/fetch_brief.py \
+            --dir "${{ steps.ctx.outputs.dir }}" || echo "Brief fetch failed — continuing with rules only"
+
+      - name: 3 — Parse brief into rules
+        run: |
+          if [ -f "${{ steps.ctx.outputs.dir }}/brief.txt" ]; then
+            python3 scripts/parse_brief.py \
+              --brief "${{ steps.ctx.outputs.dir }}/brief.txt" \
+              --output "${{ steps.ctx.outputs.dir }}/rules.json"
+          else
+            echo "No brief.txt — creating minimal rules.json"
+            echo '{"slides_min":5,"slides_max":8,"hashtags":[],"banned_claim_phrases":[],"retail_keywords":["store","shelf","cart"]}' \
+              > "${{ steps.ctx.outputs.dir }}/rules.json"
+          fi
+
+      - name: 4 — Generate script (free LLM, self-healing)
+        run: |
+          EXTRA=""
+          if [ -n "${{ inputs.persona }}" ]; then
+            EXTRA="--persona \"${{ inputs.persona }}\""
+          fi
+          python3 scripts/make_script.py \
+            --dir "${{ steps.ctx.outputs.dir }}" \
+            --output "${{ steps.ctx.outputs.dir }}/script.json" \
+            $EXTRA
+
+      - name: 5 — Fetch visual assets (Pexels)
+        run: |
+          python3 scripts/fetch_assets.py \
+            --dir "${{ steps.ctx.outputs.dir }}"
+
+      - name: 6 — Build video (Pillow + ffmpeg)
+        run: |
+          python3 scripts/build_video.py \
+            --dir "${{ steps.ctx.outputs.dir }}" \
+            --output video.mp4
+
+      - name: 7 — Upload to YouTube
+        run: |
+          if [ "${{ inputs.live_upload }}" = "true" ]; then
+            python3 scripts/upload_youtube.py \
+              --dir "${{ steps.ctx.outputs.dir }}" --live
+          else
+            python3 scripts/upload_youtube.py \
+              --dir "${{ steps.ctx.outputs.dir }}"
+          fi
+
+      - name: 8 — Update tracker
+        run: |
+          python3 scripts/update_tracker.py \
+            --dir "${{ steps.ctx.outputs.dir }}" --repo-root .
+
+      - name: 9 — Create submit issue draft
+        run: |
+          python3 scripts/make_submit_issue.py \
+            --dir "${{ steps.ctx.outputs.dir }}"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: campaign-${{ steps.ctx.outputs.slug }}
+          path: |
+            ${{ steps.ctx.outputs.dir }}/
+          retention-days: 30

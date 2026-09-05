@@ -1,0 +1,31 @@
+{
+  "title": "Goli NAD+ × Target Campaign - ClipFarm",
+  "platforms": [
+    "tiktok"
+  ],
+  "payouts": [
+    {
+      "platform": "tiktok",
+      "payoutType": "cpm",
+      "rate_per_1k_usd": 1.0,
+      "min_payout_usd": 1.0,
+      "max_payout_usd": 400.0
+    }
+  ],
+  "primary_rate_per_1k_usd": 1.0,
+  "payout_min_usd": 1.0,
+  "payout_max_usd": 400.0,
+  "reference_materials": [
+    {
+      "url": "https://docs.google.com/document/d/1X73hTD8fS_HphnWdrrjJQmQhyZb96wpFppNwx9E6fcQ/edit?usp=sharing",
+      "type": "brandAsset"
+    }
+  ],
+  "reference_links": [
+    "https://docs.google.com/document/d/1X73hTD8fS_HphnWdrrjJQmQhyZb96wpFppNwx9E6fcQ/edit?usp=sharing"
+  ],
+  "requires_application": false,
+  "status": "active",
+  "id": "6006f4f8-db43-4ebf-a845-f9d3c500417b",
+  "url": "https://contentrewards.com/discover/6006f4f8-db43-4ebf-a845-f9d3c500417b"
+}

@@ -1,0 +1,105 @@
+{
+  "title": "i researched the goli nad+ gummy so you don't have to",
+  "format_name": "I Didn't Know How Bad It Was (persona, hook-first, product late)",
+  "persona": "skeptical wellness girl doing research",
+  "slides": [
+    {
+      "n": 1,
+      "text": "i actually researched this gummy",
+      "visual": "persona-selfie",
+      "notes": "tired desk selfie, slightly blurry, plain bg, big white text centered"
+    },
+    {
+      "n": 2,
+      "text": "read the label. watched the reviews.",
+      "visual": "notes-app",
+      "notes": "notes app screenshot, lowercase, single column, messy real-phone look"
+    },
+    {
+      "n": 3,
+      "text": "most of them were just marketing",
+      "visual": "text-card",
+      "notes": "plain background, big white text, dead center"
+    },
+    {
+      "n": 4,
+      "text": "then i found the nad+ gummy",
+      "visual": "lifestyle-photo",
+      "notes": "kitchen counter candid, pill bottle and coffee mug, low light, candid not posed"
+    },
+    {
+      "n": 5,
+      "text": "got mine at target",
+      "visual": "retail-shot",
+      "notes": "real-style target aisle photo, red accents, NAD+ bottle focal on shelf"
+    },
+    {
+      "n": 6,
+      "text": "two gummies. that's it. no weird stuff.",
+      "visual": "product-photo",
+      "notes": "bottle on nightstand, messy bed corner, phone-cam quality not ad quality"
+    },
+    {
+      "n": 7,
+      "text": "week 3 got weirdly quiet in my head",
+      "visual": "text-card",
+      "notes": "plain background, big white text, dead center, no promises just observation"
+    },
+    {
+      "n": 8,
+      "text": "skip the hype run or nah?",
+      "visual": "text-card",
+      "notes": "soft closer, one comment question, end on question not a cta"
+    }
+  ],
+  "caption": "didn't realize how off i felt until i actually looked into it. read way too many labels, this one landed. target has it in the vitamin aisle, that's the only place i looked. would you try it or am i on my own here",
+  "hashtags": [
+    "GOLINAD",
+    "nad",
+    "target"
+  ],
+  "retail_line": "got mine at target",
+  "_meta": {
+    "provider": "openrouter:free",
+    "model": "minimax/minimax-m3:free",
+    "attempt": 1,
+    "persona": "skeptical wellness girl doing research",
+    "checks": [
+      {
+        "name": "required_hashtag",
+        "ok": true,
+        "detail": "Hashtag #GOLINAD found"
+      },
+      {
+        "name": "banned_claims",
+        "ok": true,
+        "detail": "no banned claims"
+      },
+      {
+        "name": "slide_count",
+        "ok": true,
+        "detail": "8 slides in range [5,8]"
+      },
+      {
+        "name": "retail_push",
+        "ok": true,
+        "detail": "brief retail keywords: in store, store, shelf, aisle, retail push, cart; destination named ✓"
+      },
+      {
+        "name": "title_length",
+        "ok": true,
+        "detail": "title 53 chars (5..100)"
+      },
+      {
+        "name": "no_link_in_bio",
+        "ok": true,
+        "detail": "no 'link in bio'"
+      },
+      {
+        "name": "ad_sound_note",
+        "ok": true,
+        "detail": "no ad-sounders"
+      }
+    ]
+  }
+}

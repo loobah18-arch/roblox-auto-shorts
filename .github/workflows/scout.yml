@@ -39,6 +39,7 @@ jobs:
           python3 scripts/shortlist_campaigns.py \
             --min-rate "${{ inputs.min_rate || '1.00' }}" \
             --min-remaining "${{ inputs.min_remaining || '1000' }}" \
+            --platform youtube \
             --output shortlist.md
 
       - name: Upload shortlist artifact
