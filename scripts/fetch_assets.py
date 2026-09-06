@@ -355,30 +355,33 @@ def main() -> int:
                 os.rename(af, dest)
             print(f"  audio asset: {os.path.basename(af)}")
 
-    # 3) build index — campaign media only, no stock photos
+    # 3) build index — campaign media only, no stock photos.
+    #    Drive raw footage is the campaign's own media kit (the "clip" format):
+    #    use clips as moving bases for EVERY slide, with slide text burned on
+    #    top by build_video. This ensures the video actually shows the campaign
+    #    footage rather than just text cards.
     index = {}
-    photo_slots = [s for s in script["slides"]
-                   if s.get("visual") in ("lifestyle-photo", "product-photo",
-                                          "retail-shot", "persona-selfie")]
+    photo_slot_nums = {s["n"] for s in script["slides"]
+                       if s.get("visual") in ("lifestyle-photo", "product-photo",
+                                              "retail-shot", "persona-selfie")}
     used = 0
-    for s in photo_slots:
+    for s in script["slides"]:
+        n = s["n"]
         if used < len(raw_files):
             src = os.path.join("assets", "raw", raw_files[used])
             ext = os.path.splitext(raw_files[used])[1].lower()
             kind = "video" if ext in VIDEO_EXTS else "image"
-            index[s["n"]] = {"kind": s["visual"], "media": kind, "src": "local",
-                             "path": src, "query": None}
+            index[n] = {"kind": s["visual"], "media": kind, "src": "local",
+                        "path": src, "query": None}
             used += 1
         else:
-            # no more campaign footage — flag it, don't fake it
-            index[s["n"]] = {"kind": s["visual"], "media": "image", "src": "render",
-                             "path": None, "query": None, "needs_media": True}
-
-    # fill non-photo slides (text-card, notes-app — renderer handles these)
-    for s in script["slides"]:
-        if s["n"] not in index:
-            index[s["n"]] = {"kind": s["visual"], "media": "image", "src": "render",
-                             "path": None, "query": None}
+            # no more campaign footage — flag photo slots, text cards fall back
+            # to the renderer (never stock photos)
+            entry: dict = {"kind": s["visual"], "media": "image", "src": "render",
+                           "path": None, "query": None}
+            if n in photo_slot_nums:
+                entry["needs_media"] = True
+            index[n] = entry
 
     # report what we got
     local_count = sum(1 for v in index.values() if v["src"] == "local")
