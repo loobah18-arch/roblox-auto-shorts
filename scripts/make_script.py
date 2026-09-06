@@ -172,17 +172,27 @@ def main() -> int:
             continue
 
         script = extract_json(res["text"])
-        if not script:
-            print(f"[warn] attempt {attempt}: model returned non-JSON", file=sys.stderr)
+        # free models often return a bare JSON array or scalar — treat any non-object
+        # as a failed attempt (a list would crash script.get() below instead of retrying)
+        if not isinstance(script, dict):
+            print(f"[warn] attempt {attempt}: model returned non-object JSON", file=sys.stderr)
             attempts_log.append({"provider": res["provider"], "model": res["model"],
-                                 "errors": ["response was not parseable JSON"]})
+                                 "errors": ["response was not a JSON object"]})
             continue
 
-        # normalize slides to dicts
+        # normalize slides to dicts — tolerate any JSON shape (array, object, null)
+        raw_slides = script.get("slides")
+        if raw_slides is None:
+            raw_slides = []
+        elif not isinstance(raw_slides, list):
+            raw_slides = []
+
         slides = []
-        for s in script.get("slides") or []:
+        for s in raw_slides:
             if isinstance(s, str):
                 s = {"text": s, "visual": "text-card"}
+            elif not isinstance(s, dict):
+                continue  # skip null, number, etc.
             slides.append({**s, "n": len(slides) + 1})
         script["slides"] = slides
 

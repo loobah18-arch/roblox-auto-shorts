@@ -19,6 +19,12 @@ import re
 import sys
 import urllib.request
 
+try:
+    from media_links import drive_folder_links, drive_file_links, direct_media_links
+except ImportError:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from media_links import drive_folder_links, drive_file_links, direct_media_links
+
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Chrome/120 Safari/605.1.15"
 
 MIN_BRIEF = (
@@ -42,6 +48,35 @@ def fetch_google_doc(doc_url: str) -> str:
     doc_id = m.group(1)
     export_url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
     return fetch(export_url)
+
+
+def write_brief_links(url: str, out_dir: str) -> None:
+    """Persist the campaign's media links (Drive folders/files + direct media)
+    into <out_dir>/brief_links.json so fetch_assets.s can download raw footage.
+
+    Media is often hidden INSIDE a Google Doc as hyperlinks (the txt export
+    strips them), so we re-fetch the rich HTML and pull the Drive links out."""
+    links: dict = {"folders": [], "files": [], "direct": [], "from": url}
+    try:
+        if "docs.google.com/document" in (url or ""):
+            from media_links import media_links_from_doc
+            found = media_links_from_doc(url)
+            links["folders"] = [l for l in found if "/folders/" in l]
+            links["files"] = [l for l in found if "/file/" in l and "/folders/" not in l]
+            links["direct"] = [l for l in found
+                               if "/folders/" not in l and "/file/" not in l]
+        elif "drive.google.com" in (url or ""):
+            if "/folders/" in url:
+                links["folders"].append(url)
+            else:
+                links["files"].append(url)
+    except Exception as e:
+        print(f"[warn] brief_links extraction failed: {e}", file=sys.stderr)
+    path = os.path.join(out_dir, "brief_links.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(links, f, indent=2)
+    n = len(links["folders"]) + len(links["files"]) + len(links["direct"])
+    print(f"wrote media link sidecar -> {path} ({n} media link(s))")
 
 
 def fetch_drive_folder(drive_url: str) -> str:
@@ -108,6 +143,11 @@ def main() -> int:
     with open(output, "w", encoding="utf-8") as f:
         f.write(text.strip() + "\n")
     print(f"wrote {len(text)} chars -> {output}")
+
+    # media sidecar: capture Drive/direct media links (incl. those hidden inside
+    # the doc as hyperlinks) so fetch_assets can download the raw footage.
+    if url:
+        write_brief_links(url, out_dir)
     return 0
 
 

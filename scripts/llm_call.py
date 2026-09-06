@@ -17,6 +17,13 @@ import urllib.request
 
 UA = "whop-producer/1.0"
 
+# Transient network errors are retried per-model with backoff; a single blip on
+# every provider used to hard-fail a run after ~22 min of stacked socket timeouts.
+TRANSIENT_EXC = (urllib.error.URLError, TimeoutError, OSError)
+RETRIES_PER_MODEL = 2
+BACKOFF = (1.0, 2.0)
+GLOBAL_DEADLINE_S = 240  # cap the whole call_llm to ~4 min regardless of chain
+
 GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama-3.2-3b-preview"]
 GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-flash-latest"]
 OPENROUTER_FREE = [
@@ -105,6 +112,7 @@ def call_llm(system: str, user: str, *, json_mode: bool = True, max_tokens: int 
              "error": str|None, "attempts": [(provider, model, status)]}
     """
     attempts: list[tuple[str, str, str]] = []
+    deadline = time.time() + GLOBAL_DEADLINE_S
 
     groq_key = os.environ.get("GROQ_API_KEY")
     gemini_key = os.environ.get("GEMINI_API_KEY")
@@ -119,22 +127,44 @@ def call_llm(system: str, user: str, *, json_mode: bool = True, max_tokens: int 
             attempts.append((provider, "-", "no key in env"))
             continue
         for model in models:
-            try:
-                raw = caller(key, model, system, user, max_tokens, json_mode)
-                text = _parse_response(provider, raw, model)
-                attempts.append((provider, model, "ok"))
-                return {"ok": True, "text": text, "provider": provider,
-                        "model": model, "error": None, "attempts": attempts}
-            except urllib.error.HTTPError as e:
-                status = f"HTTP {e.code}"
-                if e.code == 429:  # rate limited → next provider/model
+            if time.time() > deadline:
+                attempts.append((provider, model, "global deadline hit"))
+                continue
+            for attempt in range(RETRIES_PER_MODEL):
+                try:
+                    raw = caller(key, model, system, user, max_tokens, json_mode)
+                    text = _parse_response(provider, raw, model)
+                    # a 200 with null/empty content (refusal, reasoning-only) is a
+                    # failed attempt, not a success — it would burn a generation
+                    if not (text and str(text).strip()):
+                        attempts.append((provider, model, "empty content"))
+                        break
+                    attempts.append((provider, model, "ok"))
+                    return {"ok": True, "text": str(text), "provider": provider,
+                            "model": model, "error": None, "attempts": attempts}
+                except urllib.error.HTTPError as e:
+                    status = f"HTTP {e.code}"
+                    if e.code == 429:  # rate limited → next provider/model
+                        attempts.append((provider, model, status))
+                        time.sleep(0.6)
+                        break
+                    if e.code >= 500 and attempt + 1 < RETRIES_PER_MODEL:
+                        attempts.append((provider, model, status))
+                        time.sleep(BACKOFF[attempt])
+                        continue
                     attempts.append((provider, model, status))
-                    time.sleep(0.6)
-                    continue
-                attempts.append((provider, model, status))
-            except Exception as e:  # network / parse
-                attempts.append((provider, model, f"{type(e).__name__}: {e}"))
-                time.sleep(0.4)
+                    break
+                except TRANSIENT_EXC as e:  # network blip → retry with backoff
+                    status = f"{type(e).__name__}: {e}"
+                    if attempt + 1 < RETRIES_PER_MODEL:
+                        attempts.append((provider, model, status))
+                        time.sleep(BACKOFF[attempt])
+                        continue
+                    attempts.append((provider, model, status))
+                    break
+                except Exception as e:  # provider-specific parse/shape errors
+                    attempts.append((provider, model, f"{type(e).__name__}: {e}"))
+                    break
         # give the next provider a moment to breathe
         time.sleep(0.5)
 

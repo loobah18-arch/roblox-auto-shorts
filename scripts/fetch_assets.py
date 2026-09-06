@@ -38,6 +38,12 @@ import zipfile
 import tempfile
 import time
 
+try:
+    from media_links import all_media_links
+except ImportError:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from media_links import all_media_links
+
 UA = "Mozilla/5.0 whop-producer/1.0"
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".ogg"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
@@ -56,34 +62,63 @@ def sniff_ext(data: bytes) -> str | None:
         return ".png"
     if data[:6] in (b"GIF87a", b"GIF89a"):
         return ".gif"
-    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return ".webp"
+    if data[:4] == b"RIFF":
+        if data[8:12] == b"WEBP":
+            return ".webp"
+        if data[8:12] in (b"AVI ", b"AVIX"):
+            return ".avi"
     if data[:4] == b"BM":
         return ".bmp"
-    if (data[4:8] in (b"ftyp", b"moov") or data[4:12].startswith(b"ftyp")):
-        return ".mp4" if b"isom" in data[:32] or b"mp4" in data[:32] else ".mov"
+    if data[4:8] == b"ftyp" or data[4:12].startswith(b"ftyp"):
+        # mp4/mov/m4v/m4a all share the ISO-BMFF container — disambiguate by brand
+        brand = data[8:12]
+        if b"m4a" in brand or b"M4A " in brand:
+            return ".m4a"
+        if b"m4v" in brand or b"M4V " in brand:
+            return ".m4v"
+        if b"isom" in data[:32] or b"mp4" in data[:32] or b"avc1" in data[:32]:
+            return ".mp4"
+        return ".mov"
     if data[:4] == b"\x1aE\xdf\xa3":
-        return ".mkv"
+        # Matroska container — webm if the DOCTYPE says webm, else mkv
+        return ".webm" if b"webm" in data[:256].lower() else ".mkv"
     if b"ID3" in data[:4] or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
         return ".mp3"
     if data[:4] == b"OggS":
         return ".ogg"
-    if data[:4] == b"fLaC":
-        return ".flac"
     return None
 
 
-def download(url: str, dest: str) -> bool:
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": UA})
-        with urllib.request.urlopen(req, timeout=120) as resp, open(dest, "wb") as f:
-            f.write(resp.read())
-        return os.path.getsize(dest) > 2000
-    except Exception as e:
-        print(f"[warn] download failed {url}: {e}", file=sys.stderr)
-        if os.path.exists(dest):
+def download(url: str, dest: str, retries: int = 2) -> bool:
+    """Stream a direct http(s) media URL to disk (never buffer whole big videos
+    in RAM — a 1.5GB clip would OOM a GitHub Actions runner). Rejects HTML error
+    pages and retries transient failures with backoff."""
+    for attempt in range(retries + 1):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=180) as resp, open(dest, "wb") as f:
+                head = resp.read(4096)
+                if b"<html" in head.lower() or b"<!doctype" in head.lower():
+                    raise ValueError("got HTML page, not media")
+                f.write(head)
+                while True:
+                    chunk = resp.read(1 << 16)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            if os.path.getsize(dest) > 2000:
+                return True
             os.remove(dest)
-        return False
+            return False
+        except Exception as e:
+            print(f"[warn] download failed {url}: {e}", file=sys.stderr)
+            if os.path.exists(dest):
+                os.remove(dest)
+            if attempt < retries:
+                time.sleep(1.0 + attempt)
+                continue
+            return False
+    return False
 
 
 def is_google_drive(url: str) -> bool:
@@ -125,6 +160,31 @@ def extension_from_type(content_type: str) -> str | None:
     return mapping.get(ct)
 
 
+_TRANSIENT_EXC = (urllib.error.URLError, TimeoutError, ConnectionError)
+
+
+def _retry_transient(fn, attempts: int = 3, base_delay: float = 1.0):
+    """Retry a callable on transient network/timeout failures (GitHub Actions
+    runners hit flaky egress; one blip must not permanently drop a clip)."""
+    attempt = 0
+    while True:
+        try:
+            return fn()
+        except _TRANSIENT_EXC:
+            attempt += 1
+            if attempt >= attempts:
+                raise
+            time.sleep(base_delay + attempt)
+        except urllib.error.HTTPError as e:
+            if e.code in (500, 502, 503, 504, 429):
+                attempt += 1
+                if attempt >= attempts:
+                    raise
+                time.sleep(base_delay + attempt)
+            else:
+                raise
+
+
 def download_drive_file(url: str, dest: str) -> str:
     """Try to download a Google Drive file via direct download link.
     Returns the FINAL saved path (real extension resolved from the Content-Type
@@ -144,12 +204,12 @@ def download_drive_file(url: str, dest: str) -> str:
 
     confirm_re = re.compile(r'confirm=([0-9A-Za-z_-]+)')
     try:
-        data, ctype = _hop("")
+        data, ctype = _retry_transient(lambda: _hop(""))
         if ctype.startswith("text/html"):
             # Drive's "large file" confirmation page — grab the token
             m = confirm_re.search(data.decode("utf-8", errors="ignore"))
             extra = f"&confirm={m.group(1)}" if m else "&confirm=t"
-            data, ctype = _hop(extra)
+            data, ctype = _retry_transient(lambda: _hop(extra))
     except urllib.error.HTTPError as e:
         if e.code in (403, 404):
             print(f"[warn] Drive file not accessible {url}: HTTP {e.code}", file=sys.stderr)
@@ -162,6 +222,12 @@ def download_drive_file(url: str, dest: str) -> str:
 
     if len(data) < 2000:
         print(f"[warn] Drive file too small / not the real asset: {url}", file=sys.stderr)
+        return ""
+    # If a second HTTP hop still returns HTML, the confirm token failed (or the
+    # share needs auth). NEVER write an HTML page as a media file — build_video
+    # would choke on it downstream.
+    if b"<html" in data[:1024].lower() or b"<!doctype" in data[:1024].lower():
+        print(f"[warn] Drive download returned an HTML page, not media: {url}", file=sys.stderr)
         return ""
 
     # Teams often zip photos; unzip in place if we got a zip
@@ -217,10 +283,12 @@ def _list_drive_children(folder_id: str) -> list[dict]:
     avoids the noisy 'bare long id' fallback (CSS vars, JS fn names, ...).
     Returns [{id, name, kind}] with kind in {'folder','file'}."""
     url = f"https://drive.google.com/embeddedfolderview?id={folder_id}#list"
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    try:
+    def _fetch():
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=90) as resp:
-            page = resp.read().decode("utf-8", errors="ignore")
+            return resp.read().decode("utf-8", errors="ignore")
+    try:
+        page = _retry_transient(_fetch)
     except Exception as e:
         print(f"[warn] embedded folder view failed {folder_id}: {e}", file=sys.stderr)
         return []
@@ -309,33 +377,70 @@ def main() -> int:
         [f for f in os.listdir(raw_dir) if os.path.splitext(f)[1].lower() in (IMAGE_EXTS | VIDEO_EXTS)]
     ) if os.path.isdir(raw_dir) else []
 
-    # 2) campaign-provided assets (download from Drive links in the detail page).
-    #    Google DOCS are brief text, not media — skip them. Only Drive
-    #    folders/files actually hold images/videos/audio.
+    # 2) campaign-provided assets. Media links can be:
+    #      - plain Drive folder/file links in detail.json reference_materials
+    #      - Google DOC links (the brief) whose hyperlinks hide the real Drive
+    #        folder — we OPEN the doc and pull the Drive folder/file URLs out
+    #      - the brief_links.json sidecar written by fetch_brief.py (same links)
+    #    We NEVER use stock photos.
     refs = detail.get("reference_materials") or []
-    # Only actual Drive FILES/FOLDERS hold raw footage — never Google Docs (brief text).
-    drive_links = [r["url"] for r in refs
-                   if classify_media_link(r.get("url", "")) in ("file", "folder")]
+    src = all_media_links(refs)
+
+    # merge the brief_links.json sidecar (same doc, already expanded by fetch_brief)
+    brief_links_path = os.path.join(args.dir, "brief_links.json")
+    if os.path.exists(brief_links_path):
+        try:
+            bl = json.load(open(brief_links_path, encoding="utf-8"))
+            if isinstance(bl, dict):
+                for k in ("folders", "files", "direct"):
+                    src.setdefault(k, []).extend(bl.get(k) or [])
+            else:
+                print(f"[warn] {brief_links_path} is not a dict — ignoring", file=sys.stderr)
+        except Exception as e:
+            print(f"[warn] could not read {brief_links_path}: {e}", file=sys.stderr)
+
+    def _dedupe(xs):
+        return list(dict.fromkeys(xs))
+    folders = _dedupe(src.get("folders", []))
+    files = _dedupe(src.get("files", []))
+    direct = _dedupe(src.get("direct", []))
+
     drive_files = []
     drive_audio = []
-    if drive_links:
-        print(f"  media sources: {[l.split('//')[1][:48] for l in drive_links]}")
+    all_sources = folders + files
+    if refs:
+        # report which materials actually became media sources
+        from urllib.parse import urlparse
+        print(f"  reference materials: {len(refs)} -> {len(folders)} Drive folder(s), "
+              f"{len(files)} Drive file(s), {len(direct)} direct media link(s)")
     else:
-        print("  no Drive media links in reference_materials — using local raw files only")
+        print("  no reference materials — using local raw files only")
 
-    if drive_links:
-        print(f"Campaign has {len(drive_links)} Drive media link(s) — downloading raw footage...")
-        for link in drive_links:
-            role = "folder" if classify_media_link(link) == "folder" else "file"
-            if role == "folder":
-                files = download_drive_folder(link, raw_dir)
-                drive_files.extend(files)
+    def _is_folder(u):
+        return "/folders/" in u.lower()
+
+    if all_sources or direct:
+        print(f"Campaign has media links — downloading raw footage...")
+        for link in folders + files:
+            if _is_folder(link):
+                got = download_drive_folder(link, raw_dir)
+                drive_files.extend(got)
                 time.sleep(1)
             else:
-                dest = os.path.join(raw_dir, f"drive_{extract_drive_file_id(link)[:8] if extract_drive_file_id(link) else 'file'}")
+                fid = extract_drive_file_id(link)
+                dest = os.path.join(raw_dir, (f"drive_{fid[:8]}" if fid else "drive_file"))
                 real = download_drive_file(link, dest)
                 if real:
                     drive_files.append(real)
+        # direct http(s) media URLs (mp4/jpg/... from the brief) — campaign-owned
+        for u in direct:
+            if not is_google_drive(u):
+                dest = os.path.join(raw_dir, os.path.basename(urllib.parse.urlparse(u.rstrip('.,;:')).path) or "direct_media")
+                if download(u, dest):
+                    drive_files.append(dest)
+        if folders + files + direct:
+            print(f"  {len(folders + files + direct)} media link(s), "
+                  f"{len(drive_files)} file(s) downloaded so far")
 
         # separate audio from image/video
         for f in drive_files:
@@ -361,12 +466,18 @@ def main() -> int:
     #    top by build_video. This ensures the video actually shows the campaign
     #    footage rather than just text cards.
     index = {}
-    photo_slot_nums = {s["n"] for s in script["slides"]
-                       if s.get("visual") in ("lifestyle-photo", "product-photo",
-                                              "retail-shot", "persona-selfie")}
+    photo_types = ("lifestyle-photo", "product-photo", "retail-shot", "persona-selfie")
+    # Give campaign footage to the slides that NEED a real image first (photo/
+    # video slots) — a text-card slide should never consume the only clip while a
+    # product-photo slide is left flagged as needs_media. Remaining clips then
+    # fill the other slides rather than going unused.
+    photo_slot_nums = [s["n"] for s in script["slides"] if s.get("visual") in photo_types]
+    slide_order = photo_slot_nums + [s["n"] for s in script["slides"]
+                                     if s["n"] not in photo_slot_nums]
+    by_n = {s["n"]: s for s in script["slides"]}
     used = 0
-    for s in script["slides"]:
-        n = s["n"]
+    for n in slide_order:
+        s = by_n[n]
         if used < len(raw_files):
             src = os.path.join("assets", "raw", raw_files[used])
             ext = os.path.splitext(raw_files[used])[1].lower()
@@ -389,9 +500,10 @@ def main() -> int:
     need_media = [n for n, v in index.items() if v.get("needs_media")]
     audio_files = [f for f in os.listdir(asset_dir) if os.path.splitext(f)[1].lower() in AUDIO_EXTS]
 
+    media_sources = folders + files + direct
     notes = []
-    if drive_links and not raw_files:
-        notes.append(f"Drive links found but no images/videos downloaded — check links manually: {drive_links[0]}")
+    if media_sources and not raw_files:
+        notes.append(f"Media links found but no images/videos downloaded — check links manually: {media_sources[0]}")
     if need_media:
         notes.append(f"slides {need_media} need campaign media but no raw files available — download from campaign Drive")
     if audio_files:
@@ -410,7 +522,7 @@ def main() -> int:
 
     if need_media:
         print(f"\n⚠️  {len(need_media)} slide(s) need campaign photos not found in assets/raw/")
-        print(f"    Download from: {drive_links[0] if drive_links else '(no Drive link — check brief)'}")
+        print(f"    Download from: {media_sources[0] if media_sources else '(no media link — check brief)'}")
         print(f"    Place files in: {raw_dir}/")
         print(f"    Then re-run: python3 scripts/fetch_assets.py --dir {args.dir}")
         # don't fail — pipeline continues with text-cards, but the human gets the message

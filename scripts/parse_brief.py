@@ -122,8 +122,11 @@ def harvest(text: str) -> dict:
     rules: dict = {}
 
     # ---- hashtags ----
+    # Preserve the brief's first-mentioned order (the required hashtag is usually
+    # the one listed first) instead of sorting — the compliance validator relies
+    # on tags[0] being the required tag.
     tags = re.findall(r'(?<![\w#])(?:#)([A-Za-z0-9_]{2,})', text)
-    rules["hashtags"] = sorted(set(tag.lstrip("#") for tag in tags))
+    rules["hashtags"] = list(dict.fromkeys(tag.lstrip("#") for tag in tags))
 
     # ---- platforms ----
     # Only trust EXPLICIT platform directives ("post to:", "platform:", "upload to:"),
@@ -169,16 +172,46 @@ def harvest(text: str) -> dict:
         rules["payout_max_usd"] = float(m.group(1))
 
     # ---- required elements: full SENTENCES that mandate something ----
+    # Only keep requirements that are COMPLETE, specific and enforceable. Briefs
+    # get split on newlines, so naive harvesting collects: truncated sentence
+    # fragments (…mid-clause ending in a dangling "must" that continues on the
+    # next line), all-caps section-label headings ("SET UP YOUR ACCOUNT
+    # (REQUIRED)"), and pure-hashtag mandates. Feeding those to the compliance
+    # validator makes it false-fail (tokens like "SPECIAL RULE" never appear in
+    # a compliant script → retry exhaustion → exit 3 blocks the run). Skip them.
     required = []
     seen = set()
     mand = re.compile(r'(must|required|no exceptions|every post|will not get paid|non-negotiable)', re.I)
     for piece in re.split(r'(?<=[.!?])\s+|\n+', text):
         s = re.sub(r'\s+', " ", piece).strip().strip('"“”')
-        if not (12 <= len(s) <= 260) or s in seen:
+        if not (14 <= len(s) <= 260) or s in seen:
             continue
         if not mand.search(s):
             continue
         if any(n in s.lower() for n in NOISE):
+            continue
+        # truncated fragment: sentence chopped mid-clause by a newline, ends on a
+        # dangling connector/mandate. Drop it UNLESS it names a brand/product
+        # ("…the NAD+ gummy at Target must" keeps Target/NAD+, which the validator
+        # enforces gracefully); a fragment with no proper noun ("⚠ SPECIAL RULE:
+        # You must") can never be satisfied and only causes a false fail.
+        if re.search(r'\b(?:must|required|no exceptions)\s*$', s, re.I):
+            if not re.search(r'\b[A-Z][A-Za-z0-9+.\-]{1,}\b', s):
+                continue
+        # heading/directive already enforced elsewhere (setup/lane labels and
+        # "how to"/"your audience" instructions are not content requirements)
+        head = s.lstrip('“’\'(')
+        if re.match(r'(?i)^(?:set up|how to|your audience|note[: ])', head):
+            continue
+        # all-caps section label / legend heading ("SET UP YOUR ACCOUNT (REQUIRED)",
+        # "3 THINGS EVERY SINGLE SLIDESHOW / VIDEO MUST HAVE.") — these are
+        # headings whose items are spelled out separately; enforcing the heading
+        # itself is impossible and only false-fails the run.
+        alpha = [c for c in s if c.isalpha()]
+        if s == s.upper() and len(alpha) >= 5:
+            continue
+        # pure-hashtag mandate ("REQUIRED on every post: #GOLINAD")
+        if re.fullmatch(r'[^a-z]*#\w+[^a-z]*', s, re.I):
             continue
         seen.add(s)
         required.append(s)
@@ -219,37 +252,98 @@ def harvest_retail(text):
     return [w for w in words][:20]
 
 
+_NEG = re.compile(r'(?i)\b(?:no|not|never|nothing|don[’\'"]t|cannot)\b')
+_BULLET = ('•', '✖', '❌', '*', '-', '·')
+
+
 def get_banned_block(text: str):
-    """Collect ban-zone claims. Whop briefs denote them inconsistently."""
-    banned = []
-    markers = ["you will not get paid", "never say", "do not", "can't say",
-               "not allowed", "❌", "✖"]
-    # Split on newlines first (works regardless of punctuation quirks).
+    """Collect ban-zone claims. Whop briefs denote them inconsistently.
+
+    Two shapes are handled:
+      1. Inline marker sentences  ("you will not get paid if X", "never say X")
+         — which the old code handled.
+      2. Bullet zones under a ban header ("❌ NEVER SAY THIS" / "YOU WILL NOT
+         GET PAID") — the real, concrete claim list. Goli's brief bans
+         "look 10 years younger", "lost 10 lbs", "slimmed down", "replaces my
+         coffee", "turns back the clock" ONLY here, as `• No "…"` bullets that
+         the old marker-line parser never reached.
+
+    For bullets we keep only the *negated* content: quoted phrases (the most
+    specific prohibited wording) plus a short de-negated core when no quote
+    covers it. Allowed-claims bullets ("Only these 5, in Goli's own words: …")
+    carry no negator and are skipped, so we never ban something the brief
+    tells the creator they MAY say.
+    """
+    banned: list[str] = []
+    seen: set[str] = set()
+    markers = ["you will not get paid", "will not get paid", "never say",
+               "do not", "can't say", "not allowed", "❌", "✖"]
+
+    def _add(p: str):
+        p = re.sub(r'[❌✖•\-*\s]+', ' ', p).strip()
+        p = p.strip('.,:;"‘’“”').strip()
+        if not (3 <= len(p) <= 90):
+            return
+        if len(p.split()) > 9:
+            return
+        key = p.lower()
+        if key in seen or any(n in key for n in NOISE):
+            return
+        seen.add(key)
+        banned.append(p)
+
     lines = [l.strip() for l in text.splitlines() if l.strip()]
+
     for i, line in enumerate(lines):
         low = line.lower()
+        # --- inline marker sentence (shape 1) ---
         if any(mk in low for mk in markers):
-            # Keep only the FIRST sentence of the marker line — the actual ban
-            # statement. The following lines are strategy/format prose, not claims.
             first = re.split(r'(?<=[.!?])\s+', line, maxsplit=1)[0]
-            first = re.sub(r'^[❌✖•\-*\s]+|[❌✖\s]+$', "", first).strip()
-            first = re.sub(r'\s+', " ", first)
-            # A "you will not get paid if X" clause is a rule but useless as a
-            # substring check — collapse to its claim core when present.
-            if any(mk in first.lower() for mk in ("you will not get paid", "will not get paid",
-                                                  "never say")):
-                # keep the clause after the marker, capped short
-                cut = re.split(r'(?:you will not get paid if|never say|do not|not allowed)', first, flags=re.I)
-                core = cut[-1].strip().strip(':')
-                core = re.split(r'[.…]', core, maxsplit=1)[0].strip()
-                if 4 <= len(core) <= 90 and not any(n in core.lower() for n in NOISE):
-                    banned.append(core)
-                continue
-            if first.rstrip().endswith(":") and len(first) < 45:
-                continue  # a bare section header, not a claim
-            if 4 <= len(first) <= 160 and not any(n in first.lower() for n in NOISE):
-                banned.append(first)
+            if not re.match(r'(?i)^(?:never say this|you will not get paid|do not|not allowed)[:\s]*$', first):
+                cut = re.split(
+                    r'(?:you will not get paid if|will not get paid if|never say|do not|not allowed)',
+                    first, flags=re.I)
+                core = cut[-1].strip().strip(':,;')
+                if core and not re.match(r'(?i)^(?:never say this|.*health claims.*)$', core[:60]):
+                    _add(core)
+                # else: bare section header like "❌ NEVER SAY THIS" -> skip
+
+        # --- bullet zone under a ban header (shape 2) ---
+        if any(mk in low for mk in markers):
+            j = i + 1
+            while j < len(lines) and lines[j][:1] in _BULLET:
+                _collect_ban_bullet(lines[j], _add)
+                j += 1
+
     return banned
+
+
+def _collect_ban_bullet(bullet: str, add) -> None:
+    """Extract negated claim phrases from a single ban bullet line."""
+    # skip bullets that don't prohibit anything (allowed-claims / strategy)
+    if not _NEG.search(bullet):
+        return
+    # split into clauses; a negated phrase must sit in a clause carrying a negator.
+    # The split must tolerate a closing smart quote after the punctuation —
+    # 'No "boost." Use "support" instead.' has '.”' where the period sits inside
+    # the closing quote; without allowing that, the whole line becomes one negated
+    # clause and the ALLOWED replacement words get banned too.
+    clauses = re.split(r'(?<=[.!;])["”\'’]?\s+', bullet)
+    for clause in clauses:
+        if not _NEG.search(clause):
+            continue
+        # drop an explicit allowed-substitute tail ("Use 'support' instead.")
+        clause = re.sub(r'(?i)\b(?:use|say|replace)\s+.*?\binstead\b.*$', '', clause)
+        quotes = [q.strip() for q in re.findall(r'["“”]([^"“”]{2,80})["“”]', clause)]
+        for q in quotes:
+            add(q)
+        if quotes:
+            continue  # the quotes already carry the prohibited wording
+        # no quote — add the short de-negated core, e.g. "Never overnight" -> "overnight"
+        c = re.sub(r'(?i)^\s*(?:and\s+)?(?:no|not|never|nothing|do not|don[’\'"]t|can[’\'"]t|cannot)(?:\s+say)?\s*[:,]?\s*', '', clause)
+        c = re.sub(r'(?i)^(?:(?:a|an|the|any|my|your)\s+)+', '', c)
+        c = re.sub(r'(?i)\s+(?:and|or)\s+(?:no|not|never|nothing|don[’\'"]t)\b.*$', '', c)
+        add(c)
 
 
 def main() -> int:

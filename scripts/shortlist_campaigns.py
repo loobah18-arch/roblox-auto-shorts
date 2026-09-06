@@ -230,10 +230,18 @@ def main() -> int:
                 for p in detail.get("payouts", []):
                     if p.get("platform") == want:
                         c["rate"] = p["rate_per_1k_usd"]
-                # Drive media links from reference_materials
+                # Media links from reference_materials. Raw footage can be in a
+                # plain Drive folder/file OR hidden inside a Google Doc (the brief)
+                # as hyperlinks — open docs to count real media (never stock).
                 refs = detail.get("reference_links") or []
-                c["drive_refs"] = len([u for u in refs if "drive.google.com" in u])
-                c["has_media"] = c["drive_refs"] > 0
+                try:
+                    from media_links import all_media_links
+                    m = all_media_links(detail.get("reference_materials") or [])
+                    n_media = len(m["folders"]) + len(m["files"]) + len(m["direct"])
+                except Exception:
+                    n_media = len([u for u in refs if "drive.google.com" in u])
+                c["drive_refs"] = n_media
+                c["has_media"] = n_media > 0
                 c["detail_refs"] = refs  # preserve for JSON output
                 if want in platforms:
                     platform_ok.append(c)

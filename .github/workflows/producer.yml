@@ -77,11 +77,15 @@ jobs:
             echo "slug=${{ inputs.campaign_slug }}" >> $GITHUB_OUTPUT
             echo "dir=tracker/campaigns/${{ inputs.campaign_slug }}" >> $GITHUB_OUTPUT
           elif [ -n "${{ inputs.campaign_url }}" ]; then
-            # derive slug from URL
-            slug=$(echo "${{ inputs.campaign_url }}" | grep -oP '[0-9a-f-]{36}$' | cut -c1-8)
+            # derive the full campaign UUID from the URL; use a short slug for the dir
+            id=$(echo "${{ inputs.campaign_url }}" | grep -oP '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+            if [ -z "$id" ]; then
+              echo "ERROR: could not extract campaign UUID from URL" && exit 1
+            fi
+            slug=${id:0:8}
+            echo "id=$id" >> $GITHUB_OUTPUT
             echo "slug=$slug" >> $GITHUB_OUTPUT
             echo "dir=tracker/campaigns/$slug" >> $GITHUB_OUTPUT
-            echo "url=${{ inputs.campaign_url }}" >> $GITHUB_OUTPUT
           else
             echo "ERROR: provide campaign_url or campaign_slug" && exit 1
           fi
@@ -89,9 +93,9 @@ jobs:
       - name: 1 — Fetch campaign detail
         run: |
           mkdir -p "${{ steps.ctx.outputs.dir }}"
-          if [ -n "${{ steps.ctx.outputs.url }}" ]; then
+          if [ -n "${{ steps.ctx.outputs.id }}" ]; then
             python3 scripts/campaign_detail.py \
-              --url "${{ steps.ctx.outputs.url }}" \
+              --id "${{ steps.ctx.outputs.id }}" \
               --output "${{ steps.ctx.outputs.dir }}/detail.json"
           else
             echo "Using existing detail.json"

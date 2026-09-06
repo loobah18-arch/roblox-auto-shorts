@@ -124,18 +124,23 @@ def fit_image_cover(src_path: str) -> Image.Image:
     except Exception:
         return Image.new("RGB", (W, H), BG_COLOR)
 
-    src_w, src_h = im.size
-    target_ratio = W / H
-    src_ratio = src_w / src_h
-    if src_ratio > target_ratio:
-        new_w = int(src_h * target_ratio)
-        left = (src_w - new_w) // 2
-        im = im.crop((left, 0, left + new_w, src_h))
-    else:
-        new_h = int(src_w / target_ratio)
-        top = (src_h - new_h) // 2
-        im = im.crop((0, top, src_w, top + new_h))
-    return im.resize((W, H), Image.LANCZOS)
+    try:
+        src_w, src_h = im.size
+        target_ratio = W / H
+        src_ratio = src_w / src_h
+        if src_ratio > target_ratio:
+            new_w = int(src_h * target_ratio)
+            left = (src_w - new_w) // 2
+            im = im.crop((left, 0, left + new_w, src_h))
+        else:
+            new_h = int(src_w / target_ratio)
+            top = (src_h - new_h) // 2
+            im = im.crop((0, top, src_w, top + new_h))
+        return im.resize((W, H), Image.LANCZOS)
+    except Exception:
+        # truncated/corrupt pixel data only surfaces here (lazy decode), not in
+        # the Image.open above — a single bad jpg must not abort the whole build
+        return Image.new("RGB", (W, H), BG_COLOR)
 
 
 def render_photo_slide(text: str, visual: str, img_path: str, notes: str = "") -> Image.Image:
@@ -201,11 +206,20 @@ def render_text_overlay(text: str, visual: str, notes: str = "") -> Image.Image:
     total_h = line_h * len(lines) + 16 * (len(lines) - 1)
     y_start = (H - total_h) // 2
 
+    # soft dark scrim behind the text block so compliance-critical wording stays
+    # legible even over bright/white footage (verified: white-on-shadow could wash out)
+    scrim_y0 = y_start - 24
+    scrim_y1 = y_start + total_h + 40
+    for yy in range(scrim_y0, scrim_y1):
+        # vertical gradient: stronger at the text band, lighter at the edges
+        a = 90 if scrim_y1 - 60 < yy < scrim_y0 + 60 else 60
+        draw.line([(0, yy), (W, yy)], fill=(0, 0, 0, a))
+
     for i, line in enumerate(lines):
         bbox = draw.textbbox((0, 0), line, font=font)
         x = (W - (bbox[2] - bbox[0])) // 2
         y = y_start + i * (line_h + 16)
-        draw.text((x + 3, y + 3), line, font=font, fill=(0, 0, 0, 200))
+        draw.text((x + 3, y + 3), line, font=font, fill=(0, 0, 0, 230))
         draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
 
     badge_font = pick_font(28)
@@ -378,9 +392,16 @@ def main() -> int:
             if media == "video" and asset.get("src") == "local" and asset.get("path"):
                 full = os.path.join(args.dir, asset["path"])
                 if os.path.exists(full) and os.path.splitext(full)[1].lower() in VIDEO_EXTS:
-                    video_slide_to_mp4(slide, full, mp4_path)
-                    slide_files.append(mp4_path)
-                    continue
+                    try:
+                        video_slide_to_mp4(slide, full, mp4_path)
+                        slide_files.append(mp4_path)
+                        continue
+                    except Exception as e:
+                        # one undecodable/truncated clip (real Drive files are
+                        # often partial) must NOT abort the whole automated run —
+                        # degrade to the text-card renderer for that slide
+                        print(f"[warn] slide {n}: video clip failed to encode, "
+                              f"falling back to text-card: {e}", file=sys.stderr)
             img = render_slide(slide, asset, args.dir)
             slide_to_mp4(img, mp4_path)
             slide_files.append(mp4_path)

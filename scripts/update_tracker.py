@@ -4,7 +4,7 @@ Append a campaign run to the tracker CSV + update state.json.
 
 tracker.csv columns:
   date, campaign_slug, campaign_title, rate_per_1k, payout_max,
-  video_url, status, script_file, build_time_s
+  video_url, status, script_file, attempt
 
 state.json:
   { "last_run": "...", "total_runs": N, "campaigns_done": ["slug1","slug2"] }
@@ -47,19 +47,28 @@ def main() -> int:
         status = "built"
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    day = now[:10]
 
-    # append to CSV
+    # append to CSV (idempotent per (day, slug): a CI retry of a partially-succeeded
+    # step must not duplicate the row or inflate total_runs)
     csv_path = os.path.join(args.repo_root, TRACKER_CSV)
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-    file_exists = os.path.exists(csv_path)
-    with open(csv_path, "a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        if not file_exists:
-            w.writerow(["date", "campaign_slug", "campaign_title", "rate_per_1k", "payout_max",
-                         "video_url", "status", "script_file", "attempt"])
-        meta = script.get("_meta", {})
-        w.writerow([now, slug, title, rate, payout_max, video_url, status,
-                     os.path.basename(args.dir) + "/script.json", meta.get("attempt", "")])
+    already = False
+    if os.path.exists(csv_path):
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            for row in csv.reader(f):
+                if len(row) >= 2 and row[0].startswith(day) and row[1] == slug:
+                    already = True
+                    break
+    if not already:
+        with open(csv_path, "a", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            if os.path.getsize(csv_path) == 0:
+                w.writerow(["date", "campaign_slug", "campaign_title", "rate_per_1k", "payout_max",
+                            "video_url", "status", "script_file", "attempt"])
+            meta = script.get("_meta", {})
+            w.writerow([now, slug, title, rate, payout_max, video_url, status,
+                        os.path.basename(args.dir) + "/script.json", meta.get("attempt", "")])
 
     # update state.json
     state_path = os.path.join(args.repo_root, STATE_JSON)
@@ -68,7 +77,8 @@ def main() -> int:
         state = json.load(open(state_path, encoding="utf-8"))
 
     state["last_run"] = now
-    state["total_runs"] = state.get("total_runs", 0) + 1
+    if not already:
+        state["total_runs"] = state.get("total_runs", 0) + 1
     done = state.get("campaigns_done", [])
     if slug not in done:
         done.append(slug)
@@ -77,7 +87,8 @@ def main() -> int:
     with open(state_path, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
-    print(f"tracker: appended {slug} ({status}), total_runs={state['total_runs']}")
+    print(f"tracker: {('updated existing' if already else 'appended')} {slug} ({status}), "
+          f"total_runs={state['total_runs']}")
     return 0
 
 

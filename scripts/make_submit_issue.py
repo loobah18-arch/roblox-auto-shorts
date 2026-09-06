@@ -99,12 +99,19 @@ def main() -> int:
         print("  Use --post to create the GitHub issue.")
         return 0
 
-    # post via gh CLI
+    # post via gh CLI — guard the optional local-only --post path so a host
+    # without the gh binary fails cleanly instead of with an uncaught traceback
     cmd = ["gh", "issue", "create", "--title", issue_title, "--body", body]
     if args.repo:
         cmd += ["--repo", args.repo]
     print(f"Creating GitHub issue: {issue_title}")
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        print("error: the 'gh' CLI is required for --post but was not found on PATH "
+              "(install it, or run without --post to just write submit_issue.md)",
+              file=sys.stderr)
+        return 1
     if r.returncode != 0:
         print(f"gh issue create failed: {r.stderr}", file=sys.stderr)
         return 1
