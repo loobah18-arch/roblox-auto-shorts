@@ -92,16 +92,26 @@ jobs:
 
       - name: 1 — Fetch campaign detail
         run: |
-          # Wipe the campaign dir at run start: a stale script.json/assets from a
-          # previous run of the same campaign (or a same-named one) must never
-          # bleed into this production run. Everything is regenerated below.
-          rm -rf "${{ steps.ctx.outputs.dir }}"
-          mkdir -p "${{ steps.ctx.outputs.dir }}"
+          # Two modes:
+          #   campaign_url given (steps.ctx.outputs.id set) -> we re-fetch
+          #     everything, so wipe the WHOLE dir first: a stale script.json /
+          #     assets from a prior run of the same (or same-named) campaign must
+          #     never bleed into this production run.
+          #   campaign_slug given (id empty) -> the campaign dir is committed to
+          #     the repo; keep detail.json (it is NOT regenerated in this mode),
+          #     but scrub the regenerated outputs so stale downloaded media can't
+          #     be reused either.
+          DIR="${{ steps.ctx.outputs.dir }}"
           if [ -n "${{ steps.ctx.outputs.id }}" ]; then
+            rm -rf "$DIR"
+            mkdir -p "$DIR"
             python3 scripts/campaign_detail.py \
               --id "${{ steps.ctx.outputs.id }}" \
-              --output "${{ steps.ctx.outputs.dir }}/detail.json"
+              --output "$DIR/detail.json"
           else
+            mkdir -p "$DIR"
+            rm -rf "$DIR/assets"
+            rm -f "$DIR/video.mp4" "$DIR/brief_links.json"
             echo "Using existing detail.json"
           fi
 
