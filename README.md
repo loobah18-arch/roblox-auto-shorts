@@ -4,9 +4,6 @@ Automated, scheduled uploader for **Bhaloo Ji** — a kids + dog comedy Shorts
 channel. Every day the pipeline picks the next video in the queue, pairs it with
 its hand-written title/description/tags, and uploads it to YouTube as a Short.
 
-This repo was created by moving the code from `roblox-auto-shorts` into its own
-home, and adding the shorts-specific upload pipeline on top.
-
 ## What's here
 
 - `video_metadata.json` — title, description, tags, and source file for all 18 videos
@@ -14,14 +11,8 @@ home, and adding the shorts-specific upload pipeline on top.
 - `scripts/upload_short.py` — picks the next video from `tracker/state.json`,
   uploads it to YouTube (preview or live), and advances the queue
 - `.github/workflows/upload-shorts.yml` — the scheduled workflow
-- `scripts/`, `playbook/`, `prompts/`, `automation/`, `tracker/` — the code
-  migrated verbatim from `roblox-auto-shorts` (Whop Content Rewards pipeline)
-
-The older Whop-pipeline workflows (`scout.yml`, `weekly-review.yml`,
-`auto-produce.yml`) are preserved too, but their `schedule:` triggers were removed
-so they don't auto-run in this repo — they need API secrets that aren't set here.
-They still run manually via **Actions → Run workflow**. The shorts uploader lives
-in `upload-shorts.yml`.
+- `tracker/state.json` — queue cursor (`next_index`, upload history)
+- `requirements.txt` — pip dependencies for the uploader
 
 ## How the scheduled upload works
 
