@@ -48,13 +48,14 @@ Settings → Secrets and variables → Actions → Variables
 ENABLE_LIVE_UPLOADS = true
 ```
 
-Manual runs bypass the variable — use the **Actions → Run workflow → mode: live**
-dropdown and it uploads right away.
+Manual runs bypass the variable — **tick the "Upload to YouTube" checkbox**
+in the Actions → Run workflow form and it uploads right away. Leave it
+unticked for a dry run.
 
-Preview a specific video without uploading anything:
+Dry-run a specific video without uploading anything:
 
 ```
-Actions → Run workflow → video_id: video_04, mode: preview
+Actions → Run workflow → video_id: video_04, upload_to_youtube: unticked
 ```
 
 ## Credentials
