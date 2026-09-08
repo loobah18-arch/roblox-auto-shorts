@@ -1,67 +1,81 @@
-# The Whop Clipping Playbook — Claude AI Edition
+# Bhaloo Ji Shorts
 
-A full, structured clone of the playbook from **https://luminous-moonbeam-5488da.netlify.app/** (companion to the YouTube tutorial *"Claude AI + Whop Clipping = $6,500/Month"*).
+Automated, scheduled uploader for **Bhaloo Ji** — a kids + dog comedy Shorts
+channel. Every day the pipeline picks the next video in the queue, pairs it with
+its hand-written title/description/tags, and uploads it to YouTube as a Short.
 
-This is a **content-work system**, not a money printer. Whop Content Rewards pays per approved, eligible view. Claude is a **clip-research assistant** that finds and ranks story moments — it does not automate posting or replace human judgment.
+This repo was created by moving the code from `roblox-auto-shorts` into its own
+home, and adding the shorts-specific upload pipeline on top.
 
-## Core Loop
+## What's here
+
+- `video_metadata.json` — title, description, tags, and source file for all 18 videos
+- `videos/` — the 18 `.mp4` shorts (AI-generated, kids + golden retriever comedy)
+- `scripts/upload_short.py` — picks the next video from `tracker/state.json`,
+  uploads it to YouTube (preview or live), and advances the queue
+- `.github/workflows/upload-shorts.yml` — the scheduled workflow
+- `scripts/`, `playbook/`, `prompts/`, `automation/`, `tracker/` — the code
+  migrated verbatim from `roblox-auto-shorts` (Whop Content Rewards pipeline)
+
+The older Whop-pipeline workflows (`scout.yml`, `weekly-review.yml`,
+`auto-produce.yml`) are preserved too, but their `schedule:` triggers were removed
+so they don't auto-run in this repo — they need API secrets that aren't set here.
+They still run manually via **Actions → Run workflow**. The shorts uploader lives
+in `upload-shorts.yml`.
+
+## How the scheduled upload works
+
+1. `cron: "23 10 * * *"` fires **every day at 10:23 UTC** (edit in
+   `.github/workflows/upload-shorts.yml`).
+2. `upload_short.py` reads `tracker/state.json` → `next_index` and picks the next
+   video in `video_metadata.json` order.
+3. It reads that video's `title` / `description` (hashtags included) / `tags` and
+   uploads `videos/<id>.mp4` to the Bhaloo Ji channel as a public Short.
+4. On success it writes `state.json` back (`next_index + 1`, URL recorded in
+   `history`) and the workflow commits that so the next run continues the queue.
+
+When all 18 are uploaded, the workflow exits cleanly with "queue complete".
+
+## Safety gate — nothing goes live until you arm it
+
+Scheduled runs are **preview only** by default. They print what they *would*
+upload and never touch YouTube or advance the queue.
+
+To arm live uploads on schedule, set the repo **variable**:
 
 ```
-Find → Clip → Submit → Learn
+Settings → Secrets and variables → Actions → Variables
+ENABLE_LIVE_UPLOADS = true
 ```
 
-## Repo Layout
+Manual runs bypass the variable — use the **Actions → Run workflow → mode: live**
+dropdown and it uploads right away.
+
+Preview a specific video without uploading anything:
 
 ```
-whop-clipping-playbook/
-├── README.md                 ← you are here
-├── playbook/                 ← the full method, section by section
-│   ├── 00-overview.md        ← how payment works, the core loop
-│   ├── 01-setup.md           ← non-negotiable setup before starting
-│   ├── 02-campaigns.md       ← discovery, niche guide, 6-point filter
-│   ├── 03-workflow.md        ← the 6-step workflow + worked example
-│   ├── 04-payouts.md         ← payout stages, 3 traps, calculator
-│   └── 05-30day-plan.md      ← 30-day starting plan + closing principle
-├── prompts/                  ← the two Claude prompts, verbatim
-│   ├── clip-finder.md
-│   └── weekly-review.md
-├── tracker/
-│   ├── tracker.csv           ← the posting log (template + sample rows)
-│   └── folder-structure.md   ← campaign/source/transcript/project/export/links
-├── scripts/                  ← local helpers
-│   ├── prepare_transcript.py ← transcript+rules → Clipboard Finder prompt
-│   ├── weekly_review_prep.py ← tracker CSV → Weekly Review prompt
-│   └── shortlist_campaigns.py← ★ scout: fetch → filter active+high-paying → shortlist.md
-├── .github/workflows/
-│   ├── scout.yml             ← ★ daily: runs the scout, posts shortlist as an issue
-│   ├── weekly-review.yml     ← weekly reminder + CSV lint + prompt artifact
-│   └── clip-finder-prep.yml  ← manual: build a ready-to-paste Clip Finder prompt
-└── automation/
-    ├── feasibility.md        ← ★ what CAN and CANNOT be automated (read this first)
-    └── github-actions.md     ← realistic GH Actions setup
+Actions → Run workflow → video_id: video_04, mode: preview
 ```
 
-## Quick Start
+## Credentials
 
-1. Read `playbook/00-overview.md` → `01-setup.md` (do the setup before anything else).
-2. Use `playbook/02-campaigns.md` to shortlist 3 campaigns and run the 6-point filter.
-3. Join 1–2 campaigns. Read every rule. Set up `tracker/` folders.
-4. For each source: paste approved transcript + campaign rules into `prompts/clip-finder.md`.
-5. Verify manually, edit to add value, post, submit, log. See `playbook/03-workflow.md`.
-6. Weekly: export your CSV, run `prompts/weekly-review.md`.
+The workflow reads three GitHub Actions **secrets** (same names/values as
+`roblox-auto-shorts`):
 
-> **Before you build any automation, read `automation/feasibility.md`.** The playbook is a human-in-the-loop system by design, and full autopilot (fetch → cut → post → submit) is not achievable — see why there.
+| Secret         | Purpose                          |
+|----------------|----------------------------------|
+| `CLIENT_ID`    | YouTube OAuth client id          |
+| `CLIENT_SECRET`| YouTube OAuth client secret      |
+| `REFRESH_TOKEN`| YouTube OAuth refresh token      |
 
-## Scout (the automated part)
+These are the credentials for the **Bhaloo Ji** channel. They are stored as repo
+secrets and are never committed to the repository.
 
-`scripts/shortlist_campaigns.py` fetches the public Whop discovery page, filters **active** (remaining budget) + **high-paying** (rate/1K) campaigns, optionally scores them with your OpenRouter key, and writes `shortlist.md`. Run it:
+## Local preview (from this machine)
 
 ```bash
-# pure data filter (no key needed)
-python3 scripts/shortlist_campaigns.py
-
-# with model scoring (uses OPENROUTER_API_KEY + OPENROUTER_MODEL)
-OPENROUTER_API_KEY=... python3 scripts/shortlist_campaigns.py
+pip install -r requirements.txt
+export CLIENT_ID=... CLIENT_SECRET=... REFRESH_TOKEN=...
+python3 scripts/upload_short.py              # preview next video
+python3 scripts/upload_short.py --live       # actually upload next video
 ```
-
-Push to GitHub and the `scout.yml` workflow does the same daily, posting the shortlist as an issue. **You** then open each link and do the human 6-point filter — join, verify, edit, post, submit.

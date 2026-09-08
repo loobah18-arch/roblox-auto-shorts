@@ -1,0 +1,107 @@
+# upload-shorts.yml — scheduled sequential upload of Bhaloo Ji shorts
+#
+# Every day this workflow picks the NEXT video in the queue (cursor kept in
+# tracker/state.json), reads its title/description/tags from
+# video_metadata.json, and uploads it to the "Bhaloo Ji" channel as a
+# YouTube Short — using the same OAuth credentials as the existing
+# roblox-auto-shorts repo (CLIENT_ID / CLIENT_SECRET / REFRESH_TOKEN).
+#
+# Safety gate — NOTHING goes live until you arm it (see feedback-no-live-upload):
+#   * Manual runs:  set mode=live explicitly.
+#   * Scheduled runs: set the repo VARIABLE ENABLE_LIVE_UPLOADS=true
+#     (Settings → Secrets and variables → Actions → Variables).
+#     Until then, scheduled runs are PREVIEW ONLY — they print what they'd
+#     upload and never touch YouTube or advance the queue.
+#
+# Preview one specific video manually:
+#   workflow_dispatch with video_id=video_04, mode=preview
+
+name: "Upload Short — Bhaloo Ji"
+
+on:
+  schedule:
+    - cron: "23 10 * * *"   # daily at 10:23 UTC — edit freely
+  workflow_dispatch:
+    inputs:
+      video_id:
+        description: "Specific video to upload (video_01..video_18). Empty = next in sequence."
+        required: false
+        type: string
+      mode:
+        description: "preview = dry run (default) · live = actually upload"
+        required: false
+        type: choice
+        default: preview
+        options:
+          - preview
+          - live
+
+permissions:
+  contents: write   # so the run can commit tracker/state.json back after a live upload
+
+env:
+  CLIENT_ID: ${{ secrets.CLIENT_ID }}
+  CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+  REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      # Manual dispatch sets mode explicitly; scheduled runs only go live when
+      # the ENABLE_LIVE_UPLOADS repo variable is true. Anything else = preview.
+      - name: Decide mode
+        id: mode
+        run: |
+          if [ -n "${{ github.event.inputs.mode }}" ]; then
+            echo "mode=${{ github.event.inputs.mode }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ vars.ENABLE_LIVE_UPLOADS }}" = "true" ]; then
+            echo "mode=live" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=preview" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload short (preview or live)
+        run: |
+          EXTRA=""
+          if [ -n "${{ github.event.inputs.video_id }}" ]; then
+            EXTRA="--video-id ${{ github.event.inputs.video_id }}"
+          fi
+          if [ "${{ steps.mode.outputs.mode }}" = "live" ]; then
+            echo "LIVE UPLOAD — going to YouTube"
+            python3 scripts/upload_short.py --live $EXTRA
+          else
+            echo "PREVIEW ONLY — nothing goes live"
+            python3 scripts/upload_short.py $EXTRA
+          fi
+
+      - name: Commit updated queue state
+        if: steps.mode.outputs.mode == 'live'
+        run: |
+          git config user.name "bhaloo-shorts[bot]"
+          git config user.email "bhaloo-shorts[bot]@users.noreply.github.com"
+          git add tracker/state.json
+          git diff --cached --quiet || {
+            git commit -m "state: advance shorts queue after upload [skip ci]"
+            git push
+          }
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Upload Short — Bhaloo Ji" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Mode**: ${{ steps.mode.outputs.mode }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Video**: ${{ github.event.inputs.video_id || 'next in queue' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Channel**: Bhaloo Ji" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "_Scheduled runs stay PREVIEW until you set the repo variable \`ENABLE_LIVE_UPLOADS=true\` (Settings → Secrets and variables → Actions → Variables)._"

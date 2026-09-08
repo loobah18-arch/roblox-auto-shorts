@@ -1,9 +1,8 @@
 name: Campaign Scout
 
+# Note (bhaloo-shorts): the daily cron was removed here — OPENROUTER_API_KEY is
+# not set in this repo. Run manually, or add the secret and restore a schedule.
 on:
-  schedule:
-    # Daily 7:12 AM UTC — off the :00/:30 marks
-    - cron: '12 7 * * *'
   workflow_dispatch:
     inputs:
       min_rate:

@@ -19,9 +19,10 @@
 
 name: "Auto-Produce - Scout & Build Top YouTube Clip"
 
+# Note (bhaloo-shorts): the cron schedule was removed here because this pipeline
+# needs the Whop API secrets (PEXELS/GROQ/GEMINI/OPENROUTER), which are not set in
+# this repo. Run manually, or add the secrets and restore a schedule.
 on:
-  schedule:
-    - cron: "30 2 * * *"   # daily at 02:30 UTC (off-peak)
   workflow_dispatch:
     inputs:
       min_rate:
