@@ -87,11 +87,15 @@ jobs:
             echo "slug=$slug" >> $GITHUB_OUTPUT
             echo "dir=tracker/campaigns/$slug" >> $GITHUB_OUTPUT
           else
-            echo "ERROR: provide campaign_url or campaign_slug" && exit 1
+            echo "ERROR: provide campaign_url or campaign_slug to run the workflow" && exit 1
           fi
 
       - name: 1 — Fetch campaign detail
         run: |
+          # Wipe the campaign dir at run start: a stale script.json/assets from a
+          # previous run of the same campaign (or a same-named one) must never
+          # bleed into this production run. Everything is regenerated below.
+          rm -rf "${{ steps.ctx.outputs.dir }}"
           mkdir -p "${{ steps.ctx.outputs.dir }}"
           if [ -n "${{ steps.ctx.outputs.id }}" ]; then
             python3 scripts/campaign_detail.py \

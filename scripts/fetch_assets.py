@@ -37,6 +37,7 @@ import urllib.error
 import zipfile
 import tempfile
 import time
+import subprocess
 
 try:
     from media_links import all_media_links
@@ -46,8 +47,10 @@ except ImportError:
 
 UA = "Mozilla/5.0 whop-producer/1.0"
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".ogg"}
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp",
+              ".heic", ".heif", ".avif"}
 VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"}
+HEIC_EXTS = {".heic", ".heif", ".avif"}        # still images in an ISO-BMFF/AVIF container
 MEDIA_EXTS = IMAGE_EXTS | VIDEO_EXTS | AUDIO_EXTS
 
 
@@ -56,7 +59,7 @@ def sniff_ext(data: bytes) -> str | None:
     as application/octet-stream, so we can't trust the Content-Type for videos."""
     if not data:
         return None
-    if data[:4] == b"\xff\xd8\xff":
+    if data[:3] == b"\xff\xd8\xff":
         return ".jpg"
     if data[:8] == b"\x89PNG\r\n\x1a\n":
         return ".png"
@@ -70,13 +73,20 @@ def sniff_ext(data: bytes) -> str | None:
     if data[:4] == b"BM":
         return ".bmp"
     if data[4:8] == b"ftyp" or data[4:12].startswith(b"ftyp"):
-        # mp4/mov/m4v/m4a all share the ISO-BMFF container — disambiguate by brand
-        brand = data[8:12]
-        if b"m4a" in brand or b"M4A " in brand:
-            return ".m4a"
-        if b"m4v" in brand or b"M4V " in brand:
-            return ".m4v"
-        if b"isom" in data[:32] or b"mp4" in data[:32] or b"avc1" in data[:32]:
+        # mp4/mov/m4v/m4a/heic/heif/avif all share the ISO-BMFF container — but the
+        # STILL-image brands must NOT be treated as video. Apple photos come down from
+        # Drive as HEIC (major brand 'heic') and were previously misdetected here,
+        # named '.mov', sent to ffmpeg as video, failing to decode (exit 183), and
+        # silently falling back to text cards — so all the campaign media never showed.
+        head = data[:64]
+        for brand, ext in ((b"m4a", ".m4a"), (b"M4A ", ".m4a"), (b"m4v", ".m4v"),
+                           (b"M4V ", ".m4v"),
+                           (b"heic", ".heic"), (b"heix", ".heic"), (b"hevx", ".heic"),
+                           (b"heif", ".heif"), (b"mif1", ".heif"), (b"msf1", ".heif"),
+                           (b"avif", ".avif"), (b"avis", ".avif")):
+            if head.startswith(b"ftyp" + brand) or b"ftyp" + brand in head:
+                return ext
+        if b"isom" in head[:32] or b"mp4" in head[:32] or b"avc1" in head[:32]:
             return ".mp4"
         return ".mov"
     if data[:4] == b"\x1aE\xdf\xa3":
@@ -158,6 +168,25 @@ def extension_from_type(content_type: str) -> str | None:
         "audio/ogg": ".ogg", "application/octet-stream": None,
     }
     return mapping.get(ct)
+
+
+def _transcode_heic_to_jpeg(src: str) -> str | None:
+    """Convert a HEIC/HEIF/AVIF still to a JPEG next to it, so Pillow (no native
+    HEIF decode) can burn it as a photo slide. Returns the JPEG path, or None.
+    ffmpeg ships a HEVC/AV1 decoder, so the transcode usually succeeds. If it
+    fails we keep the original and let build_video degrade safely."""
+    base = src.rsplit(".", 1)[0]
+    dst = base + ".jpg"
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-y", "-i", src, "-frames:v", "1", "-q:v", "2", "-pix_fmt", "yuvj420p", dst],
+            capture_output=True, timeout=120)
+        if r.returncode == 0 and os.path.exists(dst) and os.path.getsize(dst) > 2000:
+            os.remove(src)
+            return dst
+    except Exception:
+        pass
+    return None
 
 
 _TRANSIENT_EXC = (urllib.error.URLError, TimeoutError, ConnectionError)
@@ -247,6 +276,9 @@ def download_drive_file(url: str, dest: str) -> str:
                             continue
                         with zf.open(name) as src, open(out, "wb") as fh:
                             fh.write(src.read())
+                        if ext in HEIC_EXTS:
+                            jp = _transcode_heic_to_jpeg(out)
+                            out = jp if jp else out
                         saved.append(out)
             os.unlink(zpath)
             return saved[0] if saved else ""
@@ -255,14 +287,23 @@ def download_drive_file(url: str, dest: str) -> str:
             return ""
 
     ext = extension_from_type(ctype) or sniff_ext(data)
-    final = dest if not ext else dest + ext
+    # extension_from_type can return None for octet-stream — don't leave a bare name
+    if not ext:
+        ext = ".bin"
+    final = dest if ext == ".bin" else dest + ext
     try:
         with open(final, "wb") as f:
             f.write(data)
-        return final
     except Exception as e:
         print(f"[warn] writing {final} failed: {e}", file=sys.stderr)
         return ""
+    if ext in HEIC_EXTS:
+        jp = _transcode_heic_to_jpeg(final)
+        if jp:
+            return jp
+        # transcode unavailable — leave the .heic in place and let build_video
+        # handle or degrade gracefully; return the .heic path for index bookkeeping
+    return final
 
 
 def extract_drive_folder_id(url: str) -> str | None:

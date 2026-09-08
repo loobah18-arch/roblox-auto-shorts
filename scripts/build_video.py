@@ -11,22 +11,29 @@ Output:
   - video.mp4         : 1080x1920, 30fps, ~3s/slide, BGM or silent audio
 
 Slide rendering:
-  - text-card / notes-app: Pillow render on dark gradient bg
+  - text-card / notes-app: Pillow render on a dark gradient bg
   - lifestyle-photo / product-photo / retail-shot / persona-selfie:
-      * if asset.src == "local" and media == "image": load campaign photo, fit to 1080x1920
-      * if asset.src == "local" and media == "video": use the campaign video clip
-        (scaled/cropped to 1080x1920, slide text burned in) as a moving slide
+      * if asset.src == "local" and media == "image": campaign photo, fit to 1080x1920
+      * if asset.src == "local" and media == "video": campaign video clip
+        (scaled/cropped, slide text burned in) as a moving slide
       * if asset.src == "render": Pillow text-card fallback
+
+How the output is made to look hand-made (not a templated slideshow):
+  - Ken Burns motion: slow push-in with a vertical drift on every still slide, so
+    photos and text cards breathe instead of sitting frozen.
+  - Soft 0.2s fade in/out on each slide so cuts don't feel like a machine splice.
+  - Shorts-style captions: bold type, a yellow "chip" highlight on the words the
+    script itself CAPITALIZED for emphasis (or the first short keywords), set
+    over a legible dark scrim. No debug badges, no production notes on screen.
 
 Audio:
   - Campaign BGM (mp3/wav from assets/) if available — looped, volume reduced
   - Silent track otherwise (YouTube requires audio)
-
-ffmpeg concat: generate individual slide MP4s -> concat -> mix audio -> final.
 """
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -40,16 +47,19 @@ SLIDE_SEC = 3.0
 SLIDE_FRAMES = int(SLIDE_SEC * FPS)
 BG_COLOR = (18, 18, 24)
 TEXT_WHITE = (255, 255, 255)
-TEXT_DIM = (200, 200, 200)
-MAX_TEXT_W = int(W * 0.88)
+ACCENT = (250, 204, 21)   # sunny yellow — the classic short caption emphasis
+CHIP_INK = (30, 30, 30)
+MAX_TEXT_W = int(W * 0.86)
 FONT_PATH = None
 
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac"}
-VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi"}
+VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"}
 BGM_VOLUME = "0.3"  # ffmpeg volume filter — background music should be quiet
+FADE_D = 0.22       # seconds of fade in/out on each slide
+KENBURNS_ZMAX = 1.16  # push-in target (16% zoom) — enough motion, never dizzy
 
 
-def pick_font(size: int) -> ImageFont.FreeTypeFont:
+def pick_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     global FONT_PATH
     if FONT_PATH is None:
         for cand in [
@@ -62,59 +72,111 @@ def pick_font(size: int) -> ImageFont.FreeTypeFont:
                 FONT_PATH = cand
                 break
     if FONT_PATH:
-        return ImageFont.truetype(FONT_PATH, size)
+        path = FONT_PATH
+        if bold:
+            cand = (FONT_PATH.replace("DejaVuSans.ttf", "DejaVuSans-Bold.ttf")
+                              .replace("LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf")
+                              .replace("Roboto-Regular.ttf", "Roboto-Bold.ttf"))
+            if os.path.exists(cand):
+                path = cand
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            pass
     return ImageFont.load_default()
 
 
-def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_w: int) -> list[str]:
+def _pick_accent_words(text: str) -> list[str]:
+    """Words a human editor would pop with a color chip. Prefer the words the
+    script itself CAPITALIZED for emphasis (read: the scout / LLM already marked
+    them as hook words); otherwise the first short keyword."""
     words = text.split()
-    lines, cur = [], []
+    caps = []
     for w in words:
-        test = " ".join(cur + [w])
-        if draw.textlength(test, font=font) <= max_w:
-            cur.append(w)
+        k = w.strip(".,!?;:'\"()")
+        if len(k) >= 2 and k.isupper() and any(c.isalpha() for c in k):
+            caps.append(k)
+    if caps:
+        return list(dict.fromkeys(caps))[:2]
+    short = [w.strip(".,!?;:'\"()") for w in words
+             if len(w.strip(".,!?;:'\"()")) <= 6 and any(c.isalpha() for c in w)]
+    return list(dict.fromkeys(short))[:2]
+
+
+def _wrap_words(draw: ImageDraw.ImageDraw, words: list[str],
+                font: ImageFont.FreeTypeFont, max_w: int) -> list[list[str]]:
+    lines, cur, curw = [], [], 0.0
+    for w in words:
+        ww = draw.textlength(w + " ", font=font)
+        if cur and curw + ww > max_w:
+            lines.append(cur)
+            cur, curw = [w], draw.textlength(w + " ", font=font)
         else:
-            if cur:
-                lines.append(" ".join(cur))
-            cur = [w]
+            cur.append(w)
+            curw += ww
     if cur:
-        lines.append(" ".join(cur))
-    return lines or [""]
+        lines.append(cur)
+    return lines
 
 
-def render_text_card(slide_text: str, visual: str, notes: str = "") -> Image.Image:
-    img = Image.new("RGB", (W, H), BG_COLOR)
-    draw = ImageDraw.Draw(img)
-
-    for y in range(H):
-        alpha = int(40 * (y / H))
-        draw.line([(0, y), (W, y)], fill=(0, 0, 0, alpha))
-
-    font = pick_font(72)
-    lines = wrap_text(draw, slide_text, font, MAX_TEXT_W)
+def draw_caption_on(draw: ImageDraw.ImageDraw, text: str):
+    """Shorts-style caption: bold words, yellow chips on emphasized words, set
+    slightly below centre with a soft scrim band so it reads over any footage."""
+    accent_lower = {w.lower() for w in _pick_accent_words(text)}
+    font = pick_font(78, bold=True)
+    words = text.split()
+    lines = _wrap_words(draw, words, font, MAX_TEXT_W)
     line_h = font.getbbox("Ay")[3] - font.getbbox("Ay")[1]
-    total_h = line_h * len(lines) + 16 * (len(lines) - 1)
-    y_start = (H - total_h) // 2
+    line_gap = 20
+    total = line_h * len(lines) + line_gap * (len(lines) - 1)
 
-    for i, line in enumerate(lines):
-        bbox = draw.textbbox((0, 0), line, font=font)
-        x = (W - (bbox[2] - bbox[0])) // 2
-        y = y_start + i * (line_h + 16)
-        draw.text((x + 3, y + 3), line, font=font, fill=(0, 0, 0, 180))
-        draw.text((x, y), line, font=font, fill=TEXT_WHITE)
+    y_start = int(H * 0.40)
+    band_y0 = max(0, y_start - 42)
+    band_y1 = min(H, y_start + total + 44)
+    for yy in range(band_y0, band_y1):
+        a = 96 if (band_y0 + 90 < yy < band_y1 - 90) else 64
+        draw.line([(0, yy), (W, yy)], fill=(0, 0, 0, a))
 
-    badge_font = pick_font(28)
-    draw.text((40, H - 60), f"[{visual}]", font=badge_font, fill=TEXT_DIM)
+    y = y_start
+    word_gap = 14
+    for line in lines:
+        line_w = sum(draw.textlength(w, font=font) for w in line) + word_gap * (len(line) - 1)
+        x = (W - line_w) // 2
+        for w in line:
+            ww = draw.textlength(w, font=font)
+            key = w.strip(".,!?;:'\"()").lower()
+            if key in accent_lower and any(c.isalpha() for c in key):
+                pad = 16
+                rx, ry, rw, rh = x - pad, y - pad, int(ww) + 2 * pad, line_h + 2 * pad
+                try:
+                    draw.rounded_rectangle([rx, ry, rx + rw, ry + rh], radius=14, fill=ACCENT)
+                except Exception:
+                    draw.rectangle([rx, ry, rx + rw, ry + rh], fill=ACCENT)
+                draw.text((x, y), w, font=font, fill=CHIP_INK)
+            else:
+                draw.text((x + 3, y + 3), w, font=font, fill=(0, 0, 0, 200))
+                draw.text((x, y), w, font=font, fill=TEXT_WHITE)
+            x += ww + word_gap
+        y += line_h + line_gap
 
-    if notes:
-        note_font = pick_font(24)
-        note_lines = wrap_text(draw, notes, note_font, MAX_TEXT_W)
-        ny = H - 40 - (note_font.getbbox("Ay")[3] + 6) * len(note_lines)
-        for nl in note_lines:
-            bbox = draw.textbbox((0, 0), nl, font=note_font)
-            draw.text((W - bbox[2] - 40, ny), nl, font=note_font, fill=TEXT_DIM)
-            ny += note_font.getbbox("Ay")[3] + 6
 
+def _text_bg() -> Image.Image:
+    """Dark study background with a faint downward gradient + subtle top glow so
+    a text card reads as a designed frame, not a flat black rectangle."""
+    base = Image.new("RGB", (W, H), BG_COLOR)
+    g = Image.new("RGB", (1, H))
+    for yy in range(H):
+        t = yy / H
+        g.putpixel((0, yy), (int(24 + 8 * t), int(24 + 8 * t), int(30 + 12 * t)))
+    g = g.resize((W, H))
+    out = Image.blend(base, g, 0.7)
+    return out
+
+
+def render_text_card(slide_text: str, visual: str = "", notes: str = "") -> Image.Image:
+    img = _text_bg()
+    draw = ImageDraw.Draw(img, "RGBA")
+    draw_caption_on(draw, slide_text)
     return img
 
 
@@ -122,7 +184,17 @@ def fit_image_cover(src_path: str) -> Image.Image:
     try:
         im = Image.open(src_path).convert("RGB")
     except Exception:
-        return Image.new("RGB", (W, H), BG_COLOR)
+        # Pillow may lack a HEIF codec for a stray .heic that fetch_assets could
+        # not transcode — try ffmpeg to lift a JPEG frame so the slide still shows
+        # the campaign photo instead of a black card.
+        jpeg = _ffmpeg_frame_to_jpeg(src_path)
+        if jpeg:
+            try:
+                im = Image.open(jpeg).convert("RGB")
+            except Exception:
+                return Image.new("RGB", (W, H), BG_COLOR)
+        else:
+            return Image.new("RGB", (W, H), BG_COLOR)
 
     try:
         src_w, src_h = im.size
@@ -139,50 +211,40 @@ def fit_image_cover(src_path: str) -> Image.Image:
         return im.resize((W, H), Image.LANCZOS)
     except Exception:
         # truncated/corrupt pixel data only surfaces here (lazy decode), not in
-        # the Image.open above — a single bad jpg must not abort the whole build
+        # the Image.open above — a single bad file must not abort the whole build
         return Image.new("RGB", (W, H), BG_COLOR)
 
 
-def render_photo_slide(text: str, visual: str, img_path: str, notes: str = "") -> Image.Image:
+def _ffmpeg_frame_to_jpeg(src_path: str) -> str | None:
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+        dst = tmp.name
+    try:
+        subprocess.run(["ffmpeg", "-y", "-i", src_path, "-frames:v", "1",
+                        "-q:v", "2", dst], capture_output=True, timeout=60)
+        if os.path.getsize(dst) > 2000:
+            return dst
+    except Exception:
+        pass
+    try:
+        os.unlink(dst)
+    except Exception:
+        pass
+    return None
+
+
+def render_photo_slide(text: str, visual: str = "", img_path: str = "",
+                       notes: str = "") -> Image.Image:
     base = fit_image_cover(img_path)
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 140))
-    base = base.convert("RGBA")
-    base = Image.alpha_composite(base, overlay).convert("RGB")
-    draw = ImageDraw.Draw(base)
-
-    font = pick_font(72)
-    lines = wrap_text(draw, text, font, MAX_TEXT_W)
-    line_h = font.getbbox("Ay")[3] - font.getbbox("Ay")[1]
-    total_h = line_h * len(lines) + 16 * (len(lines) - 1)
-    y_start = (H - total_h) // 2
-
-    for i, line in enumerate(lines):
-        bbox = draw.textbbox((0, 0), line, font=font)
-        x = (W - (bbox[2] - bbox[0])) // 2
-        y = y_start + i * (line_h + 16)
-        draw.text((x + 3, y + 3), line, font=font, fill=(0, 0, 0, 180))
-        draw.text((x, y), line, font=font, fill=TEXT_WHITE)
-
-    badge_font = pick_font(28)
-    draw.text((40, H - 60), f"[{visual}]", font=badge_font, fill=TEXT_DIM)
-
-    if notes:
-        note_font = pick_font(24)
-        note_lines = wrap_text(draw, notes, note_font, MAX_TEXT_W)
-        ny = H - 40 - (note_font.getbbox("Ay")[3] + 6) * len(note_lines)
-        for nl in note_lines:
-            bbox = draw.textbbox((0, 0), nl, font=note_font)
-            draw.text((W - bbox[2] - 40, ny), nl, font=note_font, fill=TEXT_DIM)
-            ny += note_font.getbbox("Ay")[3] + 6
-
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 120))
+    base = Image.alpha_composite(base.convert("RGBA"), ov).convert("RGB")
+    draw = ImageDraw.Draw(base, "RGBA")
+    draw_caption_on(draw, text)
     return base
 
 
 def render_slide(slide: dict, asset: dict, campaign_dir: str) -> Image.Image:
     visual = slide.get("visual", "text-card")
     text = slide.get("text", "")
-    notes = slide.get("notes", "")
-
     src = asset.get("src", "render")
     path = asset.get("path")
 
@@ -190,60 +252,30 @@ def render_slide(slide: dict, asset: dict, campaign_dir: str) -> Image.Image:
         if src == "local" and path:
             full = os.path.join(campaign_dir, path)
             if os.path.exists(full):
-                return render_photo_slide(text, visual, full, notes)
-    return render_text_card(text, visual, notes)
+                return render_photo_slide(text, visual, full)
+    return render_text_card(text, visual)
 
 
-def render_text_overlay(text: str, visual: str, notes: str = "") -> Image.Image:
-    """Transparent RGBA overlay of centered white text (with shadow), badge,
-    and notes. Burned on top of a campaign video clip."""
+def render_text_overlay(text: str, visual: str = "", notes: str = "") -> Image.Image:
+    """Transparent RGBA overlay of the shorts-style caption, burned on top of a
+    campaign video clip so the moving footage stays visible under the text."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-
-    font = pick_font(72)
-    lines = wrap_text(draw, text, font, MAX_TEXT_W)
-    line_h = font.getbbox("Ay")[3] - font.getbbox("Ay")[1]
-    total_h = line_h * len(lines) + 16 * (len(lines) - 1)
-    y_start = (H - total_h) // 2
-
-    # soft dark scrim behind the text block so compliance-critical wording stays
-    # legible even over bright/white footage (verified: white-on-shadow could wash out)
-    scrim_y0 = y_start - 24
-    scrim_y1 = y_start + total_h + 40
-    for yy in range(scrim_y0, scrim_y1):
-        # vertical gradient: stronger at the text band, lighter at the edges
-        a = 90 if scrim_y1 - 60 < yy < scrim_y0 + 60 else 60
-        draw.line([(0, yy), (W, yy)], fill=(0, 0, 0, a))
-
-    for i, line in enumerate(lines):
-        bbox = draw.textbbox((0, 0), line, font=font)
-        x = (W - (bbox[2] - bbox[0])) // 2
-        y = y_start + i * (line_h + 16)
-        draw.text((x + 3, y + 3), line, font=font, fill=(0, 0, 0, 230))
-        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
-
-    badge_font = pick_font(28)
-    draw.text((40, H - 60), f"[{visual}]", font=badge_font, fill=(200, 200, 200, 220))
-
-    if notes:
-        note_font = pick_font(24)
-        note_lines = wrap_text(draw, notes, note_font, MAX_TEXT_W)
-        ny = H - 40 - (note_font.getbbox("Ay")[3] + 6) * len(note_lines)
-        for nl in note_lines:
-            bbox = draw.textbbox((0, 0), nl, font=note_font)
-            draw.text((W - bbox[2] - 40, ny), nl, font=note_font, fill=(200, 200, 200, 220))
-            ny += note_font.getbbox("Ay")[3] + 6
-
+    draw_caption_on(draw, text)
     return img
+
+
+def _fade_vf() -> str:
+    return (f"fade=t=in:st=0:d={FADE_D},"
+            f"fade=t=out:st={SLIDE_SEC - FADE_D:.2f}:d={FADE_D}")
 
 
 def video_slide_to_mp4(slide: dict, video_path: str, out_path: str):
     """Use a campaign video clip as a moving slide: scale/crop to 1080x1920,
-    loop to fill SLIDE_SEC, burn the slide text in as an overlay."""
+    loop to fill SLIDE_SEC, burn the caption overlay in, soft fade at the edges."""
     text = slide.get("text", "")
     visual = slide.get("visual", "video")
-    notes = slide.get("notes", "")
-    overlay = render_text_overlay(text, visual, notes)
+    overlay = render_text_overlay(text, visual)
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         overlay.save(tmp.name, "PNG")
@@ -255,8 +287,8 @@ def video_slide_to_mp4(slide: dict, video_path: str, out_path: str):
             "-i", ov_path,
             "-filter_complex",
             "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,"
-            "crop=1080:1920,format=rgba[bv];"
-            "[bv][1:v]overlay=0:0:format=auto,format=yuv420p[vout]",
+            f"crop=1080:1920,format=rgba[bv];"
+            f"[bv][1:v]overlay=0:0:format=auto,{_fade_vf()},format=yuv420p[vout]",
             "-map", "[vout]",
             "-t", str(SLIDE_SEC), "-r", str(FPS),
             "-c:v", "libx264", "-pix_fmt", "yuv420p",
@@ -267,7 +299,40 @@ def video_slide_to_mp4(slide: dict, video_path: str, out_path: str):
         os.unlink(ov_path)
 
 
-def slide_to_mp4(img: Image.Image, out_path: str):
+def render_kenburns_mp4(img: Image.Image, out_path: str):
+    """Encode a still slide as a 3s moving clip: scale up for zoom headroom, then
+    per-frame crop a window that slowly pushes in (Ken Burns) with a gentle sink,
+    feeding raw RGB frames straight into ffmpeg. Adds the per-slide fades."""
+    frames = SLIDE_FRAMES
+    big = img.resize((int(W * KENBURNS_ZMAX), int(H * KENBURNS_ZMAX)), Image.LANCZOS)
+    bw, bh = big.size
+
+    cmd = ["ffmpeg", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
+           "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
+           "-frames:v", str(frames),
+           "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+           "-vf", _fade_vf(), out_path]
+    p = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    rgb = img.convert("RGB")
+    for i in range(frames):
+        f = i / (frames - 1) if frames > 1 else 1.0
+        z = 1.0 + (KENBURNS_ZMAX - 1.0) * f
+        cw = max(int(bw / z), 4) - (int(bw / z) % 2)
+        ch = max(int(bh / z), 4) - (int(bh / z) % 2)
+        cx = (bw - cw) // 2
+        drift = int((bh - ch) * 0.05 * f)   # slight camera sink, subtle
+        cy = max(0, min(bh - ch, (bh - ch) // 2 + drift))
+        crop = big.crop((cx, cy, cx + cw, cy + ch)).resize((W, H), Image.LANCZOS)
+        p.stdin.write(crop.tobytes())
+    p.stdin.close()
+    if p.wait() != 0:
+        raise RuntimeError("kenburns encode failed")
+
+
+def slide_to_mp4_static(img: Image.Image, out_path: str):
+    """Static fallback (and the safe default if Ken Burns ever fails) — still
+    keeps the per-slide fade so transitions stay soft."""
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         img.save(tmp.name, "PNG")
         png_path = tmp.name
@@ -276,7 +341,8 @@ def slide_to_mp4(img: Image.Image, out_path: str):
             "ffmpeg", "-y", "-loop", "1", "-framerate", str(FPS),
             "-i", png_path, "-c:v", "libx264", "-t", str(SLIDE_SEC),
             "-pix_fmt", "yuv420p",
-            "-vf", f"scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2",
+            "-vf", f"scale={W}:{H}:force_original_aspect_ratio=decrease,"
+                   f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,{_fade_vf()}",
             out_path
         ]
         subprocess.run(cmd, check=True, capture_output=True)
@@ -323,7 +389,6 @@ def find_bgm(campaign_dir: str) -> str | None:
 def add_audio(video_path: str, bgm_path: str | None, out_path: str, duration: float):
     """Mix BGM into video, or add silent audio track if no BGM."""
     if bgm_path:
-        # loop BGM, reduce volume, trim to video length
         cmd = [
             "ffmpeg", "-y",
             "-i", video_path,
@@ -338,11 +403,10 @@ def add_audio(video_path: str, bgm_path: str | None, out_path: str, duration: fl
         ]
         print(f"  mixing BGM: {os.path.basename(bgm_path)} (vol={BGM_VOLUME})")
     else:
-        # generate silent audio track — YouTube requires audio
         cmd = [
             "ffmpeg", "-y",
             "-i", video_path,
-            "-f", "lavfi", "-i", f"anullsrc=r=44100:cl=stereo",
+            "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
             "-map", "0:v", "-map", "1:a",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "64k",
             "-t", str(duration),
@@ -378,7 +442,6 @@ def main() -> int:
 
     print(f"Building video: {n_slides} slides -> {out_path}")
 
-    # find BGM
     bgm = find_bgm(args.dir)
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -398,22 +461,24 @@ def main() -> int:
                         continue
                     except Exception as e:
                         # one undecodable/truncated clip (real Drive files are
-                        # often partial) must NOT abort the whole automated run —
-                        # degrade to the text-card renderer for that slide
+                        # often partial or mislabeled) must NOT abort the whole
+                        # automated run — degrade to the renderer for that slide
                         print(f"[warn] slide {n}: video clip failed to encode, "
-                              f"falling back to text-card: {e}", file=sys.stderr)
+                              f"rendering as a still slide: {e}", file=sys.stderr)
             img = render_slide(slide, asset, args.dir)
-            slide_to_mp4(img, mp4_path)
+            try:
+                render_kenburns_mp4(img, mp4_path)
+            except Exception as e:
+                print(f"[warn] slide {n}: Ken Burns failed, using static frame: {e}",
+                      file=sys.stderr)
+                slide_to_mp4_static(img, mp4_path)
             slide_files.append(mp4_path)
 
-        # concat slides (video only, no audio yet)
         concat_slides(slide_files, out_path)
 
-        # mix in audio
-        if bgm or True:  # always add audio (silent fallback)
-            audio_out = os.path.join(tmpdir, "final_audio.mp4")
-            add_audio(out_path, bgm, audio_out, total_duration)
-            os.replace(audio_out, out_path)
+        audio_out = os.path.join(tmpdir, "final_audio.mp4")
+        add_audio(out_path, bgm, audio_out, total_duration)
+        os.replace(audio_out, out_path)
 
     if os.path.exists(out_path) and os.path.getsize(out_path) > 1000:
         size_kb = os.path.getsize(out_path) // 1024
