@@ -1,8 +1,10 @@
 # Bhaloo Ji Shorts
 
 Automated, scheduled uploader for **Bhaloo Ji** — a kids + dog comedy Shorts
-channel. Every day the pipeline picks the next video in the queue, pairs it with
-its hand-written title/description/tags, and uploads it to YouTube as a Short.
+channel. Twice a day the pipeline picks the next video in the queue, pairs it
+with its hand-written title/description/tags, and uploads it to YouTube as a
+Short. The queue loops forever: after `video_18` it wraps back to `video_01`,
+so uploads never stop.
 
 ## What's here
 
@@ -16,7 +18,7 @@ its hand-written title/description/tags, and uploads it to YouTube as a Short.
 
 ## How the scheduled upload works
 
-1. `cron: "23 10 * * *"` fires **every day at 10:23 UTC** (edit in
+1. Two `cron` entries fire **twice a day, at 10:23 and 22:23 UTC** (edit in
    `.github/workflows/upload-shorts.yml`).
 2. `upload_short.py` reads `tracker/state.json` → `next_index` and picks the next
    video in `video_metadata.json` order.
@@ -25,7 +27,8 @@ its hand-written title/description/tags, and uploads it to YouTube as a Short.
 4. On success it writes `state.json` back (`next_index + 1`, URL recorded in
    `history`) and the workflow commits that so the next run continues the queue.
 
-When all 18 are uploaded, the workflow exits cleanly with "queue complete".
+The queue **loops forever**: after `video_18` it wraps back to `video_01`, so a
+new Short is always uploaded — the channel never goes quiet.
 
 ## Safety gate — nothing goes live until you arm it
 

@@ -4,7 +4,9 @@ Upload one "Bhaloo Ji" short (kids + dog comedy video) to YouTube as a Short.
 
 Metadata comes from video_metadata.json (title / description / tags per video_id).
 Sequential state lives in tracker/state.json: each successful LIVE upload advances
-the cursor so the next scheduled run uploads the next video in the queue.
+the cursor so the next scheduled run uploads the next video. The queue loops
+forever — after the last video the cursor wraps back to the first, so uploads
+never stop (one video, twice a day).
 
 Credentials come from env (repo secrets, identical to the existing
 roblox-auto-shorts setup): CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN.
@@ -78,16 +80,18 @@ def main() -> int:
     state.setdefault("history", [])
 
     # ---- pick the video for this run ----
+    if not videos:
+        print("ERROR: no videos in video_metadata.json — nothing to upload", file=sys.stderr)
+        return 1
     if args.video_id:
         index = next((i for i, v in enumerate(videos) if v["id"] == args.video_id), None)
         if index is None:
             print(f"ERROR: no video with id '{args.video_id}' in video_metadata.json", file=sys.stderr)
             return 1
     else:
-        index = state["next_index"]
-        if index >= len(videos):
-            print(f"All {len(videos)} videos already uploaded — queue complete. Nothing to do.")
-            return 0
+        # Continuous loop: after the last video, wrap back around to the first
+        # so the scheduled uploads never run out.
+        index = state["next_index"] % len(videos)
     video = videos[index]
 
     video_path = os.path.join(VIDEO_DIR, f"{video['id']}.mp4")
@@ -146,7 +150,7 @@ def main() -> int:
         "youtube_url": url,
         "uploaded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     })
-    state["next_index"] = index + 1
+    state["next_index"] = (index + 1) % len(videos)  # wraps to 0 after the last video
     state["total_videos"] = len(videos)
     save_json(STATE_PATH, state)
 
