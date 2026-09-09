@@ -1,6 +1,16 @@
 {
-  "next_index": 0,
+  "next_index": 1,
   "total_videos": 18,
-  "uploaded": [],
-  "history": []
+  "uploaded": [
+    "video_01"
+  ],
+  "history": [
+    {
+      "index": 0,
+      "video_id": "video_01",
+      "title": "When Your Kid Becomes the Family Security Guard! 🚪🐕",
+      "youtube_url": "https://youtube.com/shorts/0ulYqotNLYs",
+      "uploaded_at": "2026-09-09T06:29:14+00:00"
+    }
+  ]
 }
