@@ -6,12 +6,9 @@
 # YouTube Short — using the same OAuth credentials as the existing
 # roblox-auto-shorts repo (CLIENT_ID / CLIENT_SECRET / REFRESH_TOKEN).
 #
-# Safety gate — NOTHING goes live unless you explicitly ask (see feedback-no-live-upload):
-#   * Manual runs:  tick the "Upload to YouTube" checkbox to go live.
-#     Unticked = preview only (prints what WOULD upload, touches nothing).
-#   * Scheduled runs: set the repo VARIABLE ENABLE_LIVE_UPLOADS=true
-#     (Settings → Secrets and variables → Actions → Variables).
-#     Until then, scheduled runs are PREVIEW ONLY.
+# Scheduled runs ALWAYS upload live (two shorts/day on a loop).
+# Manual runs respect the "Upload to YouTube" checkbox:
+#   ticked = live, unticked = preview.
 #
 # Dry-run one specific video manually:
 #   workflow_dispatch with video_id=video_04, upload_to_youtube=unticked
@@ -56,18 +53,15 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      # Manual dispatch goes live only when the "Upload to YouTube" box is
-      # ticked (their explicit choice always wins); scheduled runs only go
-      # live when ENABLE_LIVE_UPLOADS=true. Anything else = preview.
       - name: Decide mode
         id: mode
         run: |
-          if [ "${{ github.event.inputs.upload_to_youtube }}" = "true" ]; then
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "mode=live" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.inputs.upload_to_youtube }}" = "true" ]; then
             echo "mode=live" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.inputs.upload_to_youtube }}" = "false" ]; then
             echo "mode=preview" >> "$GITHUB_OUTPUT"
-          elif [ "${{ vars.ENABLE_LIVE_UPLOADS }}" = "true" ]; then
-            echo "mode=live" >> "$GITHUB_OUTPUT"
           else
             echo "mode=preview" >> "$GITHUB_OUTPUT"
           fi
@@ -105,4 +99,4 @@ jobs:
           echo "- **Video**: ${{ github.event.inputs.video_id || 'next in queue' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Channel**: Bhaloo Ji" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "_Manual runs upload only when the 'Upload to YouTube' box is ticked. Scheduled runs stay PREVIEW until you set the repo variable \`ENABLE_LIVE_UPLOADS=true\` (Settings → Secrets and variables → Actions → Variables)._"
+          echo "_Manual runs upload live only when the 'Upload to YouTube' box is ticked._"

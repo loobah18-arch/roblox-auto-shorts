@@ -30,23 +30,15 @@ so uploads never stop.
 The queue **loops forever**: after `video_18` it wraps back to `video_01`, so a
 new Short is always uploaded — the channel never goes quiet.
 
-## Safety gate — nothing goes live until you arm it
+## Upload behavior
 
-Scheduled runs are **preview only** by default. They print what they *would*
-upload and never touch YouTube or advance the queue.
+**Scheduled runs** (10:23 and 22:23 UTC) upload **live** to the Bhaloo Ji
+channel automatically. That is the approved, intended behavior — a new Short
+goes live twice a day, on a loop that never stops.
 
-To arm live uploads on schedule, set the repo **variable**:
-
-```
-Settings → Secrets and variables → Actions → Variables
-ENABLE_LIVE_UPLOADS = true
-```
-
-Manual runs bypass the variable — **tick the "Upload to YouTube" checkbox**
-in the Actions → Run workflow form and it uploads right away. Leave it
-unticked for a dry run.
-
-Dry-run a specific video without uploading anything:
+**Manual runs** (Actions → Run workflow) respect the **"Upload to YouTube"**
+checkbox: tick it to go live, leave unticked for a dry run that prints what it *would*
+upload without touching the channel. You can also dry-run a specific video:
 
 ```
 Actions → Run workflow → video_id: video_04, upload_to_youtube: unticked
