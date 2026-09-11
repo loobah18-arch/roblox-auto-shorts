@@ -1,8 +1,9 @@
 {
-  "next_index": 1,
+  "next_index": 2,
   "total_videos": 18,
   "uploaded": [
-    "video_01"
+    "video_01",
+    "video_02"
   ],
   "history": [
     {
@@ -11,6 +12,13 @@
       "title": "When Your Kid Becomes the Family Security Guard! 🚪🐕",
       "youtube_url": "https://youtube.com/shorts/0ulYqotNLYs",
       "uploaded_at": "2026-09-09T06:29:14+00:00"
+    },
+    {
+      "index": 1,
+      "video_id": "video_02",
+      "title": "Who Ate the Cake?! 🍰🐶 Kid Detective Solves the Mystery!",
+      "youtube_url": "https://youtube.com/shorts/2FBLAVH9UHA",
+      "uploaded_at": "2026-09-11T01:03:27+00:00"
     }
   ]
 }
