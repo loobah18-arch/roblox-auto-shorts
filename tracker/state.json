@@ -1,11 +1,12 @@
 {
-  "next_index": 4,
+  "next_index": 5,
   "total_videos": 18,
   "uploaded": [
     "video_01",
     "video_02",
     "video_03",
-    "video_04"
+    "video_04",
+    "video_05"
   ],
   "history": [
     {
@@ -35,6 +36,13 @@
       "title": "BREAKING NEWS: Dog Stole the Snacks! 📺 Kid Reporter Live!",
       "youtube_url": "https://youtube.com/shorts/B4UQpCnT3oc",
       "uploaded_at": "2026-09-12T00:23:25+00:00"
+    },
+    {
+      "index": 4,
+      "video_id": "video_05",
+      "title": "Baby Chef's Kitchen Chaos! 👨‍🍳 Toddlers Can't Cook!",
+      "youtube_url": "https://youtube.com/shorts/I9J1St9SPR0",
+      "uploaded_at": "2026-09-12T13:38:39+00:00"
     }
   ]
 }
