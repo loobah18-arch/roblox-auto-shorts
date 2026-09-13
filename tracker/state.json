@@ -1,5 +1,5 @@
 {
-  "next_index": 6,
+  "next_index": 7,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -7,7 +7,8 @@
     "video_03",
     "video_04",
     "video_05",
-    "video_06"
+    "video_06",
+    "video_07"
   ],
   "history": [
     {
@@ -51,6 +52,13 @@
       "title": "The World's Cutest School Principal! 📋 Kids Run the School!",
       "youtube_url": "https://youtube.com/shorts/5AwuZ-C2Zi4",
       "uploaded_at": "2026-09-13T00:03:59+00:00"
+    },
+    {
+      "index": 6,
+      "video_id": "video_07",
+      "title": "Police Interrogation: WHO ATE THE TREATS?! 👮‍♂️🐕",
+      "youtube_url": "https://youtube.com/shorts/Cqkcie2yn_k",
+      "uploaded_at": "2026-09-13T14:28:32+00:00"
     }
   ]
 }
