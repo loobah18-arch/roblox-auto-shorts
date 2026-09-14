@@ -1,5 +1,5 @@
 {
-  "next_index": 8,
+  "next_index": 9,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -9,7 +9,8 @@
     "video_05",
     "video_06",
     "video_07",
-    "video_08"
+    "video_08",
+    "video_09"
   ],
   "history": [
     {
@@ -67,6 +68,13 @@
       "title": "Toy Shop MYSTERY! 🔍 Who Moved the Toys?! Kids Investigate!",
       "youtube_url": "https://youtube.com/shorts/jUG04_iCOgk",
       "uploaded_at": "2026-09-14T00:17:02+00:00"
+    },
+    {
+      "index": 8,
+      "video_id": "video_09",
+      "title": "Tiny Gym Trainer vs Lazy Golden Retriever! 💪😂",
+      "youtube_url": "https://youtube.com/shorts/qig2rf4PdTM",
+      "uploaded_at": "2026-09-14T16:24:18+00:00"
     }
   ]
 }
