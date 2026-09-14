@@ -1,5 +1,5 @@
 {
-  "next_index": 7,
+  "next_index": 8,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -8,7 +8,8 @@
     "video_04",
     "video_05",
     "video_06",
-    "video_07"
+    "video_07",
+    "video_08"
   ],
   "history": [
     {
@@ -59,6 +60,13 @@
       "title": "Police Interrogation: WHO ATE THE TREATS?! 👮‍♂️🐕",
       "youtube_url": "https://youtube.com/shorts/Cqkcie2yn_k",
       "uploaded_at": "2026-09-13T14:28:32+00:00"
+    },
+    {
+      "index": 7,
+      "video_id": "video_08",
+      "title": "Toy Shop MYSTERY! 🔍 Who Moved the Toys?! Kids Investigate!",
+      "youtube_url": "https://youtube.com/shorts/jUG04_iCOgk",
+      "uploaded_at": "2026-09-14T00:17:02+00:00"
     }
   ]
 }
