@@ -1,5 +1,5 @@
 {
-  "next_index": 9,
+  "next_index": 10,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -10,7 +10,8 @@
     "video_06",
     "video_07",
     "video_08",
-    "video_09"
+    "video_09",
+    "video_10"
   ],
   "history": [
     {
@@ -75,6 +76,13 @@
       "title": "Tiny Gym Trainer vs Lazy Golden Retriever! 💪😂",
       "youtube_url": "https://youtube.com/shorts/qig2rf4PdTM",
       "uploaded_at": "2026-09-14T16:24:18+00:00"
+    },
+    {
+      "index": 9,
+      "video_id": "video_10",
+      "title": "ALL RISE! ⚖️ Kid Judge Sentences the Golden Retriever!",
+      "youtube_url": "https://youtube.com/shorts/s0d-IqP7A0Q",
+      "uploaded_at": "2026-09-15T00:42:37+00:00"
     }
   ]
 }
