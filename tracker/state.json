@@ -1,5 +1,5 @@
 {
-  "next_index": 11,
+  "next_index": 12,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -12,7 +12,8 @@
     "video_08",
     "video_09",
     "video_10",
-    "video_11"
+    "video_11",
+    "video_12"
   ],
   "history": [
     {
@@ -91,6 +92,13 @@
       "title": "Court is IN SESSION! ⚖️ Kids Put the Dog on Trial!",
       "youtube_url": "https://youtube.com/shorts/YEL6vzGywY4",
       "uploaded_at": "2026-09-15T15:05:12+00:00"
+    },
+    {
+      "index": 11,
+      "video_id": "video_12",
+      "title": "Judge Girl Rules the Court! ⚖️ Golden Retriever on Trial!",
+      "youtube_url": "https://youtube.com/shorts/il1JccZgdYk",
+      "uploaded_at": "2026-09-16T00:32:13+00:00"
     }
   ]
 }
