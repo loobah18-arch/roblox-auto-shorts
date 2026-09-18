@@ -1,5 +1,5 @@
 {
-  "next_index": 16,
+  "next_index": 17,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -17,7 +17,8 @@
     "video_13",
     "video_14",
     "video_15",
-    "video_16"
+    "video_16",
+    "video_17"
   ],
   "history": [
     {
@@ -131,6 +132,13 @@
       "title": "Live Interview! 📺 Kid Reporter Grills the Golden Retriever!",
       "youtube_url": "https://youtube.com/shorts/r4L5sAj6vuU",
       "uploaded_at": "2026-09-18T00:29:37+00:00"
+    },
+    {
+      "index": 16,
+      "video_id": "video_17",
+      "title": "Detectives on the Case! 🔍 Kids Search for Missing Evidence!",
+      "youtube_url": "https://youtube.com/shorts/Q17TDy2jqyI",
+      "uploaded_at": "2026-09-18T14:33:11+00:00"
     }
   ]
 }
