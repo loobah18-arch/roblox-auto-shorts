@@ -120,7 +120,7 @@ def main() -> int:
             "title": title,
             "description": description,
             "tags": tags,
-            "categoryId": "22",  # People & Blogs — same as the existing upload_youtube.py
+            "categoryId": "15",  # Pets & Animals — connects with viewers browsing funny dog / pet shorts
         },
         "status": {
             "privacyStatus": "public",

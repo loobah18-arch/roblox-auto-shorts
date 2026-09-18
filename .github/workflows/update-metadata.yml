@@ -1,0 +1,70 @@
+# update-metadata.yml — retroactively update YouTube Shorts titles & descriptions
+#
+# Allows updating titles, descriptions, category, and tags for videos that were
+# ALREADY uploaded to YouTube on the Bhaloo Ji channel, using the updated
+# video_metadata.json.
+#
+# Manual dispatch only:
+#   live_update: ticked = update live on YouTube; unticked = preview only.
+
+name: "Update Metadata — Bhaloo Ji"
+
+on:
+  workflow_dispatch:
+    inputs:
+      live_update:
+        description: "Tick to update live on YouTube. Unticked = preview only (dry run)."
+        required: false
+        type: boolean
+        default: false
+      video_id:
+        description: "Optional specific video_id (e.g. video_01). Leave empty to update all."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CLIENT_ID: ${{ secrets.CLIENT_ID }}
+  CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+  REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+
+jobs:
+  update-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run metadata update
+        run: |
+          EXTRA=""
+          if [ -n "${{ github.event.inputs.video_id }}" ]; then
+            EXTRA="--video-id ${{ github.event.inputs.video_id }}"
+          fi
+          if [ "${{ github.event.inputs.live_update }}" = "true" ]; then
+            echo "LIVE UPDATE — updating titles and descriptions on YouTube"
+            python3 scripts/update_youtube_metadata.py --live $EXTRA
+          else
+            echo "PREVIEW ONLY — dry run, no YouTube changes"
+            python3 scripts/update_youtube_metadata.py $EXTRA
+          fi
+
+      - name: Commit updated state if live
+        if: github.event.inputs.live_update == 'true'
+        run: |
+          git config user.name "bhaloo-shorts[bot]"
+          git config user.email "bhaloo-shorts[bot]@users.noreply.github.com"
+          git add tracker/state.json
+          git diff --cached --quiet || {
+            git commit -m "state: update video titles in tracker history [skip ci]"
+            git push
+          }
