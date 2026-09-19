@@ -1,5 +1,5 @@
 {
-  "next_index": 1,
+  "next_index": 2,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -20,7 +20,8 @@
     "video_16",
     "video_17",
     "video_18",
-    "video_01"
+    "video_01",
+    "video_02"
   ],
   "history": [
     {
@@ -155,6 +156,13 @@
       "title": "He took his security job WAY too seriously 😭🐕 #shorts",
       "youtube_url": "https://youtube.com/shorts/DywJ6YoXvWg",
       "uploaded_at": "2026-09-19T01:28:40+00:00"
+    },
+    {
+      "index": 1,
+      "video_id": "video_02",
+      "title": "He really tried to blame the dog for the cake 💀🍰 #shorts",
+      "youtube_url": "https://youtube.com/shorts/gsaeaIxI5Mg",
+      "uploaded_at": "2026-09-19T13:56:34+00:00"
     }
   ]
 }
