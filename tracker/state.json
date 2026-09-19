@@ -1,5 +1,5 @@
 {
-  "next_index": 17,
+  "next_index": 0,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -18,7 +18,8 @@
     "video_14",
     "video_15",
     "video_16",
-    "video_17"
+    "video_17",
+    "video_18"
   ],
   "history": [
     {
@@ -139,6 +140,13 @@
       "title": "Detectives on the Case! 🔍 Kids Search for Missing Evidence!",
       "youtube_url": "https://youtube.com/shorts/Q17TDy2jqyI",
       "uploaded_at": "2026-09-18T14:33:11+00:00"
+    },
+    {
+      "index": 17,
+      "video_id": "video_18",
+      "title": "Bro was NOT trying to do that workout today 😭🏋️ #shorts",
+      "youtube_url": "https://youtube.com/shorts/EWzuqIkR8ts",
+      "uploaded_at": "2026-09-19T00:25:40+00:00"
     }
   ]
 }
