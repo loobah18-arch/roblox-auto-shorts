@@ -1,5 +1,5 @@
 {
-  "next_index": 0,
+  "next_index": 1,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -19,7 +19,8 @@
     "video_15",
     "video_16",
     "video_17",
-    "video_18"
+    "video_18",
+    "video_01"
   ],
   "history": [
     {
@@ -147,6 +148,13 @@
       "title": "Bro was NOT trying to do that workout today 😭🏋️ #shorts",
       "youtube_url": "https://youtube.com/shorts/EWzuqIkR8ts",
       "uploaded_at": "2026-09-19T00:25:40+00:00"
+    },
+    {
+      "index": 0,
+      "video_id": "video_01",
+      "title": "He took his security job WAY too seriously 😭🐕 #shorts",
+      "youtube_url": "https://youtube.com/shorts/DywJ6YoXvWg",
+      "uploaded_at": "2026-09-19T01:28:40+00:00"
     }
   ]
 }
