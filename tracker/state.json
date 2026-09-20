@@ -1,5 +1,5 @@
 {
-  "next_index": 2,
+  "next_index": 3,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -21,7 +21,8 @@
     "video_17",
     "video_18",
     "video_01",
-    "video_02"
+    "video_02",
+    "video_03"
   ],
   "history": [
     {
@@ -163,6 +164,13 @@
       "title": "He really tried to blame the dog for the cake 💀🍰 #shorts",
       "youtube_url": "https://youtube.com/shorts/gsaeaIxI5Mg",
       "uploaded_at": "2026-09-19T13:56:34+00:00"
+    },
+    {
+      "index": 2,
+      "video_id": "video_03",
+      "title": "Bro thinks he's the chief of police 💀👮 #shorts",
+      "youtube_url": "https://youtube.com/shorts/Zt2a0dmwRIA",
+      "uploaded_at": "2026-09-20T00:11:20+00:00"
     }
   ]
 }
