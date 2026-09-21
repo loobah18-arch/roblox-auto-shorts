@@ -1,5 +1,5 @@
 {
-  "next_index": 5,
+  "next_index": 6,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -24,7 +24,8 @@
     "video_02",
     "video_03",
     "video_04",
-    "video_05"
+    "video_05",
+    "video_06"
   ],
   "history": [
     {
@@ -187,6 +188,13 @@
       "title": "Never let this kid cook ever again 💀👨‍🍳 #shorts",
       "youtube_url": "https://youtube.com/shorts/NNP8mbhXXhI",
       "uploaded_at": "2026-09-21T00:19:34+00:00"
+    },
+    {
+      "index": 5,
+      "video_id": "video_06",
+      "title": "He really thought he was the principal 💀📋 #shorts",
+      "youtube_url": "https://youtube.com/shorts/VfUoPyK1Z6w",
+      "uploaded_at": "2026-09-21T16:30:41+00:00"
     }
   ]
 }
