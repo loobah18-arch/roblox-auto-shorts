@@ -1,5 +1,5 @@
 {
-  "next_index": 0,
+  "next_index": 1,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -27,7 +27,8 @@
     "video_05",
     "video_06",
     "video_07",
-    "video_08"
+    "video_08",
+    "video_01"
   ],
   "history": [
     {
@@ -211,6 +212,13 @@
       "title": "Wait for who they found with the toy... 😭🧸 #shorts",
       "youtube_url": "https://youtube.com/shorts/lojKz0hiyhg",
       "uploaded_at": "2026-09-22T15:01:31+00:00"
+    },
+    {
+      "index": 0,
+      "video_id": "video_01",
+      "title": "He blamed the dog but had crumbs on his shirt 😭👮‍♂️ #shorts",
+      "youtube_url": "https://youtube.com/shorts/YuTTI6Txitc",
+      "uploaded_at": "2026-09-23T00:44:27+00:00"
     }
   ]
 }
