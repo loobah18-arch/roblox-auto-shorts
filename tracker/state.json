@@ -1,5 +1,5 @@
 {
-  "next_index": 3,
+  "next_index": 4,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -30,7 +30,8 @@
     "video_08",
     "video_01",
     "video_02",
-    "video_03"
+    "video_03",
+    "video_04"
   ],
   "history": [
     {
@@ -235,6 +236,13 @@
       "title": "The dog really thought the sofa would hide it 😭🧸 #shorts",
       "youtube_url": "https://youtube.com/shorts/TzyVY9Nxxy4",
       "uploaded_at": "2026-09-24T00:36:42+00:00"
+    },
+    {
+      "index": 3,
+      "video_id": "video_04",
+      "title": "He ruined his $100 haircut in 2 seconds 💀💇‍♂️ #shorts",
+      "youtube_url": "https://youtube.com/shorts/e_ZtYyFFAHM",
+      "uploaded_at": "2026-09-24T15:15:06+00:00"
     }
   ]
 }
