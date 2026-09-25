@@ -1,5 +1,5 @@
 {
-  "next_index": 5,
+  "next_index": 6,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -32,7 +32,8 @@
     "video_02",
     "video_03",
     "video_04",
-    "video_05"
+    "video_05",
+    "video_06"
   ],
   "history": [
     {
@@ -251,6 +252,13 @@
       "title": "The dog completely hijacked the live news 😭🎤 #shorts",
       "youtube_url": "https://youtube.com/shorts/z2ikLKTIMwc",
       "uploaded_at": "2026-09-25T00:37:55+00:00"
+    },
+    {
+      "index": 5,
+      "video_id": "video_06",
+      "title": "The dog fell asleep during the pop quiz 😭📚 #shorts",
+      "youtube_url": "https://youtube.com/shorts/H-DWs2NJIf0",
+      "uploaded_at": "2026-09-25T15:20:52+00:00"
     }
   ]
 }
