@@ -1,5 +1,5 @@
 {
-  "next_index": 4,
+  "next_index": 5,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -31,7 +31,8 @@
     "video_01",
     "video_02",
     "video_03",
-    "video_04"
+    "video_04",
+    "video_05"
   ],
   "history": [
     {
@@ -243,6 +244,13 @@
       "title": "He ruined his $100 haircut in 2 seconds 💀💇‍♂️ #shorts",
       "youtube_url": "https://youtube.com/shorts/e_ZtYyFFAHM",
       "uploaded_at": "2026-09-24T15:15:06+00:00"
+    },
+    {
+      "index": 4,
+      "video_id": "video_05",
+      "title": "The dog completely hijacked the live news 😭🎤 #shorts",
+      "youtube_url": "https://youtube.com/shorts/z2ikLKTIMwc",
+      "uploaded_at": "2026-09-25T00:37:55+00:00"
     }
   ]
 }
