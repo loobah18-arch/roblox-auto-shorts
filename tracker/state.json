@@ -1,5 +1,5 @@
 {
-  "next_index": 9,
+  "next_index": 10,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -36,7 +36,8 @@
     "video_06",
     "video_07",
     "video_08",
-    "video_09"
+    "video_09",
+    "video_10"
   ],
   "history": [
     {
@@ -283,6 +284,13 @@
       "title": "When the special delivery for the dog is EMPTY 😭📦 #shorts",
       "youtube_url": "https://youtube.com/shorts/KEBgzq9Qde8",
       "uploaded_at": "2026-09-27T00:42:46+00:00"
+    },
+    {
+      "index": 9,
+      "video_id": "video_10",
+      "title": "Bro cracked the magician code in one sniff 💀🎩 #shorts",
+      "youtube_url": "https://youtube.com/shorts/98-1e35bJB8",
+      "uploaded_at": "2026-09-27T15:12:07+00:00"
     }
   ]
 }
