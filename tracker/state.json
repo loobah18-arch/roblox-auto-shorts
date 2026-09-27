@@ -1,5 +1,5 @@
 {
-  "next_index": 8,
+  "next_index": 9,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -35,7 +35,8 @@
     "video_05",
     "video_06",
     "video_07",
-    "video_08"
+    "video_08",
+    "video_09"
   ],
   "history": [
     {
@@ -275,6 +276,13 @@
       "title": "The dog ruined her magic trick immediately 😭🪄 #shorts",
       "youtube_url": "https://youtube.com/shorts/LeMkmp1bHqM",
       "uploaded_at": "2026-09-26T14:34:18+00:00"
+    },
+    {
+      "index": 8,
+      "video_id": "video_09",
+      "title": "When the special delivery for the dog is EMPTY 😭📦 #shorts",
+      "youtube_url": "https://youtube.com/shorts/KEBgzq9Qde8",
+      "uploaded_at": "2026-09-27T00:42:46+00:00"
     }
   ]
 }
