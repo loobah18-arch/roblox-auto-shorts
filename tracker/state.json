@@ -1,5 +1,5 @@
 {
-  "next_index": 10,
+  "next_index": 11,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -37,7 +37,8 @@
     "video_07",
     "video_08",
     "video_09",
-    "video_10"
+    "video_10",
+    "video_11"
   ],
   "history": [
     {
@@ -291,6 +292,13 @@
       "title": "Bro cracked the magician code in one sniff 💀🎩 #shorts",
       "youtube_url": "https://youtube.com/shorts/98-1e35bJB8",
       "uploaded_at": "2026-09-27T15:12:07+00:00"
+    },
+    {
+      "index": 10,
+      "video_id": "video_11",
+      "title": "The Sheriff caught the real treat bandit 😭🚨 #shorts",
+      "youtube_url": "https://youtube.com/shorts/yCxfiUc3I-E",
+      "uploaded_at": "2026-09-28T00:55:24+00:00"
     }
   ]
 }
