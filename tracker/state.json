@@ -1,5 +1,5 @@
 {
-  "next_index": 11,
+  "next_index": 12,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -38,7 +38,8 @@
     "video_08",
     "video_09",
     "video_10",
-    "video_11"
+    "video_11",
+    "video_12"
   ],
   "history": [
     {
@@ -299,6 +300,13 @@
       "title": "The Sheriff caught the real treat bandit 😭🚨 #shorts",
       "youtube_url": "https://youtube.com/shorts/yCxfiUc3I-E",
       "uploaded_at": "2026-09-28T00:55:24+00:00"
+    },
+    {
+      "index": 11,
+      "video_id": "video_12",
+      "title": "He saw a picture of a cat and chose sleep 💀💤 #shorts",
+      "youtube_url": "https://youtube.com/shorts/uqqZ7GZlTwI",
+      "uploaded_at": "2026-09-28T18:11:46+00:00"
     }
   ]
 }
