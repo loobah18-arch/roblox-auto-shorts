@@ -1,5 +1,5 @@
 {
-  "next_index": 12,
+  "next_index": 13,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -39,7 +39,8 @@
     "video_09",
     "video_10",
     "video_11",
-    "video_12"
+    "video_12",
+    "video_13"
   ],
   "history": [
     {
@@ -307,6 +308,13 @@
       "title": "He saw a picture of a cat and chose sleep 💀💤 #shorts",
       "youtube_url": "https://youtube.com/shorts/uqqZ7GZlTwI",
       "uploaded_at": "2026-09-28T18:11:46+00:00"
+    },
+    {
+      "index": 12,
+      "video_id": "video_13",
+      "title": "The dog stole the entire weather broadcast 😭📺 #shorts",
+      "youtube_url": "https://youtube.com/shorts/uhw6_AvZP1E",
+      "uploaded_at": "2026-09-29T02:05:03+00:00"
     }
   ]
 }
