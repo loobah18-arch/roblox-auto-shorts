@@ -1,5 +1,5 @@
 {
-  "next_index": 17,
+  "next_index": 0,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -44,7 +44,8 @@
     "video_14",
     "video_15",
     "video_16",
-    "video_17"
+    "video_17",
+    "video_18"
   ],
   "history": [
     {
@@ -347,6 +348,13 @@
       "title": "He knew what was behind his back the WHOLE time 😭🍬 #shorts",
       "youtube_url": "https://youtube.com/shorts/NDT1ZEmOvcA",
       "uploaded_at": "2026-10-01T01:20:42+00:00"
+    },
+    {
+      "index": 17,
+      "video_id": "video_18",
+      "title": "The puppy thought he was getting treats 💀📦 #shorts",
+      "youtube_url": "https://youtube.com/shorts/3ffvLSdZjvE",
+      "uploaded_at": "2026-10-01T17:03:45+00:00"
     }
   ]
 }
