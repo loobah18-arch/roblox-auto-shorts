@@ -1,5 +1,5 @@
 {
-  "next_index": 1,
+  "next_index": 2,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -46,7 +46,8 @@
     "video_16",
     "video_17",
     "video_18",
-    "video_01"
+    "video_01",
+    "video_02"
   ],
   "history": [
     {
@@ -363,6 +364,13 @@
       "title": "He blamed the dog but had crumbs on his shirt 😭👮‍♂️ #shorts",
       "youtube_url": "https://youtube.com/shorts/_IPAifWl6Oo",
       "uploaded_at": "2026-10-02T01:43:36+00:00"
+    },
+    {
+      "index": 1,
+      "video_id": "video_02",
+      "title": "He dined and dashed with ZERO regrets 💀🍽️ #shorts",
+      "youtube_url": "https://youtube.com/shorts/awQOBRwSaPM",
+      "uploaded_at": "2026-10-02T16:18:01+00:00"
     }
   ]
 }
