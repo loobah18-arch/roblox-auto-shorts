@@ -1,5 +1,5 @@
 {
-  "next_index": 2,
+  "next_index": 3,
   "total_videos": 18,
   "uploaded": [
     "video_01",
@@ -47,7 +47,8 @@
     "video_17",
     "video_18",
     "video_01",
-    "video_02"
+    "video_02",
+    "video_03"
   ],
   "history": [
     {
@@ -371,6 +372,13 @@
       "title": "He dined and dashed with ZERO regrets 💀🍽️ #shorts",
       "youtube_url": "https://youtube.com/shorts/awQOBRwSaPM",
       "uploaded_at": "2026-10-02T16:18:01+00:00"
+    },
+    {
+      "index": 2,
+      "video_id": "video_03",
+      "title": "The dog really thought the sofa would hide it 😭🧸 #shorts",
+      "youtube_url": "https://youtube.com/shorts/lY5PusP58cA",
+      "uploaded_at": "2026-10-03T01:14:55+00:00"
     }
   ]
 }
