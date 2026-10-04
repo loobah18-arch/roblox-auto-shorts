@@ -1,0 +1,133 @@
+name: "⚔️ Bhaloo Ji — Anime Explanation Engine"
+
+on:
+  schedule:
+    # Runs daily at 05:00 UTC
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      episode:
+        description: "Specific episode key (e.g., demon-slayer-s01e01 or leave blank for next in catalog)"
+        required: false
+        type: string
+      series:
+        description: "Series filter (e.g., demon-slayer, jujutsu-kaisen, all)"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - "all"
+          - "demon-slayer"
+          - "jujutsu-kaisen"
+      upload_to_youtube:
+        description: "Upload rendered Shorts & Full Video to YouTube (default: true)"
+        required: false
+        default: true
+        type: boolean
+      privacy:
+        description: "YouTube upload privacy status"
+        required: false
+        default: "public"
+        type: choice
+        options:
+          - "public"
+          - "unlisted"
+          - "private"
+
+permissions:
+  contents: write
+
+jobs:
+  produce_anime_episode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: 📥 Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: 🎥 Install FFmpeg & Anime Fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core fonts-liberation fonts-noto-core aria2
+
+      - name: 📦 Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install gdown>=5.1.0
+
+      - name: 💾 Cache Raw Anime Video Files
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: ${{ runner.os }}-anime-raw-cache-${{ hashFiles('tracker/anime_catalog.json') }}
+          restore-keys: |
+            ${{ runner.os }}-anime-raw-cache-
+
+      - name: 🚀 Run Anime Explanation Pipeline
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          INPUT_EPISODE: ${{ inputs.episode }}
+          INPUT_SERIES: ${{ inputs.series }}
+        run: |
+          echo "⚔️ Running Bhaloo Ji Anime Explanation Cloud Pipeline..."
+          ARGS=()
+          if [ -n "$INPUT_EPISODE" ]; then ARGS+=(--episode "$INPUT_EPISODE"); fi
+          if [ -n "$INPUT_SERIES" ] && [ "$INPUT_SERIES" != "all" ]; then ARGS+=(--series "$INPUT_SERIES"); fi
+
+          python3 scripts/anime_pipeline.py "${ARGS[@]}"
+
+      - name: 📺 Upload to YouTube
+        if: ${{ inputs.upload_to_youtube != false || (github.event_name == 'schedule' && github.ref_name == 'main') }}
+        env:
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+          PRIVACY_STATUS: ${{ inputs.privacy || 'public' }}
+        run: |
+          echo "📺 Publishing Anime Shorts & Full Video to Bhaloo Ji YouTube channel..."
+          for ep_dir in output/*; do
+            if [ -d "$ep_dir" ] && [ -f "$ep_dir/pipeline_summary.json" ]; then
+              python3 scripts/anime_youtube_uploader.py --dir "$ep_dir" --live --privacy "$PRIVACY_STATUS"
+            fi
+          done
+
+      - name: 📤 Upload Rendered Episode Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bhaloo-anime-recap-output
+          path: |
+            output/**/*.mp4
+            output/**/*.mp3
+            output/**/*.ass
+            output/**/*.json
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: 💾 Commit Updated Anime History
+        if: always()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          TARGET_BRANCH="${GITHUB_REF_NAME:-main}"
+          git add tracker/anime_history.json tracker/anime_catalog.json || true
+          if git diff --cached --quiet; then
+            echo "No anime tracking changes to commit."
+            exit 0
+          fi
+          git commit -m "🤖 Auto: update Bhaloo Ji anime explanation catalog & history [skip ci]"
+          git pull --rebase origin "$TARGET_BRANCH" || true
+          git push origin "HEAD:$TARGET_BRANCH" || echo "Push skipped"
