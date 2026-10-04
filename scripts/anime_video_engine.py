@@ -49,8 +49,11 @@ def download_gdrive_episode(file_id: str, dest_path: str | Path, dry_run: bool =
         import gdown
         dest.parent.mkdir(parents=True, exist_ok=True)
         log(f"Downloading episode from Drive (ID: {file_id}) to {dest}...")
-        url = f"https://drive.google.com/uc?id={file_id}"
-        gdown.download(url=url, output=str(dest), quiet=False, fuzzy=True)
+        try:
+            gdown.download(id=file_id, output=str(dest), quiet=False)
+        except Exception:
+            url = f"https://drive.google.com/uc?id={file_id}"
+            gdown.download(url=url, output=str(dest), quiet=False)
         return dest.exists() and dest.stat().st_size > 0
     except Exception as e:
         log(f"Drive download failed: {e}")
