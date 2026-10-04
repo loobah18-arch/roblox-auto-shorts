@@ -2,7 +2,7 @@
 
 An automated, cloud-powered **Anime Explanation & Dual-Funnel Recap Engine** built exclusively for the **Bhaloo Ji** YouTube channel. 
 
-Inspired by high-retention channels like **Woo's Clips**, upgraded with a **modern cinematic aesthetic**, **multi-part Shorts**, and **stitched Full Episode long-form videos**.
+Benchmarked against premier anime recap creator **RecapKun (@recapkun)**, upgraded with a **modern cinematic aesthetic**, **multi-part Shorts**, and **stitched Full Episode long-form videos**.
 
 ---
 

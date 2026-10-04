@@ -1,0 +1,46 @@
+{
+  "last_updated": "2026-10-04T03:12:00Z",
+  "primary_creator": "recapkun",
+  "tracked_creators": {
+    "recapkun": {
+      "channel_name": "RecapKun",
+      "url": "https://youtube.com/@recapkun",
+      "niche": "High-Retention Anime Recap & Explanation",
+      "core_strengths": [
+        "Urgent 0-3 second shock/curiosity hooks that immediately state an impossible dilemma",
+        "Fast-paced narrative momentum eliminating anime filler and focusing on tactical combat and emotional stakes",
+        "Kinetic animated karaoke subtitles centered in viewer sweet spot with vibrant word-by-word active glow",
+        "Sharp cliffhangers at the end of every Short part driving viral view-through rates",
+        "Dual-funnel strategy: multi-part Shorts funneling into stitched full-episode long-form recap videos"
+      ],
+      "hook_templates": [
+        "What happens when {character} does the unthinkable and {extreme_action}?",
+        "He thought {person} was completely powerless, until {shocking_reversal} happened!",
+        "Imagine waking up to find {dramatic_catastrophe}, and your only option is to {desperate_choice}!",
+        "The strongest {title} showed zero mercy, but watch what {character} did next!"
+      ],
+      "metrics_target": {
+        "words_per_minute": 140,
+        "target_short_duration_sec": 48,
+        "words_per_part": "115-130",
+        "max_scene_cut_duration_sec": 4.2
+      }
+    }
+  },
+  "viral_reference_benchmarks": [
+    {
+      "creator": "RecapKun",
+      "url": "https://youtube.com/@recapkun",
+      "title": "When Yuji Swallowed The Deadliest Ancient Demon Finger | Jujutsu Kaisen Recap",
+      "hook_formula": "Extreme taboo action + instant mortality consequence in frame 0",
+      "pacing": "Rapid scene shifts every 2-3 seconds, high tension voiceover, gold karaoke pop"
+    },
+    {
+      "creator": "RecapKun",
+      "url": "https://youtube.com/@recapkun",
+      "title": "Why The Water Hashira Refused To Kill Nezuko | Demon Slayer Explained",
+      "hook_formula": "Character mystery + defying absolute law of the universe",
+      "pacing": "Tactical breakdown, emotional climax, sharp part-ending cliffhanger"
+    }
+  ]
+}

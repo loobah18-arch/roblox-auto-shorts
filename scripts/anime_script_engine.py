@@ -3,7 +3,7 @@
 AI Anime Script Engine for Bhaloo Ji Anime Explanation Channel.
 Generates gripping, cinematic 3-to-5 part episodic scripts (45-55s each)
 plus unified long-form full episode explanation scripts.
-Style: High-retention anime recap/explanation (Woo's clips style).
+Style: High-retention anime recap/explanation benchmarked against RecapKun (@recapkun).
 """
 
 import json
@@ -174,17 +174,18 @@ def generate_episode_script(episode_info: dict) -> dict:
         return _format_script_package(episode_info, data["title"], data["summary"], data["parts"])
 
     # If not in cache, use LLM to generate
-    system_prompt = """You are an elite, viral anime recap narrator and scriptwriter (in the style of Woo's Clips and top anime storytellers).
-Your task is to write an engaging, high-retention English episode recap divided into 3 to 5 parts for YouTube Shorts (45-55 seconds each, 110-130 words per part), followed by a stitched full video explanation.
+    system_prompt = """You are an elite, viral anime recap narrator and scriptwriter benchmarked against RecapKun (@recapkun), the premier fast-paced anime recap creator.
+Your task is to write an engaging, ultra-high-retention English episode recap divided into 3 to 5 parts for YouTube Shorts (45-55 seconds each, 110-130 words per part), followed by a stitched full video explanation.
 
-RULES:
-1. Every part must open with an irresistible 0-3 second HOOK that stops scrolling.
-2. The narration must be fast-paced, dramatic, and emotionally intense.
-3. Every part (except the last) must end on a sharp CLIFFHANGER urging viewers to watch the next part.
-4. Keep spoken words strictly between 110 and 130 words per part.
-5. Provide a clickbait high-CTR Shorts title with part number and #shorts.
-6. Provide a comprehensive title and description for the full episode stitched video.
-7. Return ONLY clean JSON matching the requested schema.
+RULES (RecapKun Style):
+1. Every part must open with an irresistible 0-3 second HOOK (impossible dilemma, shocking action, or extreme question) that immediately stops scrolling.
+2. The narration must be fast-paced, high-stakes, dramatic, and emotionally intense. Zero filler, pure narrative momentum.
+3. Use punchy, crisp phrasing optimized for animated kinetic karaoke subtitles.
+4. Every part (except the last) must end on an intense, razor-sharp CLIFFHANGER urging viewers to watch the next part.
+5. Keep spoken words strictly between 110 and 130 words per part.
+6. Provide a clickbait high-CTR Shorts title with part number and #shorts (e.g. 'He Swallowed Sukuna's Finger LIVE! 😱 | Jujutsu Kaisen S1 Ep 1 Part 2 #shorts').
+7. Provide a comprehensive title and description for the full episode stitched video.
+8. Return ONLY clean JSON matching the requested schema.
 """
 
     prompt = f"""Write an AI-adaptive anime recap script for:

@@ -1,0 +1,16 @@
+{
+  "last_check": "2026-10-04T03:12:00Z",
+  "primary_benchmark": "recapkun",
+  "competitors": {
+    "recapkun": {
+      "channel": "RecapKun",
+      "handle": "@recapkun",
+      "status": "active_reference",
+      "top_performing_formats": [
+        "Episodic 3-5 part cliffhanger Shorts (Demon Slayer / JJK)",
+        "Stitched full episode narrative recaps with chapter marks",
+        "Kinetic gold-glow karaoke subtitles over ambient motion backdrop"
+      ]
+    }
+  }
+}
