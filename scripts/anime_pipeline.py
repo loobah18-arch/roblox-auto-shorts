@@ -25,6 +25,7 @@ from anime_video_engine import assemble_short_part, download_gdrive_episode, sti
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = WORKSPACE_DIR / "output"
 CACHE_DIR = WORKSPACE_DIR / "cache"
+DEFAULT_BGM_PATH = WORKSPACE_DIR / "assets" / "bgm" / "cinematic_suspense_thriller.mp3"
 
 
 def log(msg: str) -> None:
@@ -41,6 +42,10 @@ def run_pipeline(
 ) -> dict:
     """Run full episodic production."""
     log("=== Starting Bhaloo Ji Anime Explanation Pipeline ===")
+    
+    if not bgm_path and DEFAULT_BGM_PATH.exists():
+        bgm_path = DEFAULT_BGM_PATH
+        log(f"Using default royalty-free BGM: {DEFAULT_BGM_PATH.name}")
     
     # 1. Select Episode
     catalog = load_catalog()

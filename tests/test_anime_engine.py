@@ -115,6 +115,23 @@ class TestAnimeVideoFiltergraph(unittest.TestCase):
         res = subprocess.run(cmd, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f"FFmpeg filtergraph failed: {res.stderr}")
 
+    def test_assemble_short_part_dry_run(self):
+        from anime_video_engine import assemble_short_part
+        res = assemble_short_part(
+            raw_video_path="/tmp/fake.mp4",
+            voice_audio_path="/tmp/fake.mp3",
+            ass_subtitle_path="/tmp/fake.ass",
+            output_video_path="/tmp/fake_out.mp4",
+            time_window=(0, 450),
+            total_duration=45.0,
+            dry_run=True,
+        )
+        self.assertTrue(res)
+
+    def test_bgm_asset_exists(self):
+        from anime_video_engine import DEFAULT_BGM_PATH
+        self.assertTrue(DEFAULT_BGM_PATH.exists(), f"Default BGM not found: {DEFAULT_BGM_PATH}")
+
 
 if __name__ == "__main__":
     unittest.main()

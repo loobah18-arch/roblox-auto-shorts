@@ -34,7 +34,7 @@ EPISODE_KNOWLEDGE = {
                 "hook": "Imagine coming home to find your entire family murdered, and the only survivor has turned into a flesh-eating demon.",
                 "narration": "In the cold snowy mountains, Tanjiro Kamado spent the night selling charcoal in town, completely unaware of the nightmare waiting for him at home. The moment he steps onto his porch, the horrifying scent of blood hits him. His mother and siblings have been mercilessly slaughtered by a demon. But as he desperately carries his only surviving sister Nezuko down the freezing mountain, something snaps. Nezuko grows fangs, her eyes turn blood-red, and she attacks Tanjiro with supernatural strength! But right before Tanjiro can break through to her, a cold blue blade slashes from the shadows!",
                 "cliffhanger": "Wait until you see who just arrived to kill Nezuko in Part 2!",
-                "time_range": [0, 420],
+                "time_range": [180, 520],
                 "short_title": "His Entire Family Was Slaughtered... 🩸 | Demon Slayer S1 Ep 1 Part 1 #shorts",
             },
             {
@@ -42,7 +42,7 @@ EPISODE_KNOWLEDGE = {
                 "hook": "The Water Hashira Giyu Tomioka showed zero mercy, yet Tanjiro did the unthinkable!",
                 "narration": "Water Hashira Giyu Tomioka swoops in to decapitate Nezuko, calling demons mindless monsters who cannot be saved. Tanjiro drops to his knees, begging and weeping for his sister's life. But Giyu roars at him: the weak have no rights, and crying won't bring his family back! Pushed to his absolute limit, Tanjiro charges Giyu with nothing but a hatchet. Giyu easily knocks him unconscious, thinking Tanjiro was a reckless fool. But Giyu suddenly freezes when he looks up—the hatchet Tanjiro threw was flying straight at his head!",
                 "cliffhanger": "Did Tanjiro's secret plan actually work? See what happens in Part 3!",
-                "time_range": [420, 850],
+                "time_range": [520, 860],
                 "short_title": "Why Giyu Spared Nezuko's Life! 😱 | Demon Slayer S1 Ep 1 Part 2 #shorts",
             },
             {
@@ -50,7 +50,7 @@ EPISODE_KNOWLEDGE = {
                 "hook": "Even after becoming a bloodthirsty demon, Nezuko did something that shocked the strongest Hashira!",
                 "narration": "Giyu dodges the hatchet by millimeters, realizing Tanjiro sacrificed himself just to land one lethal blow. But before Giyu can react, Nezuko breaks free. Instead of attacking Tanjiro, she stands protectively over her unconscious brother, growling at Giyu with burning defiance! A demon protecting a human has never happened in history. Realizing this bond might change everything, Giyu knocks Nezuko out gently instead of executing her, placing a bamboo muzzle over her mouth. He orders Tanjiro to seek out master Sakonji Urokodaki, beginning Tanjiro's legendary journey!",
                 "cliffhanger": "Tanjiro's path to becoming a Demon Slayer officially begins!",
-                "time_range": [850, 1380],
+                "time_range": [860, 1260],
                 "short_title": "The First Demon Who Protected A Human! 🛡️ | Demon Slayer S1 Ep 1 Part 3 #shorts",
             }
         ]
@@ -64,7 +64,7 @@ EPISODE_KNOWLEDGE = {
                 "hook": "He swallowed the deadliest ancient demon finger just to save his friends, and changed the anime world forever!",
                 "narration": "Yuji Itadori was just an unnaturally athletic high schooler living a quiet life visiting his grandfather in the hospital. Before passing away, his grandfather gives him one final command: 'You are strong, so help others.' Little did Yuji know, his occult research club had just unsealed a special grade cursed object—a rotting, severed finger belonging to Ryomen Sukuna, the King of Curses! As darkness falls, bloodthirsty cursed spirits swarm the school, hunting down the students to feast on the finger's demonic power!",
                 "cliffhanger": "Will Jujutsu sorcerer Megumi Fushiguro make it in time? Watch Part 2!",
-                "time_range": [0, 450],
+                "time_range": [180, 540],
                 "short_title": "The Rotten Finger That Started Everything! 💀 | Jujutsu Kaisen S1 Ep 1 Part 1 #shorts",
             },
             {
@@ -72,7 +72,7 @@ EPISODE_KNOWLEDGE = {
                 "hook": "Megumi's divine dogs were getting torn apart, leaving Yuji with only one insane choice!",
                 "narration": "Megumi Fushiguro arrives with his shadow shikigami, but the curse is overwhelming. A colossal cursed spirit traps Megumi and Yuji's friends in its jaws, crushing them to near death. Yuji charges in barehanded, landing superhuman blows, but physical strength cannot destroy a curse. Cornered with seconds before his friends are eaten alive, Yuji looks at the grotesque finger of Sukuna in his hand. Realizing only cursed energy can defeat a curse, Yuji does the unthinkable—he tosses the rotting demon finger into his mouth and swallows it whole!",
                 "cliffhanger": "Did Yuji just die, or awaken the King of Curses? Part 3 will blow your mind!",
-                "time_range": [450, 880],
+                "time_range": [540, 900],
                 "short_title": "He Swallowed Sukuna's Finger LIVE! 😱 | Jujutsu Kaisen S1 Ep 1 Part 2 #shorts",
             },
             {
@@ -80,7 +80,7 @@ EPISODE_KNOWLEDGE = {
                 "hook": "The King of Curses awakened after a thousand years, but Yuji Itadori did the impossible!",
                 "narration": "Demonic black tattoos erupt across Yuji's skin as Ryomen Sukuna takes over his body. With a single casual swipe, Sukuna vaporizes the giant curse into bloody mist, laughing maniacally as he revels in the moonlight: 'The light feels best in the flesh! Women and children are crawling everywhere—it will be a massacre!' But before Sukuna can slaughter Megumi, Yuji's sheer willpower forcibly suppresses Sukuna, regaining control of his body like nothing happened! Just as Megumi prepares to execute Yuji as a curse, the strongest sorcerer Gojo Satoru makes his legendary entrance!",
                 "cliffhanger": "Gojo vs Sukuna is about to begin!",
-                "time_range": [880, 1400],
+                "time_range": [900, 1260],
                 "short_title": "Sukuna Awakens & Gojo Arrives! 🔥 | Jujutsu Kaisen S1 Ep 1 Part 3 #shorts",
             }
         ]

@@ -24,6 +24,7 @@ from pathlib import Path
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = WORKSPACE_DIR / "output"
 CACHE_DIR = WORKSPACE_DIR / "cache"
+DEFAULT_BGM_PATH = WORKSPACE_DIR / "assets" / "bgm" / "cinematic_suspense_thriller.mp3"
 
 
 def log(msg: str) -> None:
@@ -116,8 +117,12 @@ def assemble_short_part(
     dry_run: bool = False,
 ) -> bool:
     """
-    Renders an individual Short part with rapid dynamic scene cuts (<4.2s per cut)
-    to prevent Content ID matching, mixed with voiceover, BGM, and animated subtitles.
+    Renders an individual Short part with comprehensive anti-copyright tactics:
+    1. 100% Original Anime Audio Stripped (-an) - Zero music/OST/dialogue claims.
+    2. Rapid Dynamic Scene Slicing (< 2.8s per cut) - Bypasses visual Content ID matching.
+    3. Strict OP/ED Cutoff - Never samples opening or ending theme songs (0-3m and 21-24m).
+    4. Royalty-Free BGM mixed cleanly behind crystal-clear voiceover.
+    5. High-retention 9:16 Canvas (Blurred 1080x1920 bg + 1040x584 card + dynamic ASS subtitles).
     """
     raw_video = Path(raw_video_path)
     voice_audio = Path(voice_audio_path)
@@ -129,75 +134,137 @@ def assemble_short_part(
         log(f"[DRY-RUN] Simulating Short render for window {time_window} -> {output_video.name}")
         return True
 
-    # Compute rapid cuts across the target time window
-    # e.g. for a 45s Short, generate ~11-14 cuts of 3.0s-4.0s each
+    # 1. Anti-Copyright Timeline Clamping: Exclude Opening (0-3m) & Ending (21-24m) themes
     w_start, w_end = time_window
-    window_length = max(60.0, w_end - w_start)
-    num_cuts = max(8, int(total_duration / 3.5))
-    step = window_length / num_cuts
+    safe_start = max(180.0, float(w_start))
+    safe_end = min(1260.0, float(w_end))
+    if safe_end <= safe_start + 45.0:
+        safe_start = 180.0
+        safe_end = 1260.0
 
-    cut_segments = []
+    # 2. Compute 12-18 rapid dynamic scene cuts (< 2.8s each) across safe timeline
+    window_length = max(60.0, safe_end - safe_start)
+    cut_len = 2.4  # Ideal rapid cut length to break visual fingerprinting
+    num_cuts = max(8, int(total_duration / cut_len) + 1)
+    step = (window_length - cut_len) / max(1, num_cuts)
+
+    temp_dir = output_video.parent / f"temp_slices_{output_video.stem}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    slice_files = []
     current_time = 0.0
-    for i in range(num_cuts):
-        seg_dur = min(3.8, total_duration - current_time)
-        if seg_dur <= 0.5:
-            break
-        seg_start = w_start + (i * step)
-        cut_segments.append((seg_start, seg_dur))
-        current_time += seg_dur
 
-    log(f"Composing Short: {len(cut_segments)} dynamic scene cuts across {total_duration:.1f}s")
+    log(f"Composing Short: Slicing {num_cuts} rapid dynamic cuts (~{cut_len:.1f}s each) between {safe_start:.1f}s and {safe_end:.1f}s (zero raw audio)...")
 
-    # Build FFmpeg command
-    cmd = [
-        "ffmpeg", "-y",
-        "-ss", str(w_start),
-        "-t", str(total_duration),
-        "-i", str(raw_video),
-        "-i", str(voice_audio),
-    ]
-
-    has_bgm = bgm_path and Path(bgm_path).exists()
-    if has_bgm:
-        cmd.extend(["-stream_loop", "-1", "-i", str(bgm_path)])
-
-    filtergraph = build_ffmpeg_filtergraph(
-        has_subtitles=ass_subs.exists(),
-        ass_path=str(ass_subs.resolve()),
-        mirror=False,
-    )
-
-    # Audio mixing: Voiceover loud and clear, BGM leveled, raw audio ducked
-    if has_bgm:
-        audio_filter = (
-            "[0:a]volume=0.06[orig_a];"
-            "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice_a];"
-            "[2:a]volume=0.18[bgm_a];"
-            "[orig_a][bgm_a][voice_a]amix=inputs=3:duration=first:dropout_transition=2[aout]"
-        )
-    else:
-        audio_filter = (
-            "[0:a]volume=0.06[orig_a];"
-            "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice_a];"
-            "[orig_a][voice_a]amix=inputs=2:duration=first:dropout_transition=2[aout]"
-        )
-
-    cmd.extend([
-        "-filter_complex", f"{filtergraph};{audio_filter}",
-        "-map", "[v]",
-        "-map", "[aout]",
-        "-c:v", "libx264",
-        "-preset", "faster",
-        "-crf", "21",
-        "-c:a", "aac",
-        "-b:a", "192k",
-        "-t", str(total_duration),
-        "-movflags", "+faststart",
-        str(output_video)
-    ])
-
-    log(f"Executing FFmpeg render: {output_video.name}...")
     try:
+        for idx in range(num_cuts):
+            if current_time >= total_duration:
+                break
+            seg_dur = min(cut_len, total_duration - current_time)
+            if seg_dur <= 0.4:
+                break
+            seg_start = safe_start + (idx * step)
+            seg_file = temp_dir / f"slice_{idx:03d}.mp4"
+
+            # Anti-copyright visual variance:
+            # Cut 0: dramatic hook punch-in zoom
+            # Alternate cuts: subtle zoom (1.06x) and gentle mirror
+            if idx == 0:
+                vf_slice = "scale=1360:765:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+            elif idx % 4 == 1:
+                vf_slice = "scale=1320:742:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+            elif idx % 4 == 3:
+                vf_slice = "hflip,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+            else:
+                vf_slice = "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+
+            cmd_slice = [
+                "ffmpeg", "-y",
+                "-ss", f"{seg_start:.2f}",
+                "-i", str(raw_video),
+                "-t", f"{seg_dur:.2f}",
+                "-vf", vf_slice,
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "22",
+                "-an",  # Strip 100% of raw anime audio!
+                str(seg_file)
+            ]
+            res_slice = subprocess.run(cmd_slice, capture_output=True, text=True)
+            if res_slice.returncode == 0 and seg_file.exists() and seg_file.stat().st_size > 5000:
+                slice_files.append(seg_file)
+                current_time += seg_dur
+
+        if not slice_files:
+            log("Failed to slice any scenes from raw anime video.")
+            return False
+
+        # Concat slices into a unified spliced video stream
+        concat_txt = temp_dir / "slices.txt"
+        with open(concat_txt, "w", encoding="utf-8") as f:
+            for sf in slice_files:
+                f.write(f"file '{sf.resolve()}'\n")
+
+        spliced_video = temp_dir / "spliced_montage.mp4"
+        cmd_concat = [
+            "ffmpeg", "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", str(concat_txt),
+            "-c", "copy",
+            str(spliced_video)
+        ]
+        res_cat = subprocess.run(cmd_concat, capture_output=True, text=True)
+        if res_cat.returncode != 0 or not spliced_video.exists():
+            log(f"Slice concat failed: {res_cat.stderr[-300:]}")
+            return False
+
+        # 3. Canvas Compositor (9:16 vertical canvas + subtitles + audio)
+        filtergraph = build_ffmpeg_filtergraph(
+            has_subtitles=ass_subs.exists(),
+            ass_path=str(ass_subs.resolve()),
+            mirror=False,
+        )
+
+        # Default BGM fallback
+        if not bgm_path or not Path(bgm_path).exists():
+            if DEFAULT_BGM_PATH.exists():
+                bgm_path = DEFAULT_BGM_PATH
+
+        has_bgm = bgm_path and Path(bgm_path).exists()
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(spliced_video),
+            "-i", str(voice_audio),
+        ]
+        if has_bgm:
+            cmd.extend(["-stream_loop", "-1", "-i", str(bgm_path)])
+
+        # Zero raw anime audio: only voiceover and royalty-free BGM
+        if has_bgm:
+            audio_filter = (
+                "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice_a];"
+                "[2:a]volume=0.15[bgm_a];"
+                "[voice_a][bgm_a]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            )
+        else:
+            audio_filter = "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[aout]"
+
+        cmd.extend([
+            "-filter_complex", f"{filtergraph};{audio_filter}",
+            "-map", "[v]",
+            "-map", "[aout]",
+            "-c:v", "libx264",
+            "-preset", "faster",
+            "-crf", "21",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-t", str(total_duration),
+            "-movflags", "+faststart",
+            str(output_video)
+        ])
+
+        log(f"Executing FFmpeg render: {output_video.name}...")
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0:
             log(f"FFmpeg error: {res.stderr[-500:]}")
@@ -216,6 +283,8 @@ def assemble_short_part(
         if output_video.exists():
             output_video.unlink()
         return False
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def stitch_full_episode_video(
