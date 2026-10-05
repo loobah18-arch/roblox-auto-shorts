@@ -65,6 +65,8 @@ def upload_video_file(
     path = Path(video_path)
     if not path.exists():
         return {"status": "error", "message": f"File not found: {path}"}
+    if path.stat().st_size < 1024 * 50:
+        return {"status": "error", "message": f"File is empty or corrupted ({path.stat().st_size} bytes): {path}"}
 
     body = {
         "snippet": {
@@ -79,7 +81,7 @@ def upload_video_file(
         }
     }
 
-    log(f"Uploading {path.name} ({privacy}) -> '{title[:50]}...'")
+    log(f"Uploading {path.name} ({privacy}, {path.stat().st_size} bytes) -> '{title[:50]}...'")
     media = MediaFileUpload(str(path), chunksize=-1, resumable=True, mimetype="video/mp4")
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
 
@@ -119,6 +121,10 @@ def upload_episode_package(
     with open(summary_file, "r", encoding="utf-8") as f:
         summary = json.load(f)
 
+    if summary.get("status") != "success":
+        log(f"Refusing upload for {summary.get('episode_key')}: pipeline status was '{summary.get('status')}'")
+        return {"status": "error", "message": f"Pipeline was not successful: {summary.get('status')}"}
+
     results = {
         "episode_key": summary.get("episode_key"),
         "shorts": [],
@@ -157,6 +163,9 @@ def upload_episode_package(
 
     if upload_shorts:
         for part in summary.get("parts", []):
+            if part.get("status") != "rendered":
+                log(f"Skipping Part {part.get('part')}: status is '{part.get('status')}', not 'rendered'")
+                continue
             short_res = upload_video_file(
                 youtube=youtube,
                 video_path=part["video_path"],
@@ -170,15 +179,19 @@ def upload_episode_package(
 
     if upload_full:
         full = summary.get("full_video", {})
-        full_res = upload_video_file(
-            youtube=youtube,
-            video_path=full["video_path"],
-            title=full["title"],
-            description=full["description"],
-            tags=full["hashtags"],
-            privacy=privacy,
-        )
-        results["full_video"] = full_res
+        if full.get("status") != "rendered":
+            log(f"Skipping Full Video: status is '{full.get('status')}', not 'rendered'")
+            results["full_video"] = {"status": "skipped", "message": f"status is {full.get('status')}"}
+        else:
+            full_res = upload_video_file(
+                youtube=youtube,
+                video_path=full["video_path"],
+                title=full["title"],
+                description=full["description"],
+                tags=full["hashtags"],
+                privacy=privacy,
+            )
+            results["full_video"] = full_res
 
     # Save upload record
     with open(ep_dir / "upload_result.json", "w", encoding="utf-8") as f:

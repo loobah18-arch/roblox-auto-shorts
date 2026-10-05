@@ -143,11 +143,27 @@ def run_pipeline(
             "status": "rendered" if assemble_success else "failed",
         }
         parts_meta.append(part_meta)
-        rendered_part_videos.append(video_file)
+        if assemble_success and video_file.exists() and video_file.stat().st_size > 1024 * 50:
+            rendered_part_videos.append(video_file)
 
         # Save individual Short manifest
         with open(part_dir / "meta.json", "w", encoding="utf-8") as f:
             json.dump(part_meta, f, indent=2)
+
+    all_parts_ok = (len(rendered_part_videos) == len(script_package["parts"]))
+    if not all_parts_ok:
+        log("❌ Some or all Short parts failed to render. Aborting stitching and history update.")
+        pipeline_result = {
+            "status": "error",
+            "message": "one or more shorts failed to render",
+            "episode_key": target_ep["episode_key"],
+            "display_name": target_ep["display_name"],
+            "parts": parts_meta,
+            "full_video": {"status": "skipped", "message": "parts failed"},
+        }
+        with open(ep_work_dir / "pipeline_summary.json", "w", encoding="utf-8") as f:
+            json.dump(pipeline_result, f, indent=2)
+        return pipeline_result
 
     # 5. Stitch into Full Episode Video
     log("\n=== Stitching All Parts into Full Episode Video ===")
@@ -169,7 +185,21 @@ def run_pipeline(
     with open(ep_work_dir / "full_video_meta.json", "w", encoding="utf-8") as f:
         json.dump(full_video_meta, f, indent=2)
 
-    # 6. Update History
+    if not stitch_success:
+        log("❌ Failed to stitch full episode video.")
+        pipeline_result = {
+            "status": "error",
+            "message": "full episode video stitch failed",
+            "episode_key": target_ep["episode_key"],
+            "display_name": target_ep["display_name"],
+            "parts": parts_meta,
+            "full_video": full_video_meta,
+        }
+        with open(ep_work_dir / "pipeline_summary.json", "w", encoding="utf-8") as f:
+            json.dump(pipeline_result, f, indent=2)
+        return pipeline_result
+
+    # 6. Update History (only on complete success)
     history = load_history()
     completed = history.get("completed_episodes", [])
     if target_ep["episode_key"] not in completed and not dry_run:
@@ -216,3 +246,5 @@ if __name__ == "__main__":
         upload_live=args.live,
     )
     print(json.dumps(res, indent=2))
+    if res.get("status") != "success":
+        sys.exit(1)

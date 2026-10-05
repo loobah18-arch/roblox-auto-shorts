@@ -83,13 +83,13 @@ def build_ffmpeg_filtergraph(
     # 2. Background: fill 1080x1920, heavy blur, darkened
     filters.append(
         "[raw_bg]scale=1080:1920:force_original_aspect_ratio=increase,"
-        "crop=1080:1920,boxblur=25:5,eq=brightness=-0.12[bg]"
+        "crop=1080:1920,setsar=1,boxblur=25:5,eq=brightness=-0.12[bg]"
     )
 
-    # 3. Foreground: crisp card centered (1040x585 for 16:9), slight subtle zoom drift
+    # 3. Foreground: crisp card centered (1040x584 for 16:9 even dims), slight subtle zoom drift
     filters.append(
-        "[raw_fg]scale=1040:585:force_original_aspect_ratio=decrease,"
-        "pad=1040:585:(ow-iw)/2:(oh-ih)/2:color=black@0[fg]"
+        "[raw_fg]scale=1040:584:force_original_aspect_ratio=decrease,"
+        "pad=1040:584:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[fg]"
     )
 
     # 4. Overlay foreground on background (shifted slightly up to make room for captions)
@@ -201,11 +201,20 @@ def assemble_short_part(
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0:
             log(f"FFmpeg error: {res.stderr[-500:]}")
+            if output_video.exists():
+                output_video.unlink()
             return False
-        log(f"Rendered successfully: {output_video}")
+        if not output_video.exists() or output_video.stat().st_size < 1024 * 50:
+            log(f"Render output empty or too small: {output_video}")
+            if output_video.exists():
+                output_video.unlink()
+            return False
+        log(f"Rendered successfully: {output_video} ({output_video.stat().st_size} bytes)")
         return True
     except Exception as err:
         log(f"FFmpeg execution failed: {err}")
+        if output_video.exists():
+            output_video.unlink()
         return False
 
 
@@ -224,9 +233,11 @@ def stitch_full_episode_video(
         log(f"[DRY-RUN] Simulating full episode stitch of {len(part_video_paths)} parts -> {output_full.name}")
         return True
 
-    valid_parts = [Path(p) for p in part_video_paths if Path(p).exists()]
-    if not valid_parts:
-        log("No valid part videos found to stitch.")
+    valid_parts = [Path(p) for p in part_video_paths if Path(p).exists() and Path(p).stat().st_size > 1024 * 50]
+    if len(valid_parts) != len(part_video_paths):
+        log(f"Cannot stitch: only {len(valid_parts)} of {len(part_video_paths)} parts are valid.")
+        if output_full.exists():
+            output_full.unlink()
         return False
 
     # Create concat list file
@@ -250,11 +261,20 @@ def stitch_full_episode_video(
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0:
             log(f"Stitch error: {res.stderr[-500:]}")
+            if output_full.exists():
+                output_full.unlink()
             return False
-        log(f"Full episode stitched successfully: {output_full}")
+        if not output_full.exists() or output_full.stat().st_size < 1024 * 100:
+            log(f"Stitched full episode video empty or too small: {output_full}")
+            if output_full.exists():
+                output_full.unlink()
+            return False
+        log(f"Full episode stitched successfully: {output_full} ({output_full.stat().st_size} bytes)")
         return True
     except Exception as err:
         log(f"Full video stitching failed: {err}")
+        if output_full.exists():
+            output_full.unlink()
         return False
 
 

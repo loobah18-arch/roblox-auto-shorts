@@ -95,9 +95,25 @@ class TestAnimeVideoFiltergraph(unittest.TestCase):
         fg = build_ffmpeg_filtergraph(has_subtitles=True, ass_path="/tmp/test.ass")
         self.assertIn("boxblur=25:5", fg)
         self.assertIn("scale=1080:1920", fg)
-        self.assertIn("scale=1040:585", fg)
+        self.assertIn("scale=1040:584", fg)
+        self.assertIn("pad=1040:584", fg)
+        self.assertIn("setsar=1", fg)
         self.assertIn("ass='/tmp/test.ass'", fg)
         self.assertIn("eq=contrast=1.06", fg)
+
+    def test_filtergraph_ffmpeg_execution(self):
+        import subprocess
+        fg = build_ffmpeg_filtergraph(has_subtitles=False)
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", "testsrc=size=854x480:rate=1",
+            "-t", "1",
+            "-filter_complex", fg,
+            "-map", "[v]",
+            "-f", "null", "-"
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"FFmpeg filtergraph failed: {res.stderr}")
 
 
 if __name__ == "__main__":
