@@ -18,6 +18,8 @@ OUTPUT_DIR = WORKSPACE_DIR / "output"
 TRACKER_DIR = WORKSPACE_DIR / "tracker"
 HISTORY_PATH = TRACKER_DIR / "anime_history.json"
 
+from anime_catalog import load_history, save_history
+
 
 def log(msg: str) -> None:
     print(f"[anime_uploader] {msg}", flush=True)
@@ -50,6 +52,17 @@ def get_youtube_service():
     return build("youtube", "v3", credentials=creds)
 
 
+def find_uploaded_part(parts_list: list, ep_key: str, p_num: int | None = None, is_full: bool = False) -> dict | None:
+    """Find existing upload record for deduplication."""
+    for item in parts_list:
+        if item.get("episode_key") == ep_key:
+            if is_full and item.get("is_full_video"):
+                return item
+            if not is_full and item.get("part") == p_num:
+                return item
+    return None
+
+
 def upload_video_file(
     youtube,
     video_path: str | Path,
@@ -59,7 +72,7 @@ def upload_video_file(
     privacy: str = "public",
     category_id: str = "1"  # 1 = Film & Animation
 ) -> dict:
-    """Uploads video to YouTube with chunked upload."""
+    """Uploads video to YouTube with chunked upload and quota error handling."""
     from googleapiclient.http import MediaFileUpload
 
     path = Path(video_path)
@@ -86,10 +99,29 @@ def upload_video_file(
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
 
     response = None
-    while response is None:
-        status, response = request.next_chunk()
-        if status:
-            log(f"Upload progress: {int(status.progress() * 100)}%")
+    try:
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                log(f"Upload progress: {int(status.progress() * 100)}%")
+    except Exception as exc:
+        err_msg = str(exc)
+        if "uploadLimitExceeded" in err_msg:
+            log(f"⚠️ YouTube 24-hour upload limit reached (uploadLimitExceeded) for {path.name}.")
+            return {
+                "status": "quota_exceeded",
+                "error": "uploadLimitExceeded",
+                "message": "YouTube 24-hour channel upload limit exceeded. Resuming on next cycle.",
+                "title": title,
+                "video_path": str(path),
+            }
+        log(f"❌ Upload failed for {path.name}: {exc}")
+        return {
+            "status": "error",
+            "message": err_msg,
+            "title": title,
+            "video_path": str(path),
+        }
 
     video_id = response.get("id")
     is_short = "#shorts" in title.lower() or "#shorts" in description.lower()
@@ -111,7 +143,7 @@ def upload_episode_package(
     upload_shorts: bool = True,
     upload_full: bool = True,
 ) -> dict:
-    """Upload all parts and the full video for an episode."""
+    """Upload all parts and the full video for an episode with deduplication & quota protection."""
     ep_dir = Path(episode_dir)
     summary_file = ep_dir / "pipeline_summary.json"
     if not summary_file.exists():
@@ -125,8 +157,12 @@ def upload_episode_package(
         log(f"Refusing upload for {summary.get('episode_key')}: pipeline status was '{summary.get('status')}'")
         return {"status": "error", "message": f"Pipeline was not successful: {summary.get('status')}"}
 
+    history = load_history()
+    uploaded_parts = history.get("uploaded_parts", [])
+    ep_key = summary.get("episode_key")
+
     results = {
-        "episode_key": summary.get("episode_key"),
+        "episode_key": ep_key,
         "shorts": [],
         "full_video": None,
     }
@@ -135,24 +171,35 @@ def upload_episode_package(
         log("=== [PREVIEW MODE] Simulating YouTube Uploads (use --live for actual upload) ===")
         if upload_shorts:
             for part in summary.get("parts", []):
-                log(f"[PREVIEW SHORT] Title: {part['title']}")
-                log(f"                 File: {part['video_path']}")
-                log(f"                 Tags: {part['hashtags']}")
-                results["shorts"].append({
-                    "part": part["part"],
-                    "status": "preview",
-                    "title": part["title"],
-                    "url": "https://youtube.com/shorts/PREVIEW_MOCK",
-                })
+                p_num = part["part"]
+                already = find_uploaded_part(uploaded_parts, ep_key, p_num=p_num, is_full=False)
+                if already:
+                    log(f"[PREVIEW SHORT] Part {p_num} already uploaded: {already.get('url')}")
+                    results["shorts"].append(already)
+                else:
+                    log(f"[PREVIEW SHORT] Title: {part['title']}")
+                    log(f"                 File: {part['video_path']}")
+                    log(f"                 Tags: {part['hashtags']}")
+                    results["shorts"].append({
+                        "part": p_num,
+                        "status": "preview",
+                        "title": part["title"],
+                        "url": "https://youtube.com/shorts/PREVIEW_MOCK",
+                    })
         if upload_full:
             full = summary.get("full_video", {})
-            log(f"[PREVIEW FULL]  Title: {full['title']}")
-            log(f"                 File: {full['video_path']}")
-            results["full_video"] = {
-                "status": "preview",
-                "title": full["title"],
-                "url": "https://youtu.be/PREVIEW_MOCK",
-            }
+            already_full = find_uploaded_part(uploaded_parts, ep_key, is_full=True)
+            if already_full:
+                log(f"[PREVIEW FULL]  Already uploaded: {already_full.get('url')}")
+                results["full_video"] = already_full
+            else:
+                log(f"[PREVIEW FULL]  Title: {full['title']}")
+                log(f"                 File: {full['video_path']}")
+                results["full_video"] = {
+                    "status": "preview",
+                    "title": full["title"],
+                    "url": "https://youtu.be/PREVIEW_MOCK",
+                }
         return results
 
     # Live upload
@@ -161,11 +208,31 @@ def upload_episode_package(
         log("Cannot perform live upload: YouTube credentials missing or invalid.")
         return {"status": "error", "message": "missing credentials"}
 
+    quota_hit = False
+
     if upload_shorts:
         for part in summary.get("parts", []):
+            p_num = part.get("part")
             if part.get("status") != "rendered":
-                log(f"Skipping Part {part.get('part')}: status is '{part.get('status')}', not 'rendered'")
+                log(f"Skipping Part {p_num}: status is '{part.get('status')}', not 'rendered'")
                 continue
+
+            # Deduplication: check if already uploaded to YouTube
+            already = find_uploaded_part(uploaded_parts, ep_key, p_num=p_num, is_full=False)
+            if already:
+                log(f"Part {p_num} already uploaded on YouTube: {already.get('url')} (skipping duplicate upload)")
+                results["shorts"].append(already)
+                continue
+
+            if quota_hit:
+                log(f"Skipping Part {p_num}: deferred due to 24h upload limit.")
+                results["shorts"].append({
+                    "part": p_num,
+                    "status": "quota_deferred",
+                    "title": part["title"],
+                })
+                continue
+
             short_res = upload_video_file(
                 youtube=youtube,
                 video_path=part["video_path"],
@@ -174,7 +241,26 @@ def upload_episode_package(
                 tags=part["hashtags"],
                 privacy=privacy,
             )
-            results["shorts"].append(short_res)
+            if short_res.get("status") == "uploaded":
+                record = {
+                    "episode_key": ep_key,
+                    "part": p_num,
+                    "is_full_video": False,
+                    "video_id": short_res.get("video_id"),
+                    "url": short_res.get("url"),
+                    "title": part["title"],
+                    "uploaded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+                uploaded_parts.append(record)
+                history["uploaded_parts"] = uploaded_parts
+                save_history(history)
+                results["shorts"].append(record)
+            elif short_res.get("status") == "quota_exceeded":
+                quota_hit = True
+                results["shorts"].append(short_res)
+            else:
+                results["shorts"].append(short_res)
+
             time.sleep(3)  # Brief pause between uploads
 
     if upload_full:
@@ -183,15 +269,70 @@ def upload_episode_package(
             log(f"Skipping Full Video: status is '{full.get('status')}', not 'rendered'")
             results["full_video"] = {"status": "skipped", "message": f"status is {full.get('status')}"}
         else:
-            full_res = upload_video_file(
-                youtube=youtube,
-                video_path=full["video_path"],
-                title=full["title"],
-                description=full["description"],
-                tags=full["hashtags"],
-                privacy=privacy,
-            )
-            results["full_video"] = full_res
+            already_full = find_uploaded_part(uploaded_parts, ep_key, is_full=True)
+            if already_full:
+                log(f"Full Video already uploaded on YouTube: {already_full.get('url')} (skipping duplicate upload)")
+                results["full_video"] = already_full
+            elif quota_hit:
+                log("Skipping Full Video: deferred due to 24h upload limit.")
+                results["full_video"] = {
+                    "status": "quota_deferred",
+                    "title": full["title"],
+                }
+            else:
+                full_res = upload_video_file(
+                    youtube=youtube,
+                    video_path=full["video_path"],
+                    title=full["title"],
+                    description=full["description"],
+                    tags=full["hashtags"],
+                    privacy=privacy,
+                )
+                if full_res.get("status") == "uploaded":
+                    record = {
+                        "episode_key": ep_key,
+                        "part": None,
+                        "is_full_video": True,
+                        "video_id": full_res.get("video_id"),
+                        "url": full_res.get("url"),
+                        "title": full["title"],
+                        "uploaded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    }
+                    uploaded_parts.append(record)
+                    history["uploaded_parts"] = uploaded_parts
+                    save_history(history)
+                    results["full_video"] = record
+                elif full_res.get("status") == "quota_exceeded":
+                    quota_hit = True
+                    results["full_video"] = full_res
+                else:
+                    results["full_video"] = full_res
+
+    # Check overall completion state
+    total_parts_expected = len(summary.get("parts", []))
+    uploaded_shorts_count = sum(
+        1 for s in results["shorts"] if s.get("status") == "uploaded" or s.get("video_id")
+    )
+    full_uploaded = bool(
+        results.get("full_video")
+        and (results["full_video"].get("status") == "uploaded" or results["full_video"].get("video_id"))
+    )
+
+    completed = history.get("completed_episodes", [])
+    if uploaded_shorts_count == total_parts_expected and full_uploaded:
+        if ep_key not in completed:
+            completed.append(ep_key)
+            history["completed_episodes"] = completed
+            history["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            save_history(history)
+            log(f"🎉 Episode {ep_key} is 100% uploaded ({uploaded_shorts_count}/{total_parts_expected} Shorts + Full Video)! Marked complete in history.")
+    else:
+        if ep_key in completed:
+            completed.remove(ep_key)
+            history["completed_episodes"] = completed
+            history["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            save_history(history)
+            log(f"Episode {ep_key} is partially uploaded ({uploaded_shorts_count}/{total_parts_expected} Shorts). Kept open in history.")
 
     # Save upload record
     with open(ep_dir / "upload_result.json", "w", encoding="utf-8") as f:
@@ -217,3 +358,4 @@ if __name__ == "__main__":
         upload_full=not args.no_full,
     )
     print(json.dumps(res, indent=2))
+

@@ -204,10 +204,10 @@ def run_pipeline(
             json.dump(pipeline_result, f, indent=2)
         return pipeline_result
 
-    # 6. Update History (only on complete success)
+    # 6. Update History (live completion managed by anime_youtube_uploader after verified upload)
     history = load_history()
     completed = history.get("completed_episodes", [])
-    if target_ep["episode_key"] not in completed and not dry_run:
+    if target_ep["episode_key"] not in completed and dry_run:
         completed.append(target_ep["episode_key"])
         history["completed_episodes"] = completed
         history["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())

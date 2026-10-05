@@ -133,5 +133,66 @@ class TestAnimeVideoFiltergraph(unittest.TestCase):
         self.assertTrue(DEFAULT_BGM_PATH.exists(), f"Default BGM not found: {DEFAULT_BGM_PATH}")
 
 
+class TestAnimeUploader(unittest.TestCase):
+    def test_find_uploaded_part(self):
+        from anime_youtube_uploader import find_uploaded_part
+        sample_parts = [
+            {
+                "episode_key": "demon-slayer-s01e02",
+                "part": 1,
+                "is_full_video": False,
+                "video_id": "VRmFbfvaAnM",
+                "url": "https://youtube.com/shorts/VRmFbfvaAnM"
+            },
+            {
+                "episode_key": "demon-slayer-s01e02",
+                "part": None,
+                "is_full_video": True,
+                "video_id": "FULL_VID_123",
+                "url": "https://youtu.be/FULL_VID_123"
+            }
+        ]
+        p1 = find_uploaded_part(sample_parts, "demon-slayer-s01e02", p_num=1, is_full=False)
+        self.assertIsNotNone(p1)
+        self.assertEqual(p1["video_id"], "VRmFbfvaAnM")
+
+        p2 = find_uploaded_part(sample_parts, "demon-slayer-s01e02", p_num=2, is_full=False)
+        self.assertIsNone(p2)
+
+        full = find_uploaded_part(sample_parts, "demon-slayer-s01e02", is_full=True)
+        self.assertIsNotNone(full)
+        self.assertEqual(full["video_id"], "FULL_VID_123")
+
+    def test_upload_quota_exceeded_handled(self):
+        from unittest.mock import MagicMock
+        from anime_youtube_uploader import upload_video_file
+        import tempfile
+
+        # Create dummy file > 50KB
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(b"0" * (60 * 1024))
+            temp_path = f.name
+
+        try:
+            mock_yt = MagicMock()
+            mock_req = MagicMock()
+            mock_req.next_chunk.side_effect = Exception("<HttpError 400 'The user has exceeded the number of videos they may upload.' (reason: uploadLimitExceeded)>")
+            mock_yt.videos().insert.return_value = mock_req
+
+            res = upload_video_file(
+                youtube=mock_yt,
+                video_path=temp_path,
+                title="Test Title #shorts",
+                description="Test Desc",
+                tags=["test"],
+            )
+            self.assertEqual(res["status"], "quota_exceeded")
+            self.assertEqual(res["error"], "uploadLimitExceeded")
+        finally:
+            import os
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+
 if __name__ == "__main__":
     unittest.main()

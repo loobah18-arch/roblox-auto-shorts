@@ -1,8 +1,26 @@
 {
   "completed_episodes": [
-    "demon-slayer-s01e01",
-    "demon-slayer-s01e02"
+    "demon-slayer-s01e01"
   ],
-  "uploaded_parts": [],
+  "uploaded_parts": [
+    {
+      "episode_key": "demon-slayer-s01e02",
+      "part": 1,
+      "is_full_video": false,
+      "video_id": "VRmFbfvaAnM",
+      "url": "https://youtube.com/shorts/VRmFbfvaAnM",
+      "title": "Tanjiro Starts Brutal Training! | Demon Slayer: Kimetsu no Yaiba S01E02 Part 1 #shorts #anime",
+      "uploaded_at": "2026-10-05T08:53:09Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e02",
+      "part": 2,
+      "is_full_video": false,
+      "video_id": "B4gfsqxgdNM",
+      "url": "https://youtube.com/shorts/B4gfsqxgdNM",
+      "title": "Will Tanjiro Master Water Breathing? | Demon Slayer: Kimetsu no Yaiba S01E02 Part 2 #shorts #anime",
+      "uploaded_at": "2026-10-05T08:53:13Z"
+    }
+  ],
   "last_updated": "2026-10-05T08:53:07Z"
 }
