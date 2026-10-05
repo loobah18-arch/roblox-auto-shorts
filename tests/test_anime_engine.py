@@ -58,7 +58,10 @@ class TestAnimeScriptEngine(unittest.TestCase):
         
         for p in script["parts"]:
             self.assertTrue(len(p["hook"]) > 10)
-            self.assertTrue(len(p["narration"].split()) >= 70)
+            self.assertTrue(
+                len(p["narration"].split()) >= 150,
+                f"Part {p['part']} narration too short: {len(p['narration'].split())} words"
+            )
             self.assertIn("#shorts", p["short_title"].lower())
             self.assertIn("PART", p["badge"])
             self.assertIn("bhalooji", p["hashtags"])

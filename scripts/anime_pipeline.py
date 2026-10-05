@@ -20,12 +20,11 @@ from pathlib import Path
 from anime_catalog import get_next_episode, load_catalog, load_history, save_history
 from anime_script_engine import generate_episode_script
 from anime_voice_subtitles import produce_part_audio_subtitles
-from anime_video_engine import assemble_short_part, download_gdrive_episode, stitch_full_episode_video
+from anime_video_engine import assemble_short_part, download_gdrive_episode, stitch_full_episode_video, pick_bgm_for_episode
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = WORKSPACE_DIR / "output"
 CACHE_DIR = WORKSPACE_DIR / "cache"
-DEFAULT_BGM_PATH = WORKSPACE_DIR / "assets" / "bgm" / "cinematic_suspense_thriller.mp3"
 
 
 def log(msg: str) -> None:
@@ -36,18 +35,15 @@ def run_pipeline(
     episode_key: str | None = None,
     series_filter: str | None = None,
     dry_run: bool = False,
-    voice: str = "en-US-ChristopherNeural",
+    voice: str = "en-US-AvaNeural",
     bgm_path: str | Path | None = None,
     upload_live: bool = False,
 ) -> dict:
     """Run full episodic production."""
     log("=== Starting Bhaloo Ji Anime Explanation Pipeline ===")
-    
-    if not bgm_path and DEFAULT_BGM_PATH.exists():
-        bgm_path = DEFAULT_BGM_PATH
-        log(f"Using default royalty-free BGM: {DEFAULT_BGM_PATH.name}")
-    
+
     # 1. Select Episode
+
     catalog = load_catalog()
     episodes = catalog.get("episodes", [])
     if not episodes:
@@ -72,6 +68,14 @@ def run_pipeline(
     log(f"Target Episode: {target_ep['display_name']} (Key: {target_ep['episode_key']})")
     ep_work_dir = OUTPUT_DIR / target_ep["episode_key"]
     ep_work_dir.mkdir(parents=True, exist_ok=True)
+
+    # Auto-select royalty-free BGM based on series (overridable via --bgm flag)
+    if not bgm_path:
+        bgm_path = pick_bgm_for_episode(series_id=target_ep.get("series_id"))
+        log(f"Auto-selected royalty-free BGM: {bgm_path.name} (series: {target_ep.get('series_id')})")
+    elif not Path(bgm_path).exists():
+        bgm_path = pick_bgm_for_episode(series_id=target_ep.get("series_id"))
+        log(f"Specified BGM not found, auto-selecting: {bgm_path.name}")
 
     # 2. Generate AI Script Package
     log("Generating AI-Adaptive multi-part script and full video metadata...")
@@ -237,7 +241,7 @@ if __name__ == "__main__":
     parser.add_argument("--episode", default=None, help="Episode key (e.g. demon-slayer-s01e01)")
     parser.add_argument("--series", default=None, help="Series filter (e.g. demon-slayer, jujutsu-kaisen)")
     parser.add_argument("--dry-run", action="store_true", help="Simulate without heavy rendering")
-    parser.add_argument("--voice", default="en-US-ChristopherNeural", help="Edge-TTS voice")
+    parser.add_argument("--voice", default="en-US-AvaNeural", help="Edge-TTS voice (default: cute girl AvaNeural)")
     parser.add_argument("--bgm", default=None, help="Optional background music path")
     parser.add_argument("--live", action="store_true", help="Live YouTube upload mode")
 

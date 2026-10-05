@@ -24,7 +24,42 @@ from pathlib import Path
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = WORKSPACE_DIR / "output"
 CACHE_DIR = WORKSPACE_DIR / "cache"
-DEFAULT_BGM_PATH = WORKSPACE_DIR / "assets" / "bgm" / "cinematic_suspense_thriller.mp3"
+BGM_DIR = WORKSPACE_DIR / "assets" / "bgm"
+DEFAULT_BGM_PATH = BGM_DIR / "cinematic_suspense_thriller.mp3"
+
+# Royalty-free BGM library with mood/genre classification
+BGM_LIBRARY = {
+    "action":       "cinematic_suspense_thriller.mp3",   # High-action battles & reveals
+    "drone":        "cinematic_suspense_drone.mp3",       # Tense build-up moments
+    "emotional":    "sad_cinematic_piano.mp3",            # Tragic / emotional scenes
+    "atmospheric":  "dreamy_night_drift.mp3",             # Discovery / quiet moments
+    "lofi":         "lofi_chill_beats.mp3",              # Light intro scenes
+    "dark":         "malevolent_shrine_sukuna.mp3",       # Villain / horror moments
+    "cozy":         "cozy_cafe_guitar.mp3",               # Slice-of-life / training
+    "snowfall":     "snowfall_calm_aesthetic.mp3",        # Sad / reflective moments
+}
+
+# Per-series default BGM mapping (mood auto-selection)
+SERIES_BGM_MAP = {
+    "demon-slayer":      "action",
+    "jujutsu-kaisen":    "dark",
+    "default":           "action",
+}
+
+
+def pick_bgm_for_episode(series_id: str | None = None, mood: str | None = None) -> Path:
+    """
+    Auto-select a royalty-free BGM track based on series or explicit mood.
+    Falls back to the default cinematic_suspense_thriller.mp3.
+    """
+    if mood and mood in BGM_LIBRARY:
+        track = BGM_LIBRARY[mood]
+    elif series_id and series_id in SERIES_BGM_MAP:
+        track = BGM_LIBRARY[SERIES_BGM_MAP[series_id]]
+    else:
+        track = BGM_LIBRARY[SERIES_BGM_MAP["default"]]
+    path = BGM_DIR / track
+    return path if path.exists() else DEFAULT_BGM_PATH
 
 
 def log(msg: str) -> None:

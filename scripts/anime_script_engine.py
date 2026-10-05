@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 AI Anime Script Engine for Bhaloo Ji Anime Explanation Channel.
-Generates gripping, cinematic 3-to-5 part episodic scripts (45-55s each)
+Generates gripping, cinematic 3-to-5 part episodic scripts (90-180s each)
 plus unified long-form full episode explanation scripts.
 Style: High-retention anime recap/explanation benchmarked against RecapKun (@recapkun).
 """
@@ -31,25 +31,25 @@ EPISODE_KNOWLEDGE = {
         "parts": [
             {
                 "part": 1,
-                "hook": "Imagine coming home to find your entire family murdered, and the only survivor has turned into a flesh-eating demon.",
-                "narration": "In the cold snowy mountains, Tanjiro Kamado spent the night selling charcoal in town, completely unaware of the nightmare waiting for him at home. The moment he steps onto his porch, the horrifying scent of blood hits him. His mother and siblings have been mercilessly slaughtered by a demon. But as he desperately carries his only surviving sister Nezuko down the freezing mountain, something snaps. Nezuko grows fangs, her eyes turn blood-red, and she attacks Tanjiro with supernatural strength! But right before Tanjiro can break through to her, a cold blue blade slashes from the shadows!",
-                "cliffhanger": "Wait until you see who just arrived to kill Nezuko in Part 2!",
+                "hook": "Imagine coming home after a cold night of selling charcoal and finding every single person you love slaughtered in the snow.",
+                "narration": "High in the snowy mountain villages of Taisho-era Japan, Tanjiro Kamado was just a kind-hearted boy who sold charcoal to support his family. One evening, he stayed in town overnight because the roads were too dangerous. When he returns home the next morning, the scene he finds will haunt him for the rest of his life. The front door is hanging open. The smell of blood is overwhelming. Inside, his mother, his brothers, his sisters — all brutally slaughtered in pools of frozen blood. This is not a robbery. This is not an accident. This is the signature of a demon. But then he hears a sound. His sister Nezuko is still breathing, barely clinging to life. Relief floods through him as he lifts her and begins to sprint down the mountain to find help — but then something terrible happens. Nezuko's eyes snap open, glowing pink. Her nails extend into claws. Her body grows with supernatural strength. She turns her head, and she lunges straight for Tanjiro's throat with fangs like needles. His own sister has become a flesh-eating demon, and right as she is about to tear him apart — a figure in a haori slashes from the treeline with a blade of pure ice!",
+                "cliffhanger": "Wait until you see who just arrived to execute Nezuko in Part 2!",
                 "time_range": [180, 520],
                 "short_title": "His Entire Family Was Slaughtered... 🩸 | Demon Slayer S1 Ep 1 Part 1 #shorts",
             },
             {
                 "part": 2,
-                "hook": "The Water Hashira Giyu Tomioka showed zero mercy, yet Tanjiro did the unthinkable!",
-                "narration": "Water Hashira Giyu Tomioka swoops in to decapitate Nezuko, calling demons mindless monsters who cannot be saved. Tanjiro drops to his knees, begging and weeping for his sister's life. But Giyu roars at him: the weak have no rights, and crying won't bring his family back! Pushed to his absolute limit, Tanjiro charges Giyu with nothing but a hatchet. Giyu easily knocks him unconscious, thinking Tanjiro was a reckless fool. But Giyu suddenly freezes when he looks up—the hatchet Tanjiro threw was flying straight at his head!",
-                "cliffhanger": "Did Tanjiro's secret plan actually work? See what happens in Part 3!",
+                "hook": "The deadliest Hashira in Japan showed absolutely zero mercy — but Tanjiro did something that changed everything!",
+                "narration": "Water Hashira Giyu Tomioka is one of the most powerful demon slayers alive, and he didn't come here to talk. He swoops in with his blade already drawn, moving to decapitate Nezuko before she can harm another human. Tanjiro throws himself in front of the blow, screaming desperately: she still recognizes him, she is still his sister! But Giyu is unmoved. Compassion for demons is a fatal luxury. The weak have no rights in this world, and tears change nothing. Giyu kicks Tanjiro aside like he weighs nothing. But Tanjiro refuses to stay down. Every time he hits the ground, he drags himself back to his feet. His body is untrained, his strength is human, but his determination is something Giyu has genuinely never seen before. He charges again and again, taking hit after hit, refusing to beg but also refusing to quit. Then, in one desperate last gamble, Tanjiro flings his hand axe directly at Giyu's head — Giyu dodges by a hair — but that was just the distraction. Tanjiro dives low, catching Giyu in a surprise grapple from below. Giyu realizes with genuine shock: this ordinary boy just outsmarted him. And then Nezuko does something that stops every thought in Giyu's head cold.",
+                "cliffhanger": "Did Tanjiro's secret counter actually work? See what Nezuko does in Part 3!",
                 "time_range": [520, 860],
                 "short_title": "Why Giyu Spared Nezuko's Life! 😱 | Demon Slayer S1 Ep 1 Part 2 #shorts",
             },
             {
                 "part": 3,
-                "hook": "Even after becoming a bloodthirsty demon, Nezuko did something that shocked the strongest Hashira!",
-                "narration": "Giyu dodges the hatchet by millimeters, realizing Tanjiro sacrificed himself just to land one lethal blow. But before Giyu can react, Nezuko breaks free. Instead of attacking Tanjiro, she stands protectively over her unconscious brother, growling at Giyu with burning defiance! A demon protecting a human has never happened in history. Realizing this bond might change everything, Giyu knocks Nezuko out gently instead of executing her, placing a bamboo muzzle over her mouth. He orders Tanjiro to seek out master Sakonji Urokodaki, beginning Tanjiro's legendary journey!",
-                "cliffhanger": "Tanjiro's path to becoming a Demon Slayer officially begins!",
+                "hook": "Even after transforming into a bloodthirsty demon, Nezuko Kamado did something that no demon in history has ever done!",
+                "narration": "Giyu Tomioka has hunted demons his entire life. He has seen them eat children, betray their own kind, and manipulate every emotion in pursuit of blood. He has never — not once in his career — seen a demon protect a human. But right now, with Tanjiro lying unconscious on the snow, Nezuko stands over her brother's body with her arms spread wide, growling with burning, protective defiance directly at one of the deadliest men alive. She will not move. She will not attack him. She just stands there, shielding her brother even though every demon instinct in her body must be screaming at her to feed. Giyu lowers his blade. He raises Tanjiro's hand, testing his grip unconsciously — it's the grip of someone who threw that axe on purpose, with perfect calculated timing. He has been underestimating this kid from the start. After a long silence, Giyu makes a decision that breaks every rule in the Demon Slayer Corps handbook. He gently but firmly knocks Nezuko unconscious, places a bamboo tube in her mouth as a muzzle, and wraps her onto Tanjiro's back. When Tanjiro wakes up, there is a letter in his hand: seek out Master Sakonji Urokodaki on Mount Sagiri. The journey of the Demon Slayer officially begins — and nothing in the world of anime will ever be the same again.",
+                "cliffhanger": "Subscribe to Bhaloo Ji for Episode 2 — the brutal training arc begins!",
                 "time_range": [860, 1260],
                 "short_title": "The First Demon Who Protected A Human! 🛡️ | Demon Slayer S1 Ep 1 Part 3 #shorts",
             }
@@ -175,14 +175,14 @@ def generate_episode_script(episode_info: dict) -> dict:
 
     # If not in cache, use LLM to generate
     system_prompt = """You are an elite, viral anime recap narrator and scriptwriter benchmarked against RecapKun (@recapkun), the premier fast-paced anime recap creator.
-Your task is to write an engaging, ultra-high-retention English episode recap divided into 3 to 5 parts for YouTube Shorts (45-55 seconds each, 110-130 words per part), followed by a stitched full video explanation.
+Your task is to write an engaging, ultra-high-retention English episode recap divided into 3 to 5 parts for YouTube Shorts (90-180 seconds each, 200-450 words per part), followed by a stitched full video explanation.
 
 RULES (RecapKun Style):
 1. Every part must open with an irresistible 0-3 second HOOK (impossible dilemma, shocking action, or extreme question) that immediately stops scrolling.
 2. The narration must be fast-paced, high-stakes, dramatic, and emotionally intense. Zero filler, pure narrative momentum.
 3. Use punchy, crisp phrasing optimized for animated kinetic karaoke subtitles.
 4. Every part (except the last) must end on an intense, razor-sharp CLIFFHANGER urging viewers to watch the next part.
-5. Keep spoken words strictly between 110 and 130 words per part.
+5. Keep spoken words strictly between 200 and 450 words per part for rich, detailed recaps.
 6. Provide a clickbait high-CTR Shorts title with part number and #shorts (e.g. 'He Swallowed Sukuna's Finger LIVE! 😱 | Jujutsu Kaisen S1 Ep 1 Part 2 #shorts').
 7. Provide a comprehensive title and description for the full episode stitched video.
 8. Return ONLY clean JSON matching the requested schema.
@@ -288,7 +288,7 @@ def _format_script_package(episode_info: dict, ep_title: str, ep_summary: str, p
     for i, p in enumerate(parts, 1):
         narration = p.get("narration", "").strip()
         words = len(narration.split())
-        est_duration = max(35.0, min(60.0, words / 2.3))  # ~138 wpm
+        est_duration = max(45.0, min(180.0, words / 2.3))  # ~138 wpm, up to 3 min per part
 
         mins = int(current_time // 60)
         secs = int(current_time % 60)
