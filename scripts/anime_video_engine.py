@@ -350,12 +350,30 @@ def stitch_full_episode_video(
         for p in valid_parts:
             f.write(f"file '{p.resolve()}'\n")
 
+    # 16:9 cinematic widescreen layout for Long-Form YouTube Video (1920x1080):
+    # Centered vertical part (scaled to 1080 height) over ambient blurred 1920x1080 background.
+    # Widescreen (16:9) guarantees YouTube routes it to the "Videos" (Long-Form) tab,
+    # completely bypassing Shorts copyright length limits!
+    filtergraph_16_9 = (
+        "[0:v]split=2[fg][bg];"
+        "[bg]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=25:5,eq=brightness=-0.15[bg_blur];"
+        "[fg]scale=-2:1080[fg_fit];"
+        "[bg_blur][fg_fit]overlay=(W-w)/2:(H-h)/2[v]"
+    )
+
     cmd = [
         "ffmpeg", "-y",
         "-f", "concat",
         "-safe", "0",
         "-i", str(concat_list_file),
-        "-c", "copy",
+        "-filter_complex", filtergraph_16_9,
+        "-map", "[v]",
+        "-map", "0:a?",
+        "-c:v", "libx264",
+        "-preset", "faster",
+        "-crf", "21",
+        "-c:a", "aac",
+        "-b:a", "192k",
         "-movflags", "+faststart",
         str(output_full)
     ]

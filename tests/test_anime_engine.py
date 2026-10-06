@@ -131,6 +131,15 @@ class TestAnimeVideoFiltergraph(unittest.TestCase):
         )
         self.assertTrue(res)
 
+    def test_stitch_full_episode_video_dry_run(self):
+        from anime_video_engine import stitch_full_episode_video
+        res = stitch_full_episode_video(
+            part_video_paths=["/tmp/p1.mp4", "/tmp/p2.mp4"],
+            output_full_path="/tmp/full_out.mp4",
+            dry_run=True,
+        )
+        self.assertTrue(res)
+
     def test_bgm_asset_exists(self):
         from anime_video_engine import DEFAULT_BGM_PATH
         self.assertTrue(DEFAULT_BGM_PATH.exists(), f"Default BGM not found: {DEFAULT_BGM_PATH}")
