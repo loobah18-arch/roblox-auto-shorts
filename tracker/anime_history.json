@@ -1,7 +1,45 @@
 {
   "completed_episodes": [
-    "demon-slayer-s01e01"
+    "demon-slayer-s01e01",
+    "demon-slayer-s01e02"
   ],
-  "uploaded_parts": [],
-  "last_updated": "2026-10-06T03:58:00Z"
+  "uploaded_parts": [
+    {
+      "episode_key": "demon-slayer-s01e02",
+      "part": 1,
+      "is_full_video": false,
+      "video_id": "f2Z2mEF-f04",
+      "url": "https://youtube.com/shorts/f2Z2mEF-f04",
+      "title": "He Swallowed His Family's Tragedy LIVE! 😱 | Demon Slayer: Kimetsu no Yaiba S1 Ep 2 Part 1 #shorts",
+      "uploaded_at": "2026-10-06T11:42:43Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e02",
+      "part": 2,
+      "is_full_video": false,
+      "video_id": "MGal7M6Bs2g",
+      "url": "https://youtube.com/shorts/MGal7M6Bs2g",
+      "title": "Blindfolded Sword Swing on a Cliff! 😱 | Demon Slayer: Kimetsu no Yaiba S1 Ep 2 Part 2 #shorts",
+      "uploaded_at": "2026-10-06T11:42:47Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e02",
+      "part": 3,
+      "is_full_video": false,
+      "video_id": "Ziv0lk6uZso",
+      "url": "https://youtube.com/shorts/Ziv0lk6uZso",
+      "title": "Final Selection Survival: Demon Slayer’s Birth! 😱 | Demon Slayer: Kimetsu no Yaiba S1 Ep 2 Part 3 #shorts",
+      "uploaded_at": "2026-10-06T11:42:52Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e02",
+      "part": null,
+      "is_full_video": true,
+      "video_id": "yKIjA5PRhh0",
+      "url": "https://youtu.be/yKIjA5PRhh0",
+      "title": "Demon Slayer: Kimetsu no Yaiba Season 1 Episode 2 Full Recap & Explanation | Trainer Sakonji Urokoda",
+      "uploaded_at": "2026-10-06T11:42:56Z"
+    }
+  ],
+  "last_updated": "2026-10-06T11:42:56Z"
 }
