@@ -1,7 +1,8 @@
 {
   "completed_episodes": [
     "demon-slayer-s01e01",
-    "demon-slayer-s01e02"
+    "demon-slayer-s01e02",
+    "demon-slayer-s01e03"
   ],
   "uploaded_parts": [
     {
@@ -39,7 +40,43 @@
       "url": "https://youtu.be/yKIjA5PRhh0",
       "title": "Demon Slayer: Kimetsu no Yaiba Season 1 Episode 2 Full Recap & Explanation | Trainer Sakonji Urokoda",
       "uploaded_at": "2026-10-06T11:42:56Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e03",
+      "part": 1,
+      "is_full_video": false,
+      "video_id": "rl9Z-e2ajRM",
+      "url": "https://youtube.com/shorts/rl9Z-e2ajRM",
+      "title": "He Swallows a Demon's Fear! | Demon Slayer: Kimetsu no Yaiba S1 Ep 3 Part 1 #shorts",
+      "uploaded_at": "2026-10-07T11:32:50Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e03",
+      "part": 2,
+      "is_full_video": false,
+      "video_id": "nxL63Q59ueQ",
+      "url": "https://youtube.com/shorts/nxL63Q59ueQ",
+      "title": "Ghostly Teachers Reveal the Deadly Trial! | Demon Slayer: Kimetsu no Yaiba S1 Ep 3 Part 2 #shorts",
+      "uploaded_at": "2026-10-07T11:32:55Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e03",
+      "part": 3,
+      "is_full_video": false,
+      "video_id": "uwdoRo5SAtA",
+      "url": "https://youtube.com/shorts/uwdoRo5SAtA",
+      "title": "He Claims the Nichirin Blade! | Demon Slayer: Kimetsu no Yaiba S1 Ep 3 Part 3 #shorts",
+      "uploaded_at": "2026-10-07T11:32:59Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e03",
+      "part": null,
+      "is_full_video": true,
+      "video_id": "lRtRWKIXyGc",
+      "url": "https://youtu.be/lRtRWKIXyGc",
+      "title": "Demon Slayer: Kimetsu no Yaiba Season 1 Episode 3 Full Recap & Explanation | Sabito and Makomo",
+      "uploaded_at": "2026-10-07T11:33:04Z"
     }
   ],
-  "last_updated": "2026-10-06T11:42:56Z"
+  "last_updated": "2026-10-07T11:33:05Z"
 }
