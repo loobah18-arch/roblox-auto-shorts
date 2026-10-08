@@ -2,7 +2,8 @@
   "completed_episodes": [
     "demon-slayer-s01e01",
     "demon-slayer-s01e02",
-    "demon-slayer-s01e03"
+    "demon-slayer-s01e03",
+    "demon-slayer-s01e04"
   ],
   "uploaded_parts": [
     {
@@ -76,7 +77,43 @@
       "url": "https://youtu.be/lRtRWKIXyGc",
       "title": "Demon Slayer: Kimetsu no Yaiba Season 1 Episode 3 Full Recap & Explanation | Sabito and Makomo",
       "uploaded_at": "2026-10-07T11:33:04Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e04",
+      "part": 1,
+      "is_full_video": false,
+      "video_id": "npFwk543rDI",
+      "url": "https://youtube.com/shorts/npFwk543rDI",
+      "title": "He Survives a Night of Demons! 😱 | Demon Slayer: Kimetsu no Yaiba S1 Ep 4 Part 1 #shorts",
+      "uploaded_at": "2026-10-08T11:47:26Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e04",
+      "part": 2,
+      "is_full_video": false,
+      "video_id": "IG0LtIckHo4",
+      "url": "https://youtube.com/shorts/IG0LtIckHo4",
+      "title": "Water Breathing vs. Horror Demon! 😱 | Demon Slayer: Kimetsu no Yaiba S1 Ep 4 Part 2 #shorts",
+      "uploaded_at": "2026-10-08T11:47:31Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e04",
+      "part": 3,
+      "is_full_video": false,
+      "video_id": "ecFEag5CPAg",
+      "url": "https://youtube.com/shorts/ecFEag5CPAg",
+      "title": "He Earns His Mark & First Mission! 😱 | Demon Slayer: Kimetsu no Yaiba S1 Ep 4 Part 3 #shorts",
+      "uploaded_at": "2026-10-08T11:47:36Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e04",
+      "part": null,
+      "is_full_video": true,
+      "video_id": "vdrhIgN2AXc",
+      "url": "https://youtu.be/vdrhIgN2AXc",
+      "title": "Demon Slayer: Kimetsu no Yaiba Season 1 Episode 4 Full Recap & Explanation | Final Selection",
+      "uploaded_at": "2026-10-08T11:47:40Z"
     }
   ],
-  "last_updated": "2026-10-07T11:33:05Z"
+  "last_updated": "2026-10-08T11:47:40Z"
 }
