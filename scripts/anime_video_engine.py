@@ -202,10 +202,10 @@ def assemble_short_part(
     safe_start = max(60.0, float(w_start))
     safe_end = max(safe_start + 30.0, float(w_end))
 
-    # 2. Compute rapid dynamic scene cuts (< 2.8s each) across this scene's timeline
+    # 2. Compute cinematic scene cuts (~4.8-5.2s each) across this scene's timeline
     window_length = max(30.0, safe_end - safe_start)
-    cut_len = 2.4  # Ideal rapid cut length to break visual fingerprinting
-    num_cuts = max(8, int(total_duration / cut_len) + 1)
+    cut_len = 4.8  # Narrative scene cut length matching RecapKun storytelling
+    num_cuts = max(4, int(total_duration / cut_len) + 1)
     step = (window_length - cut_len) / max(1, num_cuts)
 
     temp_dir = output_video.parent / f"temp_slices_{output_video.stem}"
@@ -225,25 +225,20 @@ def assemble_short_part(
             seg_start = safe_start + (idx * step)
             seg_file = temp_dir / f"slice_{idx:03d}.mp4"
 
-            # Anti-copyright visual variance:
-            # Cut 0: dramatic hook punch-in zoom
-            # Alternate cuts: subtle zoom and gentle mirror
+            # Anti-copyright visual variance without jarring mirror flips:
+            # Subtle cinematic punch-in and gentle crop variance
             if is_landscape:
                 if idx == 0:
-                    vf_slice = "scale=2040:1148:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
-                elif idx % 4 == 1:
-                    vf_slice = "scale=1980:1114:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
-                elif idx % 4 == 3:
-                    vf_slice = "hflip,scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                    vf_slice = "scale=2016:1134:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                elif idx % 2 == 1:
+                    vf_slice = "scale=1960:1102:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
                 else:
                     vf_slice = "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
             else:
                 if idx == 0:
-                    vf_slice = "scale=1360:765:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
-                elif idx % 4 == 1:
-                    vf_slice = "scale=1320:742:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
-                elif idx % 4 == 3:
-                    vf_slice = "hflip,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+                    vf_slice = "scale=1344:756:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+                elif idx % 2 == 1:
+                    vf_slice = "scale=1300:731:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
                 else:
                     vf_slice = "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
 

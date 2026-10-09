@@ -98,6 +98,18 @@ jobs:
 
           python3 scripts/anime_pipeline.py "${ARGS[@]}"
 
+      - name: 🔍 Automated Visual Alignment & Quality Review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          echo "🔍 Running AI Visual Alignment Review on rendered scenes..."
+          for ep_dir in output/*; do
+            if [ -d "$ep_dir" ] && [ -f "$ep_dir/pipeline_summary.json" ]; then
+              python3 scripts/anime_visual_reviewer.py --dir "$ep_dir"
+            fi
+          done
+
       - name: 📺 Upload to YouTube
         if: ${{ inputs.upload_to_youtube == true }}
         env:
@@ -123,6 +135,8 @@ jobs:
             output/**/*.mp3
             output/**/*.ass
             output/**/*.json
+            output/**/*.jpg
+            output/**/*.md
           retention-days: 14
           if-no-files-found: warn
 
