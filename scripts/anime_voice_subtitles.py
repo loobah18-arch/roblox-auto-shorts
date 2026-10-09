@@ -13,8 +13,8 @@ from pathlib import Path
 import edge_tts
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_VOICE = "en-US-AvaNeural"  # Cute, expressive, conversational female neural voice
-DEFAULT_RATE = "+0%"               # Natural conversational pace (anime recap narration)
+DEFAULT_VOICE = "en-US-ChristopherNeural"  # RecapKun signature articulate, confident anime storyteller voice
+DEFAULT_RATE = "+8%"                       # Fast-paced, engaging RecapKun cadence (~185-190 wpm)
 
 
 def format_ass_time(seconds: float) -> str:

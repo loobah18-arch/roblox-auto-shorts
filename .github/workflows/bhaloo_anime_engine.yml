@@ -19,6 +19,14 @@ on:
           - "all"
           - "demon-slayer"
           - "jujutsu-kaisen"
+      mode:
+        description: "Pipeline mode: 'daily' (1 video/day funnel: normal video first, then daily shorts) or 'full' (legacy all-in-one)"
+        required: false
+        default: "daily"
+        type: choice
+        options:
+          - "daily"
+          - "full"
       upload_to_youtube:
         description: "Upload rendered Shorts & Full Video to YouTube (default: true)"
         required: false
@@ -79,11 +87,12 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          INPUT_MODE: ${{ inputs.mode || 'daily' }}
           INPUT_EPISODE: ${{ inputs.episode }}
           INPUT_SERIES: ${{ inputs.series }}
         run: |
           echo "⚔️ Running Bhaloo Ji Anime Explanation Cloud Pipeline..."
-          ARGS=()
+          ARGS=(--mode "$INPUT_MODE")
           if [ -n "$INPUT_EPISODE" ]; then ARGS+=(--episode "$INPUT_EPISODE"); fi
           if [ -n "$INPUT_SERIES" ] && [ "$INPUT_SERIES" != "all" ]; then ARGS+=(--series "$INPUT_SERIES"); fi
 

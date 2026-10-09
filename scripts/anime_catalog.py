@@ -176,17 +176,30 @@ def sync_catalog(folder_id: str = DEFAULT_GDRIVE_FOLDER_ID, force: bool = False)
     return catalog_data
 
 
+def get_active_episode() -> dict | None:
+    """Return in-progress active episode data from history if present."""
+    history = load_history()
+    active = history.get("active_episode")
+    if active and active.get("episode_key"):
+        return active
+    return None
+
+
 def get_next_episode(series_id: str | None = None) -> dict | None:
     catalog = load_catalog()
     history = load_history()
     completed = set(history.get("completed_episodes", []))
+
+    # Also exclude currently active episode key if present
+    active = history.get("active_episode")
+    active_key = active.get("episode_key") if active else None
 
     episodes = catalog.get("episodes", [])
     if series_id:
         episodes = [e for e in episodes if e["series_id"] == series_id]
 
     for ep in episodes:
-        if ep["episode_key"] not in completed:
+        if ep["episode_key"] not in completed and ep["episode_key"] != active_key:
             return ep
     return None
 

@@ -205,6 +205,116 @@ class TestAnimeUploader(unittest.TestCase):
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 
+    def test_uploader_daily_funnel_preview(self):
+        import tempfile
+        from anime_youtube_uploader import upload_episode_package
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            summary = {
+                "status": "success",
+                "mode": "daily_funnel",
+                "action": "normal_video",
+                "episode_key": "demon-slayer-s01e05",
+                "video_to_upload": {
+                    "title": "Demon Slayer S01E05 Full Recap",
+                    "video_path": str(td_path / "full.mp4"),
+                    "description": "Full recap",
+                    "hashtags": ["anime"],
+                }
+            }
+            with open(td_path / "pipeline_summary.json", "w") as f:
+                json.dump(summary, f)
+
+            res = upload_episode_package(episode_dir=td_path, live=False)
+            self.assertEqual(res["status"], "preview")
+            self.assertEqual(res["mode"], "daily_funnel")
+            self.assertEqual(res["action"], "normal_video")
+
+
+class TestRecapKunStyle(unittest.TestCase):
+    def test_recapkun_voice_and_rate(self):
+        from anime_voice_subtitles import DEFAULT_VOICE, DEFAULT_RATE
+        self.assertEqual(DEFAULT_VOICE, "en-US-ChristopherNeural")
+        self.assertEqual(DEFAULT_RATE, "+8%")
+
+
+class TestDailyFunnel(unittest.TestCase):
+    def test_daily_funnel_case_a_starts_normal_video(self):
+        from unittest.mock import patch
+        from anime_pipeline import run_daily_funnel
+
+        mock_history = {
+            "completed_episodes": ["demon-slayer-s01e01"],
+            "active_episode": None,
+            "uploaded_parts": [],
+        }
+
+        with patch("anime_pipeline.load_history", return_value=mock_history), \
+             patch("anime_pipeline.save_history") as mock_save, \
+             patch("anime_pipeline.produce_part_audio_subtitles", return_value={"duration": 45.0, "word_count": 150}):
+            res = run_daily_funnel(dry_run=True)
+            self.assertEqual(res["status"], "success")
+            self.assertEqual(res["mode"], "daily_funnel")
+            self.assertEqual(res["action"], "normal_video")
+            self.assertIn("Full Recap & Explanation", res["video_to_upload"]["title"])
+            self.assertTrue(mock_save.called)
+
+    def test_daily_funnel_progresses_through_shorts(self):
+        from unittest.mock import patch
+        from anime_pipeline import run_daily_funnel
+
+        sample_script = {
+            "total_parts": 3,
+            "parts": [
+                {"part": 1, "hook": "Hook 1", "narration": "Narr 1", "short_title": "Title 1 #shorts", "hashtags": ["anime"], "badge": "PART 1/3"},
+                {"part": 2, "hook": "Hook 2", "narration": "Narr 2", "short_title": "Title 2 #shorts", "hashtags": ["anime"], "badge": "PART 2/3"},
+                {"part": 3, "hook": "Hook 3", "narration": "Narr 3", "short_title": "Title 3 #shorts", "hashtags": ["anime"], "badge": "PART 3/3"},
+            ],
+            "full_video": {"title": "Full Recap"}
+        }
+
+        mock_history = {
+            "completed_episodes": ["demon-slayer-s01e01"],
+            "active_episode": {
+                "episode_key": "demon-slayer-s01e05",
+                "display_name": "Demon Slayer S01E05",
+                "series_id": "demon-slayer",
+                "total_parts": 3,
+                "normal_video_uploaded": True,
+                "uploaded_shorts": [],
+                "script_package": sample_script,
+            },
+            "uploaded_parts": [],
+        }
+
+        # Step 1: Uploads Part 1
+        with patch("anime_pipeline.load_history", return_value=mock_history), \
+             patch("anime_pipeline.save_history"), \
+             patch("anime_pipeline.produce_part_audio_subtitles", return_value={"duration": 45.0, "word_count": 150}):
+            res = run_daily_funnel(dry_run=True)
+            self.assertEqual(res["mode"], "daily_funnel")
+            self.assertEqual(res["action"], "short")
+            self.assertEqual(res["part"], 1)
+
+        # Step 2: Part 1 done -> Uploads Part 2
+        mock_history["active_episode"]["uploaded_shorts"] = [1]
+        with patch("anime_pipeline.load_history", return_value=mock_history), \
+             patch("anime_pipeline.save_history"), \
+             patch("anime_pipeline.produce_part_audio_subtitles", return_value={"duration": 45.0, "word_count": 150}):
+            res = run_daily_funnel(dry_run=True)
+            self.assertEqual(res["action"], "short")
+            self.assertEqual(res["part"], 2)
+
+        # Step 3: Part 1 & 2 done -> Uploads Part 3
+        mock_history["active_episode"]["uploaded_shorts"] = [1, 2]
+        with patch("anime_pipeline.load_history", return_value=mock_history), \
+             patch("anime_pipeline.save_history"), \
+             patch("anime_pipeline.produce_part_audio_subtitles", return_value={"duration": 45.0, "word_count": 150}):
+            res = run_daily_funnel(dry_run=True)
+            self.assertEqual(res["action"], "short")
+            self.assertEqual(res["part"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

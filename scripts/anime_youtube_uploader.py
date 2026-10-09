@@ -161,6 +161,93 @@ def upload_episode_package(
     uploaded_parts = history.get("uploaded_parts", [])
     ep_key = summary.get("episode_key")
 
+    if summary.get("mode") == "daily_funnel":
+        action = summary.get("action")
+        vid_to_upload = summary.get("video_to_upload", {})
+
+        if not live:
+            log(f"=== [PREVIEW MODE] Daily Funnel Action: '{action}' for {ep_key} ===")
+            log(f"Title: {vid_to_upload.get('title')}")
+            log(f"File:  {vid_to_upload.get('video_path')}")
+            res = {
+                "status": "preview",
+                "mode": "daily_funnel",
+                "action": action,
+                "episode_key": ep_key,
+                "video": vid_to_upload,
+                "url": "https://youtube.com/PREVIEW_MOCK",
+            }
+            with open(ep_dir / "upload_result.json", "w", encoding="utf-8") as f:
+                json.dump(res, f, indent=2)
+            return res
+
+        youtube = get_youtube_service()
+        if not youtube:
+            log("Cannot perform live upload: YouTube credentials missing or invalid.")
+            return {"status": "error", "message": "missing credentials"}
+
+        upload_res = upload_video_file(
+            youtube=youtube,
+            video_path=vid_to_upload["video_path"],
+            title=vid_to_upload["title"],
+            description=vid_to_upload["description"],
+            tags=vid_to_upload.get("hashtags", []),
+            privacy=privacy,
+        )
+
+        if upload_res.get("status") == "uploaded":
+            history = load_history()
+            active = history.get("active_episode")
+            now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            record = {
+                "episode_key": ep_key,
+                "part": summary.get("part"),
+                "is_full_video": (action == "normal_video"),
+                "video_id": upload_res.get("video_id"),
+                "url": upload_res.get("url"),
+                "title": vid_to_upload["title"],
+                "uploaded_at": now_iso,
+            }
+            uploaded_parts = history.get("uploaded_parts", [])
+            uploaded_parts.append(record)
+            history["uploaded_parts"] = uploaded_parts
+
+            if active and active.get("episode_key") == ep_key:
+                if action == "normal_video":
+                    active["normal_video_uploaded"] = True
+                    active["normal_video"] = record
+                    log(f"🎉 Normal Video successfully uploaded: {upload_res.get('url')}! Locked in: daily Shorts will upload next.")
+                elif action == "short":
+                    p_num = summary.get("part")
+                    if p_num and p_num not in active.get("uploaded_shorts", []):
+                        active.setdefault("uploaded_shorts", []).append(p_num)
+                    log(f"✅ Short Part {p_num}/{active.get('total_parts')} uploaded: {upload_res.get('url')}!")
+
+                    # Check completion gate: All shorts uploaded?
+                    if len(active.get("uploaded_shorts", [])) >= active.get("total_parts", 3):
+                        log(f"🎉 Episode {ep_key} is 100% completed! All {active.get('total_parts')} Shorts uploaded.")
+                        completed = history.get("completed_episodes", [])
+                        if ep_key not in completed:
+                            completed.append(ep_key)
+                            history["completed_episodes"] = completed
+                        history["active_episode"] = None
+
+            history["last_updated"] = now_iso
+            save_history(history)
+            results = {
+                "status": "success",
+                "mode": "daily_funnel",
+                "action": action,
+                "episode_key": ep_key,
+                "uploaded_record": record,
+            }
+        else:
+            results = upload_res
+
+        with open(ep_dir / "upload_result.json", "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2)
+        return results
+
     results = {
         "episode_key": ep_key,
         "shorts": [],

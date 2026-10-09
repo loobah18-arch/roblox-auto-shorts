@@ -132,7 +132,7 @@ def call_llm(prompt: str, system_prompt: str) -> str | None:
     if groq_key:
         try:
             req_data = {
-                "model": "llama-3.3-70b-versatile",
+                "model": "openai/gpt-oss-120b",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
@@ -174,21 +174,20 @@ def generate_episode_script(episode_info: dict) -> dict:
         return _format_script_package(episode_info, data["title"], data["summary"], data["parts"])
 
     # If not in cache, use LLM to generate
-    system_prompt = """You are an elite, viral anime recap narrator and scriptwriter benchmarked against RecapKun (@recapkun), the premier fast-paced anime recap creator.
-Your task is to write an engaging, ultra-high-retention English episode recap divided into 3 to 5 parts for YouTube Shorts (90-180 seconds each, 200-450 words per part), followed by a stitched full video explanation.
+    system_prompt = """You are an elite anime recap narrator and scriptwriter modeling the signature style of RecapKun (@recapkun).
+Your task is to write an ultra-engaging, high-retention English episode recap divided into 3 to 4 parts for YouTube Shorts (60-120 seconds each, 200-350 words per part), alongside a cohesive full episode recap.
 
-RULES (RecapKun Style):
-1. Every part must open with an irresistible 0-3 second HOOK (impossible dilemma, shocking action, or extreme question) that immediately stops scrolling.
-2. The narration must be fast-paced, high-stakes, dramatic, and emotionally intense. Zero filler, pure narrative momentum.
-3. Use punchy, crisp phrasing optimized for animated kinetic karaoke subtitles.
-4. Every part (except the last) must end on an intense, razor-sharp CLIFFHANGER urging viewers to watch the next part.
-5. Keep spoken words strictly between 200 and 450 words per part for rich, detailed recaps.
-6. Provide a clickbait high-CTR Shorts title with part number and #shorts (e.g. 'He Swallowed Sukuna's Finger LIVE! 😱 | Jujutsu Kaisen S1 Ep 1 Part 2 #shorts').
-7. Provide a comprehensive title and description for the full episode stitched video.
-8. Return ONLY clean JSON matching the requested schema.
+RECAPKUN FORMULA:
+1. Every part MUST open with an immediate hook: e.g. 'The story begins as we meet...', 'Our story kicks off when...', or a shocking dilemma that immediately grabs attention.
+2. Fast-paced, high-stakes, third-person conversational storytelling ('Little did he know...', 'Before the demon could react...', 'Tanjiro was forced to make an impossible choice...').
+3. Explain power systems, combat mechanics, and character motivations clearly and dynamically without robotic filler.
+4. Keep spoken words strictly between 200 and 350 words per part for rich, detailed recaps.
+5. Provide a clickbait high-CTR Shorts title with part number and #shorts (e.g. 'He Survived the Mountain of Traps! 😱 | Demon Slayer S1 Ep 5 Part 1 #shorts').
+6. Provide a comprehensive title and description for the full episode normal video.
+7. Return ONLY valid JSON matching the requested schema.
 """
 
-    prompt = f"""Write an AI-adaptive anime recap script for:
+    prompt = f"""Write a RecapKun-style anime recap script for:
 Series: {series}
 Season: {season}
 Episode: {episode}
@@ -202,9 +201,9 @@ Format strictly as JSON:
   "parts": [
     {{
       "part": 1,
-      "hook": "Provocative 0-3s hook sentence",
-      "narration": "Fast-paced spoken narration (110-130 words)",
-      "cliffhanger": "Ending hook for the next part",
+      "hook": "The story begins as... (0-3s opening hook)",
+      "narration": "Fast-paced spoken narration in RecapKun style (200-350 words)",
+      "cliffhanger": "Ending hook urging viewers to watch Part 2 and the full video",
       "time_range": [0, 450],
       "short_title": "High CTR Title | {series} S{season} Ep {episode} Part 1 #shorts"
     }}
@@ -314,6 +313,8 @@ def _format_script_package(episode_info: dict, ep_title: str, ep_summary: str, p
             ],
             "description": f"""{p.get('hook', '')}
 Part {i} of {total_parts} covering {series} Season {season} Episode {episode}.
+
+🎬 Full episode explanation is LIVE on our channel now!
 
 {FAIR_USE_DISCLAIMER}
 #anime #{series_tag.lower()} #animerecap #shorts #bhalooji"""
