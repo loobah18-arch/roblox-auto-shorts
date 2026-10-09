@@ -381,7 +381,7 @@ def run_daily_funnel(
             "filename": target_ep.get("filename"),
             "gdrive_file_id": target_ep.get("gdrive_file_id"),
             "total_parts": script_package["total_parts"],
-            "normal_video_uploaded": True if dry_run else False,
+            "normal_video_uploaded": False,
             "uploaded_shorts": [],
             "script_package": script_package,
             "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -412,9 +412,9 @@ def run_daily_funnel(
     total_parts = active_ep.get("total_parts", len(script_package.get("parts", [])))
 
     # If Normal Video not yet uploaded, ensure full landscape video is rendered
-    if not active_ep.get("normal_video_uploaded") and not dry_run:
+    if not active_ep.get("normal_video_uploaded"):
         full_video_f = ep_work_dir / f"full_{ep_key}.mp4"
-        if not full_video_f.exists() or full_video_f.stat().st_size < 1024 * 100:
+        if dry_run or not full_video_f.exists() or full_video_f.stat().st_size < 1024 * 100:
             raw_video_path = CACHE_DIR / active_ep.get("filename", f"{ep_key}.mp4")
             if not raw_video_path.exists():
                 download_gdrive_episode(active_ep.get("gdrive_file_id", ""), raw_video_path, dry_run=dry_run)
@@ -461,6 +461,7 @@ def run_daily_funnel(
             "hashtags": script_package.get("full_video", {}).get("hashtags", ["anime", "bhalooji"]),
             "status": "rendered",
         }
+
         result = {
             "status": "success",
             "mode": "daily_funnel",
@@ -556,17 +557,6 @@ def run_daily_funnel(
         "description": f"{part_info.get('hook', '')}\nPart {next_p} of {total_parts} covering {active_ep['display_name']}.{teaser}\n#anime #animerecap #shorts #bhalooji",
         "status": "rendered",
     }
-
-    if dry_run:
-        uploaded_shorts.append(next_p)
-        active_ep["uploaded_shorts"] = uploaded_shorts
-        if len(uploaded_shorts) >= total_parts:
-            completed = history.get("completed_episodes", [])
-            if ep_key not in completed:
-                completed.append(ep_key)
-                history["completed_episodes"] = completed
-            history["active_episode"] = None
-        save_history(history)
 
     result = {
         "status": "success",
