@@ -348,5 +348,48 @@ class TestDailyFunnel(unittest.TestCase):
             self.assertEqual(res["part"], 3)
 
 
+class TestAnimeSubtitleSync(unittest.TestCase):
+    def test_curated_act_timelines(self):
+        from anime_subtitle_sync import get_episode_scene_acts, CURATED_ACT_TIMELINES
+        
+        ep_info = {"episode_key": "demon-slayer-s01e06", "display_name": "Demon Slayer S01E06"}
+        acts = get_episode_scene_acts(ep_info)
+        self.assertEqual(len(acts), 4)
+        self.assertEqual(acts[0]["time_range"], [132, 420])
+        self.assertEqual(acts[3]["time_range"], [940, 1260])
+        # Ensure chronological progression
+        for i in range(len(acts) - 1):
+            self.assertLessEqual(acts[i]["time_range"][1], acts[i+1]["time_range"][0] + 5)
+
+    def test_uncurated_dynamic_acts(self):
+        from anime_subtitle_sync import get_episode_scene_acts
+        
+        ep_info = {"episode_key": "naruto-s01e15", "display_name": "Naruto S01E15"}
+        acts = get_episode_scene_acts(ep_info, num_parts=3)
+        self.assertEqual(len(acts), 3)
+        # Verify OP theme is skipped (starts >= 120)
+        self.assertGreaterEqual(acts[0]["time_range"][0], 120)
+        # Verify ED theme is skipped (ends <= 1260)
+        self.assertLessEqual(acts[-1]["time_range"][1], 1260)
+
+    def test_script_engine_scene_sync_enforcement(self):
+        sample_ep = {
+            "series": "Demon Slayer: Kimetsu no Yaiba",
+            "series_id": "demon-slayer",
+            "season": 1,
+            "episode": 6,
+            "filename": "Demon_Slayer_Kimetsu_no_Yaiba_480P_S01_E06.mp4",
+            "episode_key": "demon-slayer-s01e06"
+        }
+        script = generate_episode_script(sample_ep)
+        self.assertEqual(script["total_parts"], 4)
+        self.assertEqual(len(script["parts"]), 4)
+        # Part 1 must cover the Mt. Sagiri departure uniform scene
+        self.assertEqual(script["parts"][0]["time_range"], [132, 420])
+        # Part 4 must cover the swamp split combat
+        self.assertEqual(script["parts"][3]["time_range"], [940, 1260])
+
+
 if __name__ == "__main__":
     unittest.main()
+

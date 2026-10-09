@@ -12,6 +12,7 @@ import re
 import urllib.request
 import urllib.error
 from pathlib import Path
+from anime_subtitle_sync import get_episode_scene_acts
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 
@@ -98,6 +99,44 @@ EPISODE_KNOWLEDGE = {
                 "cliffhanger": "Subscribe to Bhaloo Ji for Episode 6 — Tanjiro hunts the Swamp Demon!",
                 "time_range": [1207, 1370],
                 "short_title": "The First Demon Slaying Mission Begins! 🦅 | Demon Slayer S1 Ep 5 Part 5 #shorts",
+            }
+        ]
+    },
+    "demon-slayer-s01e06": {
+        "title": "Swordsman with a Demon",
+        "summary": "Tanjiro dons his Demon Slayer uniform and receives his first mission. Arriving at a northwestern town where young girls vanish every night, Tanjiro meets Kazumi and tracks the mysterious Swamp Demon beneath the earth.",
+        "parts": [
+            {
+                "part": 1,
+                "hook": "The story begins as Tanjiro gears up in the official uniform of the Demon Slayer Corps!",
+                "narration": "Tanjiro stands proudly in his brand-new Demon Slayer uniform, crafted from special resilient fibers that resist both blade cuts and fire. Master Urokodaki reveals that black Nichirin blades are an enigma—so few swordsmen who wield them have ever reached the upper echelons that their properties remain uncharted. Before parting, Urokodaki hands Tanjiro an extraordinary gift: a light-resistant box crafted from Kirin timber, allowing Nezuko to accompany him through the sunlight while sleeping peacefully inside. With Nezuko resting securely on his back, Tanjiro takes his emotional first steps down Mount Sagiri toward his fateful first mission.",
+                "cliffhanger": "Wait until you see what awaits him in the town of vanishing girls in Part 2!",
+                "time_range": [132, 420],
+                "short_title": "Tanjiro Gets His Demon Slayer Uniform! ⚔️ | Demon Slayer S1 Ep 6 Part 1 #shorts",
+            },
+            {
+                "part": 2,
+                "hook": "Young girls were vanishing into thin air every night, leaving only their terrified fiancés behind!",
+                "narration": "Reaching the town to the northwest, Tanjiro is met with an eerie atmosphere of dread. He encounters Kazumi, a devastated young man who was walking with his beloved fiancée Satoko when she vanished literally into the ground right before his eyes. Accused by the locals of causing her disappearance, Kazumi is hollow with grief. Tanjiro believes him completely. Dropping to his knees in the middle of the crowded dirt streets, Tanjiro presses his face to the cobblestones—using his supernatural sense of smell to hunt for demonic traces lurking beneath the town.",
+                "cliffhanger": "The demon strikes again from the shadows—watch Part 3 for the explosive clash!",
+                "time_range": [420, 660],
+                "short_title": "Girls Vanishing Into Thin Air! 😱 | Demon Slayer S1 Ep 6 Part 2 #shorts",
+            },
+            {
+                "part": 3,
+                "hook": "The ground turned into a pitch-black puddle, and a demonic hand dragged another girl under!",
+                "narration": "As midnight descends, another young girl is violently dragged beneath the ground into a mysterious black pool of swamp liquid. Reacting with lightning reflexes, Tanjiro lunges forward, plunging his Nichirin sword straight into the earth and hauling the unconscious victim free just in time. Emerging from the black puddle is the Swamp Demon—a grotesque creature grinding his teeth with a sickening clatter, furious that his tender prey was stolen. Tanjiro unleashes Water Breathing Eighth Form: Waterfall Basin, striking with immense downward momentum!",
+                "cliffhanger": "The demon isn't alone—watch Part 4 to see Nezuko kick into action!",
+                "time_range": [660, 940],
+                "short_title": "Water Breathing Waterfall Basin LIVE! 🌊 | Demon Slayer S1 Ep 6 Part 3 #shorts",
+            },
+            {
+                "part": 4,
+                "hook": "The Swamp Demon multiplied into three, but Nezuko's kick from the box shocked everyone!",
+                "narration": "To Tanjiro's horror, the Swamp Demon splits his body into three identical entities, submerging into the soil to surround them from all sides. Cornered while trying to defend both Kazumi and the rescued girl, Tanjiro is pushed to his limits. But right as a demon claw reaches for Kazumi's throat, the wooden box door bursts open! Nezuko awakens with glowing fangs, delivering a brutal axe kick that sends the demon flying into a stone wall! Trusting his sister to protect the humans above ground, Tanjiro takes a deep breath and dives headfirst into the swamp dimension beneath the earth to exterminate the remaining two demons!",
+                "cliffhanger": "Subscribe to Bhaloo Ji for Episode 7 — Tanjiro encounters Muzan Kibutsuji!",
+                "time_range": [940, 1260],
+                "short_title": "Nezuko Kicks The Swamp Demon! 💥 | Demon Slayer S1 Ep 6 Part 4 #shorts",
             }
         ]
     },
@@ -219,18 +258,22 @@ def generate_episode_script(episode_info: dict) -> dict:
         data = EPISODE_KNOWLEDGE[ep_key]
         return _format_script_package(episode_info, data["title"], data["summary"], data["parts"])
 
+    # Determine chronological scene acts for this episode (skipping OP and ED)
+    scene_acts = get_episode_scene_acts(episode_info, num_parts=3)
+
     # If not in cache, use LLM to generate
     system_prompt = """You are an elite anime recap narrator and scriptwriter modeling the signature style of RecapKun (@recapkun).
-Your task is to write an ultra-engaging, high-retention English episode recap divided into 3 to 4 parts for YouTube Shorts (60-120 seconds each, 200-350 words per part), alongside a cohesive full episode recap.
+Your task is to write an ultra-engaging, high-retention English episode recap divided into sequential parts for YouTube Shorts (60-120 seconds each, 200-350 words per part), alongside a cohesive full episode recap.
 
 RECAPKUN FORMULA:
 1. Every part MUST open with an immediate hook: e.g. 'The story begins as we meet...', 'Our story kicks off when...', or a shocking dilemma that immediately grabs attention.
 2. Fast-paced, high-stakes, third-person conversational storytelling ('Little did he know...', 'Before the demon could react...', 'Tanjiro was forced to make an impossible choice...').
 3. Explain power systems, combat mechanics, and character motivations clearly and dynamically without robotic filler.
 4. Keep spoken words strictly between 200 and 350 words per part for rich, detailed recaps.
-5. Provide a clickbait high-CTR Shorts title with part number and #shorts (e.g. 'He Survived the Mountain of Traps! 😱 | Demon Slayer S1 Ep 5 Part 1 #shorts').
+5. Provide a clickbait high-CTR Shorts title with part number and #shorts.
 6. Provide a comprehensive title and description for the full episode normal video.
-7. Return ONLY valid JSON matching the requested schema.
+7. CRITICAL: You MUST write each part specifically about its assigned chronological scene act, and use the EXACT time_range provided so visuals match the narration!
+8. Return ONLY valid JSON matching the requested schema.
 """
 
     prompt = f"""Write a RecapKun-style anime recap script for:
@@ -239,18 +282,21 @@ Season: {season}
 Episode: {episode}
 Filename: {episode_info.get('filename', '')}
 
+ASSIGNED CHRONOLOGICAL SCENE ACTS & TIME RANGES:
+{json.dumps(scene_acts, indent=2)}
+
 Format strictly as JSON:
 {{
   "episode_title": "Canonical title or main theme of this episode",
   "episode_summary": "1-2 sentence overview of the episode",
-  "num_parts": 3,
+  "num_parts": {len(scene_acts)},
   "parts": [
     {{
       "part": 1,
       "hook": "The story begins as... (0-3s opening hook)",
-      "narration": "Fast-paced spoken narration in RecapKun style (200-350 words)",
-      "cliffhanger": "Ending hook urging viewers to watch Part 2 and the full video",
-      "time_range": [0, 450],
+      "narration": "Fast-paced spoken narration in RecapKun style covering this act (200-350 words)",
+      "cliffhanger": "Ending hook urging viewers to watch next part and full video",
+      "time_range": {scene_acts[0]["time_range"] if scene_acts else [120, 500]},
       "short_title": "High CTR Title | {series} S{season} Ep {episode} Part 1 #shorts"
     }}
   ]
@@ -263,51 +309,59 @@ Format strictly as JSON:
             match = re.search(r'\{.*\}', llm_res, re.DOTALL)
             if match:
                 parsed = json.loads(match.group(0))
+                parts = parsed.get("parts", [])
+                # Ensure each part preserves exact scene time_range
+                for idx, p in enumerate(parts):
+                    if idx < len(scene_acts) and ("time_range" not in p or p["time_range"] == [0, 450]):
+                        p["time_range"] = scene_acts[idx]["time_range"]
                 return _format_script_package(
                     episode_info,
                     parsed.get("episode_title", f"{series} Episode {episode}"),
                     parsed.get("episode_summary", f"Full recap of {series} Season {season} Episode {episode}"),
-                    parsed.get("parts", [])
+                    parts
                 )
-        except Exception as e:
+        except Exception:
             pass
 
     # Heuristic fallback if LLM is unavailable
-    return _generate_heuristic_script(episode_info)
+    return _generate_heuristic_script(episode_info, scene_acts)
 
 
-def _generate_heuristic_script(episode_info: dict) -> dict:
-    """Intelligent narrative breakdown for unmapped episodes."""
+def _generate_heuristic_script(episode_info: dict, scene_acts: list[dict] = None) -> dict:
+    """Intelligent narrative breakdown for unmapped episodes with scene-synced timestamps."""
     series = episode_info.get("series", "Anime")
     season = episode_info.get("season", 1)
     episode = episode_info.get("episode", 1)
 
-    parts = [
-        {
-            "part": 1,
-            "hook": f"What happens in {series} Season {season} Episode {episode} completely changes the entire battle!",
-            "narration": f"The episode kicks off right in the middle of escalating tension. As our heroes advance into danger, enemy forces unleash unexpected techniques that catch everyone completely off guard. Every move is calculated, but the sheer difference in power is suffocating. Just when a counterattack seems possible, a shocking reveal turns the tide!",
-            "cliffhanger": f"Wait until you see how they survive this attack in Part 2!",
-            "time_range": [0, 450],
-            "short_title": f"The Shocking Opening of {series}! 💥 | S{season} Ep {episode} Part 1 #shorts"
-        },
-        {
-            "part": 2,
-            "hook": "They were pushed to their absolute limits, and had to unleash everything!",
-            "narration": f"With no room for hesitation, the battlefield explodes into high-speed combat. Blow for blow, neither side gives an inch as animation quality peaks. The emotional stakes reach a boiling point when a secret vulnerability is exposed, forcing a life-or-death gamble.",
-            "cliffhanger": "Did their ultimate gamble pay off? Check Part 3 right now!",
-            "time_range": [450, 900],
-            "short_title": f"The Ultimate Power Revealed! 🔥 | {series} S{season} Ep {episode} Part 2 #shorts"
-        },
-        {
-            "part": 3,
-            "hook": "The climax of this episode will leave your jaw on the floor!",
-            "narration": f"In a final explosive clash, the decisive strike lands. The dust settles to reveal who survived and the heavy cost of victory. But the final seconds deliver a chilling revelation that sets up the next episode in the most hype way possible!",
-            "cliffhanger": f"Subscribe to Bhaloo Ji for Episode {episode + 1} next!",
-            "time_range": [900, 1400],
-            "short_title": f"The Insane Ending Explained! 🏆 | {series} S{season} Ep {episode} Part 3 #shorts"
-        }
+    if not scene_acts:
+        scene_acts = get_episode_scene_acts(episode_info, num_parts=3)
+
+    parts = []
+    default_hooks = [
+        f"What happens in {series} Season {season} Episode {episode} completely changes the entire battle!",
+        "They were pushed to their absolute limits, and had to unleash everything!",
+        "The climax of this episode will leave your jaw on the floor!",
+        "A shocking twist turns the battlefield upside down!"
     ]
+    default_narrations = [
+        f"The episode kicks off right in the middle of escalating tension. As our heroes advance into danger, enemy forces unleash unexpected techniques that catch everyone completely off guard. Every move is calculated, but the sheer difference in power is suffocating. Just when a counterattack seems possible, a shocking reveal turns the tide!",
+        "With no room for hesitation, the battlefield explodes into high-speed combat. Blow for blow, neither side gives an inch as animation quality peaks. The emotional stakes reach a boiling point when a secret vulnerability is exposed, forcing a life-or-death gamble.",
+        "In a final explosive clash, the decisive strike lands. The dust settles to reveal who survived and the heavy cost of victory. But the final seconds deliver a chilling revelation that sets up the next episode in the most hype way possible!",
+        "As the dust settles, enemy reinforcements loom on the horizon, leaving everyone with an impossible ultimatum."
+    ]
+
+    for idx, act in enumerate(scene_acts):
+        p_num = act.get("part", idx + 1)
+        tr = act.get("time_range", [120 + (idx * 300), 120 + ((idx + 1) * 300)])
+        theme = act.get("theme", f"Act {p_num}")
+        parts.append({
+            "part": p_num,
+            "hook": default_hooks[idx % len(default_hooks)],
+            "narration": f"{default_narrations[idx % len(default_narrations)]} Focusing on {theme}.",
+            "cliffhanger": f"Check Part {p_num + 1} right now!" if p_num < len(scene_acts) else f"Subscribe to Bhaloo Ji for Episode {episode + 1} next!",
+            "time_range": tr,
+            "short_title": f"The Shocking Clashes of {series}! 💥 | S{season} Ep {episode} Part {p_num} #shorts"
+        })
 
     return _format_script_package(
         episode_info,
