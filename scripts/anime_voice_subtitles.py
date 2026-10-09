@@ -29,9 +29,29 @@ def format_ass_time(seconds: float) -> str:
     return f"{hours}:{minutes:02d}:{secs:02d}.{centis:02d}"
 
 
-def build_ass_header(font_name: str = "DejaVu Sans Bold") -> str:
-    """Generate ASS header configured for 1080x1920 vertical canvas."""
-    return f"""[Script Info]
+def build_ass_header(font_name: str = "DejaVu Sans Bold", is_landscape: bool = False) -> str:
+    """Generate ASS header configured for 1080x1920 vertical canvas or 1920x1080 landscape canvas."""
+    if is_landscape:
+        # 16:9 Widescreen (1920x1080) for Full Episode Videos
+        # Bottom-third placement (Alignment: 2, MarginV: 90, Fontsize: 52)
+        return f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+ScaledBorderAndShadow: yes
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,{font_name},52,&H00FFFFFF,&H0000FFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,4.0,2.0,2,80,80,90,1
+Style: CardHeader,{font_name},32,&H00FFFFFF,&H0000FFFF,&H00000000,&HB0000000,-1,0,0,0,100,100,2,0,1,3.0,1.0,8,80,80,60,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    else:
+        # 9:16 Vertical (1080x1920) for YouTube Shorts
+        return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
 PlayResY: 1920
@@ -48,15 +68,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
 
-def cues_to_ass(word_cues: list[dict], badge_text: str = "") -> str:
+def cues_to_ass(word_cues: list[dict], badge_text: str = "", is_landscape: bool = False) -> str:
     """
     Convert word-level timing cues into animated karaoke subtitle events.
     word_cues: list of {'word': str, 'start': float, 'end': float}
     """
-    ass_lines = [build_ass_header()]
+    ass_lines = [build_ass_header(is_landscape=is_landscape)]
 
-    # If badge text is provided, show permanent stylish top header
-    if badge_text and word_cues:
+    # If badge text is provided and NOT in landscape, show permanent stylish top header
+    if badge_text and word_cues and not is_landscape:
         start_time = "0:00:00.00"
         end_time = format_ass_time(word_cues[-1]["end"] + 0.5)
         # Top pill badge
@@ -65,14 +85,15 @@ def cues_to_ass(word_cues: list[dict], badge_text: str = "") -> str:
     if not word_cues:
         return "\n".join(ass_lines)
 
-    # Group words into short readable chunks (3 to 5 words)
+    # Group words into readable chunks (7-8 words for landscape, 3-4 for vertical)
+    max_chunk = 7 if is_landscape else 4
     chunks = []
     current_chunk = []
     for cue in word_cues:
         current_chunk.append(cue)
         clean_text = cue["word"].strip()
-        # Break on punctuation or after 4 words
-        if len(current_chunk) >= 4 or any(clean_text.endswith(p) for p in [".", "!", "?", ","]):
+        # Break on punctuation or after max_chunk words
+        if len(current_chunk) >= max_chunk or any(clean_text.endswith(p) for p in [".", "!", "?", ","]):
             chunks.append(current_chunk)
             current_chunk = []
     if current_chunk:
@@ -90,7 +111,8 @@ def cues_to_ass(word_cues: list[dict], badge_text: str = "") -> str:
                 raw_word = cue["word"].strip().upper()
                 if j == idx:
                     # Active word: Yellow-gold glow, pop-in scale
-                    words_formatted.append(f"{{\\c&H0000FFFF&\\t(0,70,\\fscx112\\fscy112)}}{raw_word}{{\\rDefault}}")
+                    scale_tag = "\\fscx108\\fscy108" if is_landscape else "\\fscx112\\fscy112"
+                    words_formatted.append(f"{{\\c&H0000FFFF&\\t(0,70,{scale_tag})}}{raw_word}{{\\rDefault}}")
                 else:
                     words_formatted.append(f"{{\\c&H00FFFFFF&}}{raw_word}")
 
@@ -107,6 +129,7 @@ async def generate_voice_and_subtitles(
     badge_text: str = "",
     voice: str = DEFAULT_VOICE,
     rate: str = DEFAULT_RATE,
+    is_landscape: bool = False,
 ) -> dict:
     """
     Generate audio and word-aligned ASS subtitles using Edge-TTS.
@@ -155,7 +178,7 @@ async def generate_voice_and_subtitles(
                 })
                 cur_offset += w_dur
 
-    ass_content = cues_to_ass(word_cues, badge_text=badge_text)
+    ass_content = cues_to_ass(word_cues, badge_text=badge_text, is_landscape=is_landscape)
     with open(output_ass_path, "w", encoding="utf-8") as f:
         f.write(ass_content)
 
@@ -176,6 +199,7 @@ def produce_part_audio_subtitles(
     badge_text: str = "",
     voice: str = DEFAULT_VOICE,
     rate: str = DEFAULT_RATE,
+    is_landscape: bool = False,
 ) -> dict:
     """Synchronous wrapper for generate_voice_and_subtitles."""
     return asyncio.run(
@@ -186,6 +210,7 @@ def produce_part_audio_subtitles(
             badge_text=badge_text,
             voice=voice,
             rate=rate,
+            is_landscape=is_landscape,
         )
     )
 

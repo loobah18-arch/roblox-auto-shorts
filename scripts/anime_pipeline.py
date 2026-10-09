@@ -127,15 +127,16 @@ def run_pipeline(
         duration = voice_res["duration"]
         log(f"Voiceover duration: {duration:.2f}s ({voice_res['word_count']} words)")
 
-        # Render Short Part Video
+        # Render Short Part Video (9:16 vertical as it is)
         assemble_success = assemble_short_part(
             raw_video_path=raw_video_path,
             voice_audio_path=audio_file,
             ass_subtitle_path=ass_file,
             output_video_path=video_file,
-            time_window=tuple(part_info.get("time_range", [0, 450])),
+            time_window=tuple(part_info.get("time_range", [90, 450])),
             total_duration=duration,
             bgm_path=bgm_path,
+            is_landscape=False,
             dry_run=dry_run,
         )
 
@@ -174,11 +175,40 @@ def run_pipeline(
             json.dump(pipeline_result, f, indent=2)
         return pipeline_result
 
-    # 5. Stitch into Full Episode Video
-    log("\n=== Stitching All Parts into Full Episode Video ===")
+    # 5. Render Landscape Parts and Stitch into Full Landscape Episode Video
+    log("\n=== Rendering Landscape Parts & Stitching into Full Episode Video ===")
     full_video_file = ep_work_dir / f"full_{target_ep['episode_key']}.mp4"
+    rendered_landscape_videos = []
+    for part_info in script_package["parts"]:
+        p_num = part_info["part"]
+        p_dir = ep_work_dir / f"part_{p_num:02d}"
+        audio_file = p_dir / "voice.mp3"
+        ass_land_file = p_dir / "subtitles_landscape.ass"
+        vid_land_file = p_dir / f"landscape_{target_ep['episode_key']}_part{p_num}.mp4"
+
+        produce_part_audio_subtitles(
+            text=part_info["narration"],
+            output_audio_path=audio_file,
+            output_ass_path=ass_land_file,
+            badge_text="",
+            voice=voice,
+            is_landscape=True,
+        )
+        assemble_short_part(
+            raw_video_path=raw_video_path,
+            voice_audio_path=audio_file,
+            ass_subtitle_path=ass_land_file,
+            output_video_path=vid_land_file,
+            time_window=tuple(part_info.get("time_range", [90, 450])),
+            total_duration=part_info.get("estimated_duration", 60.0),
+            bgm_path=bgm_path,
+            is_landscape=True,
+            dry_run=dry_run,
+        )
+        rendered_landscape_videos.append(vid_land_file)
+
     stitch_success = stitch_full_episode_video(
-        part_video_paths=rendered_part_videos,
+        part_video_paths=rendered_landscape_videos,
         output_full_path=full_video_file,
         dry_run=dry_run,
     )
@@ -285,7 +315,7 @@ def run_daily_funnel(
         elif dry_run:
             download_gdrive_episode(target_ep["gdrive_file_id"], raw_video_path, dry_run=True)
 
-        # Render all parts and stitch Full Normal Video (16:9 widescreen)
+        # Render all parts in true 16:9 Landscape (1920x1080) and stitch Full Normal Video
         rendered_part_videos = []
         parts_meta = []
         for part_info in script_package["parts"]:
@@ -293,38 +323,40 @@ def run_daily_funnel(
             p_dir = ep_work_dir / f"part_{p_num:02d}"
             p_dir.mkdir(parents=True, exist_ok=True)
             audio_f = p_dir / "voice.mp3"
-            ass_f = p_dir / "subtitles.ass"
-            vid_f = p_dir / f"short_{ep_key}_part{p_num}.mp4"
+            ass_f = p_dir / "subtitles_landscape.ass"
+            vid_f = p_dir / f"landscape_{ep_key}_part{p_num}.mp4"
 
             v_res = produce_part_audio_subtitles(
                 text=part_info["narration"],
                 output_audio_path=audio_f,
                 output_ass_path=ass_f,
-                badge_text=part_info["badge"],
+                badge_text="",  # Clean presentation for landscape full movie recap
                 voice=voice,
+                is_landscape=True,
             )
             assemble_short_part(
                 raw_video_path=raw_video_path,
                 voice_audio_path=audio_f,
                 ass_subtitle_path=ass_f,
                 output_video_path=vid_f,
-                time_window=tuple(part_info.get("time_range", [0, 450])),
+                time_window=tuple(part_info.get("time_range", [90, 450])),
                 total_duration=v_res["duration"],
                 bgm_path=bgm_path,
+                is_landscape=True,
                 dry_run=dry_run,
             )
             part_meta = {
                 "part": p_num,
-                "title": part_info["short_title"],
+                "title": part_info.get("short_title", f"Part {p_num}"),
                 "video_path": str(vid_f),
-                "hashtags": part_info["hashtags"],
-                "description": part_info["description"],
+                "hashtags": part_info.get("hashtags", []),
+                "description": part_info.get("description", ""),
                 "status": "rendered",
             }
             parts_meta.append(part_meta)
             rendered_part_videos.append(vid_f)
 
-        # Stitch 16:9 Full Normal Video
+        # Stitch 16:9 Full Normal Video (true fullscreen landscape)
         full_video_f = ep_work_dir / f"full_{ep_key}.mp4"
         stitch_full_episode_video(
             part_video_paths=rendered_part_videos,
@@ -379,9 +411,48 @@ def run_daily_funnel(
     script_package = active_ep.get("script_package", {})
     total_parts = active_ep.get("total_parts", len(script_package.get("parts", [])))
 
-    # If Normal Video not yet uploaded, retry normal video
+    # If Normal Video not yet uploaded, ensure full landscape video is rendered
     if not active_ep.get("normal_video_uploaded") and not dry_run:
         full_video_f = ep_work_dir / f"full_{ep_key}.mp4"
+        if not full_video_f.exists() or full_video_f.stat().st_size < 1024 * 100:
+            raw_video_path = CACHE_DIR / active_ep.get("filename", f"{ep_key}.mp4")
+            if not raw_video_path.exists():
+                download_gdrive_episode(active_ep.get("gdrive_file_id", ""), raw_video_path, dry_run=dry_run)
+            if not bgm_path or not Path(bgm_path).exists():
+                bgm_path = pick_bgm_for_episode(series_id=active_ep.get("series_id"))
+
+            rendered_landscape = []
+            for part_info in script_package.get("parts", []):
+                p_num = part_info["part"]
+                p_dir = ep_work_dir / f"part_{p_num:02d}"
+                p_dir.mkdir(parents=True, exist_ok=True)
+                audio_f = p_dir / "voice.mp3"
+                ass_f = p_dir / "subtitles_landscape.ass"
+                vid_f = p_dir / f"landscape_{ep_key}_part{p_num}.mp4"
+
+                v_res = produce_part_audio_subtitles(
+                    text=part_info["narration"],
+                    output_audio_path=audio_f,
+                    output_ass_path=ass_f,
+                    badge_text="",
+                    voice=voice,
+                    is_landscape=True,
+                )
+                assemble_short_part(
+                    raw_video_path=raw_video_path,
+                    voice_audio_path=audio_f,
+                    ass_subtitle_path=ass_f,
+                    output_video_path=vid_f,
+                    time_window=tuple(part_info.get("time_range", [90, 450])),
+                    total_duration=v_res["duration"],
+                    bgm_path=bgm_path,
+                    is_landscape=True,
+                    dry_run=dry_run,
+                )
+                rendered_landscape.append(vid_f)
+
+            stitch_full_episode_video(rendered_landscape, full_video_f, dry_run=dry_run)
+
         full_meta = {
             "title": script_package.get("full_video", {}).get("title", f"{ep_key} Full Recap"),
             "video_path": str(full_video_f),
@@ -466,9 +537,10 @@ def run_daily_funnel(
         voice_audio_path=audio_f,
         ass_subtitle_path=ass_f,
         output_video_path=vid_f,
-        time_window=tuple(part_info.get("time_range", [0, 450])),
+        time_window=tuple(part_info.get("time_range", [90, 450])),
         total_duration=v_res["duration"],
         bgm_path=bgm_path,
+        is_landscape=False,
         dry_run=dry_run,
     )
 

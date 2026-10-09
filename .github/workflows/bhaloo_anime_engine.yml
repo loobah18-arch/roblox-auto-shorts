@@ -28,9 +28,9 @@ on:
           - "daily"
           - "full"
       upload_to_youtube:
-        description: "Upload rendered Shorts & Full Video to YouTube (default: true)"
+        description: "Upload rendered Shorts & Full Video to YouTube (default: false - disabled during development)"
         required: false
-        default: true
+        default: false
         type: boolean
       privacy:
         description: "YouTube upload privacy status"
@@ -99,7 +99,7 @@ jobs:
           python3 scripts/anime_pipeline.py "${ARGS[@]}"
 
       - name: 📺 Upload to YouTube
-        if: ${{ inputs.upload_to_youtube != false || (github.event_name == 'schedule' && github.ref_name == 'main') }}
+        if: ${{ inputs.upload_to_youtube == true }}
         env:
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}

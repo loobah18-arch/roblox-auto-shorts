@@ -92,6 +92,18 @@ class TestAnimeSubtitles(unittest.TestCase):
         self.assertIn("TANJIRO", ass_str)
         self.assertIn("\\c&H0000FFFF&", ass_str)  # Highlight color tag
 
+    def test_landscape_cues_to_ass(self):
+        mock_cues = [
+            {"word": "Tanjiro", "start": 0.1, "end": 0.5},
+            {"word": "draws", "start": 0.5, "end": 1.0},
+            {"word": "sword", "start": 1.0, "end": 1.5},
+        ]
+        ass_str = cues_to_ass(mock_cues, is_landscape=True)
+        self.assertIn("PlayResX: 1920", ass_str)
+        self.assertIn("PlayResY: 1080", ass_str)
+        self.assertIn("90,1", ass_str)  # MarginV: 90 for bottom third
+        self.assertNotIn("•", ass_str)  # No top badge bullet in clean landscape movie recap
+
 
 class TestAnimeVideoFiltergraph(unittest.TestCase):
     def test_filtergraph_construction(self):
@@ -118,6 +130,15 @@ class TestAnimeVideoFiltergraph(unittest.TestCase):
         res = subprocess.run(cmd, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f"FFmpeg filtergraph failed: {res.stderr}")
 
+    def test_landscape_filtergraph_construction(self):
+        from anime_video_engine import build_landscape_ffmpeg_filtergraph
+        fg = build_landscape_ffmpeg_filtergraph(has_subtitles=True, ass_path="/tmp/test.ass")
+        self.assertIn("scale=1920:1080", fg)
+        self.assertIn("pad=1920:1080", fg)
+        self.assertIn("ass='/tmp/test.ass'", fg)
+        self.assertIn("eq=contrast=1.06", fg)
+        self.assertNotIn("boxblur", fg)  # Pure fullscreen landscape without side blur bars!
+
     def test_assemble_short_part_dry_run(self):
         from anime_video_engine import assemble_short_part
         res = assemble_short_part(
@@ -127,6 +148,7 @@ class TestAnimeVideoFiltergraph(unittest.TestCase):
             output_video_path="/tmp/fake_out.mp4",
             time_window=(0, 450),
             total_duration=45.0,
+            is_landscape=True,
             dry_run=True,
         )
         self.assertTrue(res)
@@ -143,6 +165,7 @@ class TestAnimeVideoFiltergraph(unittest.TestCase):
     def test_bgm_asset_exists(self):
         from anime_video_engine import DEFAULT_BGM_PATH
         self.assertTrue(DEFAULT_BGM_PATH.exists(), f"Default BGM not found: {DEFAULT_BGM_PATH}")
+        self.assertEqual(DEFAULT_BGM_PATH.name, "aerohead_fragments_recap.mp3")
 
 
 class TestAnimeUploader(unittest.TestCase):
@@ -250,8 +273,17 @@ class TestDailyFunnel(unittest.TestCase):
             "uploaded_parts": [],
         }
 
+        mock_script = {
+            "total_parts": 3,
+            "parts": [
+                {"part": 1, "hook": "H1", "narration": "N1", "short_title": "T1 #shorts", "hashtags": ["anime"], "badge": "PART 1/3"},
+            ],
+            "full_video": {"title": "Demon Slayer Season 1 Episode 2 Full Recap & Explanation | Trainer Urokodaki", "chapters": [], "description": "desc", "hashtags": ["anime"]}
+        }
+
         with patch("anime_pipeline.load_history", return_value=mock_history), \
              patch("anime_pipeline.save_history") as mock_save, \
+             patch("anime_pipeline.generate_episode_script", return_value=mock_script), \
              patch("anime_pipeline.produce_part_audio_subtitles", return_value={"duration": 45.0, "word_count": 150}):
             res = run_daily_funnel(dry_run=True)
             self.assertEqual(res["status"], "success")

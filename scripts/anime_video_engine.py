@@ -25,10 +25,11 @@ WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = WORKSPACE_DIR / "output"
 CACHE_DIR = WORKSPACE_DIR / "cache"
 BGM_DIR = WORKSPACE_DIR / "assets" / "bgm"
-DEFAULT_BGM_PATH = BGM_DIR / "cinematic_suspense_thriller.mp3"
+DEFAULT_BGM_PATH = BGM_DIR / "aerohead_fragments_recap.mp3"
 
 # Royalty-free BGM library with mood/genre classification
 BGM_LIBRARY = {
+    "recapkun":     "aerohead_fragments_recap.mp3",      # Iconic RecapKun chill ambient recap track (AERØHEAD - Fragments)
     "action":       "cinematic_suspense_thriller.mp3",   # High-action battles & reveals
     "drone":        "cinematic_suspense_drone.mp3",       # Tense build-up moments
     "emotional":    "sad_cinematic_piano.mp3",            # Tragic / emotional scenes
@@ -39,18 +40,18 @@ BGM_LIBRARY = {
     "snowfall":     "snowfall_calm_aesthetic.mp3",        # Sad / reflective moments
 }
 
-# Per-series default BGM mapping (mood auto-selection)
+# Per-series default BGM mapping (RecapKun AERØHEAD by default)
 SERIES_BGM_MAP = {
-    "demon-slayer":      "action",
-    "jujutsu-kaisen":    "dark",
-    "default":           "action",
+    "demon-slayer":      "recapkun",
+    "jujutsu-kaisen":    "recapkun",
+    "default":           "recapkun",
 }
 
 
 def pick_bgm_for_episode(series_id: str | None = None, mood: str | None = None) -> Path:
     """
     Auto-select a royalty-free BGM track based on series or explicit mood.
-    Falls back to the default cinematic_suspense_thriller.mp3.
+    Falls back to the RecapKun default aerohead_fragments_recap.mp3.
     """
     if mood and mood in BGM_LIBRARY:
         track = BGM_LIBRARY[mood]
@@ -94,6 +95,30 @@ def download_gdrive_episode(file_id: str, dest_path: str | Path, dry_run: bool =
     except Exception as e:
         log(f"Drive download failed: {e}")
         return False
+
+
+def build_landscape_ffmpeg_filtergraph(
+    has_subtitles: bool = True,
+    ass_path: str = "",
+    mirror: bool = False,
+) -> str:
+    """
+    Constructs the 16:9 Landscape Fullscreen (1920x1080) anti-copyright FFmpeg filtergraph:
+    - 16:9 widescreen canvas (1920x1080)
+    - Anime footage fills widescreen frame with cinematic film color grade & subtle contrast
+    - Bottom-third dynamic ASS karaoke subtitles (no blurred sidebars!)
+    """
+    flip_filter = "hflip," if mirror else ""
+    filter_chain = (
+        f"[0:v]{flip_filter}eq=contrast=1.06:brightness=-0.02:saturation=1.12,"
+        f"scale=1920:1080:force_original_aspect_ratio=decrease,"
+        f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1"
+    )
+    if has_subtitles and ass_path:
+        escaped_ass = ass_path.replace(":", "\\:").replace("'", "\\'")
+        return f"{filter_chain},ass='{escaped_ass}'[v]"
+    else:
+        return f"{filter_chain}[v]"
 
 
 def build_ffmpeg_filtergraph(
@@ -149,15 +174,17 @@ def assemble_short_part(
     time_window: tuple[float, float],
     total_duration: float,
     bgm_path: str | Path | None = None,
+    is_landscape: bool = False,
     dry_run: bool = False,
 ) -> bool:
     """
-    Renders an individual Short part with comprehensive anti-copyright tactics:
+    Renders an individual part with comprehensive anti-copyright tactics:
+    - If is_landscape=True: 16:9 Landscape Fullscreen (1920x1080) for Full Long-Form Videos.
+    - If is_landscape=False: 9:16 Vertical Canvas (1080x1920) for YouTube Shorts.
     1. 100% Original Anime Audio Stripped (-an) - Zero music/OST/dialogue claims.
-    2. Rapid Dynamic Scene Slicing (< 2.8s per cut) - Bypasses visual Content ID matching.
-    3. Strict OP/ED Cutoff - Never samples opening or ending theme songs (0-3m and 21-24m).
-    4. Royalty-Free BGM mixed cleanly behind crystal-clear voiceover.
-    5. High-retention 9:16 Canvas (Blurred 1080x1920 bg + 1040x584 card + dynamic ASS subtitles).
+    2. Scene-Synchronized Slicing - Slices footage strictly within the narrative scene's timeframe.
+    3. Rapid Dynamic Cuts (< 2.8s per cut) - Bypasses visual Content ID matching.
+    4. Royalty-Free BGM (RecapKun AERØHEAD) mixed cleanly behind crystal-clear voiceover.
     """
     raw_video = Path(raw_video_path)
     voice_audio = Path(voice_audio_path)
@@ -165,20 +192,18 @@ def assemble_short_part(
     output_video = Path(output_video_path)
     output_video.parent.mkdir(parents=True, exist_ok=True)
 
+    mode_label = "Landscape (16:9)" if is_landscape else "Short (9:16)"
     if dry_run:
-        log(f"[DRY-RUN] Simulating Short render for window {time_window} -> {output_video.name}")
+        log(f"[DRY-RUN] Simulating {mode_label} render for window {time_window} -> {output_video.name}")
         return True
 
-    # 1. Anti-Copyright Timeline Clamping: Exclude Opening (0-3m) & Ending (21-24m) themes
+    # 1. Timeline Clamping for the specific scene: Keep within scene boundaries
     w_start, w_end = time_window
-    safe_start = max(180.0, float(w_start))
-    safe_end = min(1260.0, float(w_end))
-    if safe_end <= safe_start + 45.0:
-        safe_start = 180.0
-        safe_end = 1260.0
+    safe_start = max(60.0, float(w_start))
+    safe_end = max(safe_start + 30.0, float(w_end))
 
-    # 2. Compute 12-18 rapid dynamic scene cuts (< 2.8s each) across safe timeline
-    window_length = max(60.0, safe_end - safe_start)
+    # 2. Compute rapid dynamic scene cuts (< 2.8s each) across this scene's timeline
+    window_length = max(30.0, safe_end - safe_start)
     cut_len = 2.4  # Ideal rapid cut length to break visual fingerprinting
     num_cuts = max(8, int(total_duration / cut_len) + 1)
     step = (window_length - cut_len) / max(1, num_cuts)
@@ -188,7 +213,7 @@ def assemble_short_part(
     slice_files = []
     current_time = 0.0
 
-    log(f"Composing Short: Slicing {num_cuts} rapid dynamic cuts (~{cut_len:.1f}s each) between {safe_start:.1f}s and {safe_end:.1f}s (zero raw audio)...")
+    log(f"Composing {mode_label}: Slicing {num_cuts} scene-synced cuts (~{cut_len:.1f}s each) between {safe_start:.1f}s and {safe_end:.1f}s...")
 
     try:
         for idx in range(num_cuts):
@@ -202,15 +227,25 @@ def assemble_short_part(
 
             # Anti-copyright visual variance:
             # Cut 0: dramatic hook punch-in zoom
-            # Alternate cuts: subtle zoom (1.06x) and gentle mirror
-            if idx == 0:
-                vf_slice = "scale=1360:765:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
-            elif idx % 4 == 1:
-                vf_slice = "scale=1320:742:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
-            elif idx % 4 == 3:
-                vf_slice = "hflip,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+            # Alternate cuts: subtle zoom and gentle mirror
+            if is_landscape:
+                if idx == 0:
+                    vf_slice = "scale=2040:1148:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                elif idx % 4 == 1:
+                    vf_slice = "scale=1980:1114:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                elif idx % 4 == 3:
+                    vf_slice = "hflip,scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                else:
+                    vf_slice = "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
             else:
-                vf_slice = "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+                if idx == 0:
+                    vf_slice = "scale=1360:765:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+                elif idx % 4 == 1:
+                    vf_slice = "scale=1320:742:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+                elif idx % 4 == 3:
+                    vf_slice = "hflip,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+                else:
+                    vf_slice = "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
 
             cmd_slice = [
                 "ffmpeg", "-y",
@@ -253,12 +288,19 @@ def assemble_short_part(
             log(f"Slice concat failed: {res_cat.stderr[-300:]}")
             return False
 
-        # 3. Canvas Compositor (9:16 vertical canvas + subtitles + audio)
-        filtergraph = build_ffmpeg_filtergraph(
-            has_subtitles=ass_subs.exists(),
-            ass_path=str(ass_subs.resolve()),
-            mirror=False,
-        )
+        # 3. Canvas Compositor (Landscape 16:9 or Vertical 9:16)
+        if is_landscape:
+            filtergraph = build_landscape_ffmpeg_filtergraph(
+                has_subtitles=ass_subs.exists(),
+                ass_path=str(ass_subs.resolve()),
+                mirror=False,
+            )
+        else:
+            filtergraph = build_ffmpeg_filtergraph(
+                has_subtitles=ass_subs.exists(),
+                ass_path=str(ass_subs.resolve()),
+                mirror=False,
+            )
 
         # Default BGM fallback
         if not bgm_path or not Path(bgm_path).exists():
@@ -322,6 +364,10 @@ def assemble_short_part(
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+# Alias for flexible calling
+assemble_part = assemble_short_part
+
+
 def stitch_full_episode_video(
     part_video_paths: list[str | Path],
     output_full_path: str | Path,
@@ -350,37 +396,37 @@ def stitch_full_episode_video(
         for p in valid_parts:
             f.write(f"file '{p.resolve()}'\n")
 
-    # 16:9 cinematic widescreen layout for Long-Form YouTube Video (1920x1080):
-    # Centered vertical part (scaled to 1080 height) over ambient blurred 1920x1080 background.
-    # Widescreen (16:9) guarantees YouTube routes it to the "Videos" (Long-Form) tab,
-    # completely bypassing Shorts copyright length limits!
-    filtergraph_16_9 = (
-        "[0:v]split=2[fg][bg];"
-        "[bg]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,boxblur=25:5,eq=brightness=-0.15[bg_blur];"
-        "[fg]scale=-2:1080[fg_fit];"
-        "[bg_blur][fg_fit]overlay=(W-w)/2:(H-h)/2[v]"
-    )
-
-    cmd = [
+    # Concat landscape parts directly into Full Long-Form Video (1920x1080)
+    # Uses fast streamcopy first, with seamless re-encode fallback
+    cmd_copy = [
         "ffmpeg", "-y",
         "-f", "concat",
         "-safe", "0",
         "-i", str(concat_list_file),
-        "-filter_complex", filtergraph_16_9,
-        "-map", "[v]",
-        "-map", "0:a?",
-        "-c:v", "libx264",
-        "-preset", "faster",
-        "-crf", "21",
-        "-c:a", "aac",
-        "-b:a", "192k",
+        "-c", "copy",
         "-movflags", "+faststart",
         str(output_full)
     ]
 
-    log(f"Stitching {len(valid_parts)} parts into Full Video: {output_full.name}...")
+    log(f"Stitching {len(valid_parts)} parts into Full Landscape Video: {output_full.name}...")
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = subprocess.run(cmd_copy, capture_output=True, text=True)
+        if res.returncode != 0 or not output_full.exists() or output_full.stat().st_size < 1024 * 50:
+            log(f"Direct streamcopy concat failed, falling back to full re-encode...")
+            cmd_reencode = [
+                "ffmpeg", "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(concat_list_file),
+                "-c:v", "libx264",
+                "-preset", "faster",
+                "-crf", "21",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-movflags", "+faststart",
+                str(output_full)
+            ]
+            res = subprocess.run(cmd_reencode, capture_output=True, text=True)
         if res.returncode != 0:
             log(f"Stitch error: {res.stderr[-500:]}")
             if output_full.exists():
