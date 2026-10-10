@@ -66,11 +66,50 @@ def evaluate_frame_alignment(
     )
 
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
     openrouter_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-    # 1. Try Gemini REST API
+    # 1. Try Groq Vision API (Llama 3.2 Vision)
+    if groq_key:
+        groq_models = ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"]
+        for m in groq_models:
+            try:
+                payload = {
+                    "model": m,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
+                                }
+                            ]
+                        }
+                    ],
+                    "temperature": 0.2,
+                    "response_format": {"type": "json_object"}
+                }
+                req = urllib.request.Request(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={
+                        "Authorization": f"Bearer {groq_key}",
+                        "Content-Type": "application/json",
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    text = data["choices"][0]["message"]["content"]
+                    return json.loads(text.strip())
+            except Exception as e:
+                log(f"Groq {m} vision failed: {e}")
+                continue
+
+    # 2. Try Gemini REST API
     if gemini_key:
-        models = ["gemini-2.5-flash", "gemini-1.5-flash"]
+        models = ["gemini-2.0-flash", "gemini-1.5-flash"]
         for m in models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={gemini_key}"
             payload = {
@@ -109,7 +148,7 @@ def evaluate_frame_alignment(
                 log(f"Gemini {m} vision failed: {e}")
                 continue
 
-    # 2. Try OpenRouter multimodal vision
+    # 3. Try OpenRouter multimodal vision
     if openrouter_key:
         or_models = [
             "google/gemini-2.0-flash-001",
