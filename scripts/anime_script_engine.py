@@ -109,15 +109,15 @@ EPISODE_KNOWLEDGE = {
             {
                 "part": 1,
                 "hook": "The story begins as Tanjiro gears up in the official uniform of the Demon Slayer Corps!",
-                "narration": "Tanjiro stands proudly in his brand-new Demon Slayer uniform, crafted from special resilient fibers that resist both blade cuts and fire. Master Urokodaki reveals that black Nichirin blades are an enigma—so few swordsmen who wield them have ever reached the upper echelons that their properties remain uncharted. Before parting, Urokodaki hands Tanjiro an extraordinary gift: a light-resistant box crafted from Kirin timber, allowing Nezuko to accompany him through the sunlight while sleeping peacefully inside. With Nezuko resting securely on his back, Tanjiro takes his emotional first steps down Mount Sagiri toward his fateful first mission.",
-                "cliffhanger": "Wait until you see what awaits him in the town of vanishing girls in Part 2!",
+                "narration": "The journey of a true demon slayer begins in earnest as Tanjiro Kamado stands before Master Sakonji Urokodaki, officially donning the black uniform of the Demon Slayer Corps. Woven from extraordinary, resilient fibers, this uniform is far more than standard attire—it is an impenetrable weave designed to repel minor demon claws, water, and fire, while remaining breathable in high-intensity combat. As Tanjiro fastens his checkered haori over the uniform, Urokodaki shares crucial insight regarding the dark Nichirin blade hanging at his hip. Throughout the centuries-long history of the Corps, pitch-black blades have remained one of the most enigmatic mysteries; so few swordsmen who wielded them ever lived long enough to record their true strengths or master an advanced breathing branch. But before sending his pupil out into the brutal world, the former Water Hashira presents Tanjiro with an invaluable parting gift: a custom-crafted wooden box fashioned from sacred Kirin timber. Coated in natural lacquer, this reinforced box is completely light-resistant, enabling Nezuko to travel safely through harsh sunlight while resting inside in a mystical sleep. With his sister securely hoisted onto his back and Urokodaki's silent blessing behind him, Tanjiro begins his descent from Mount Sagiri, stepping onto the perilous road where humans and demons collide.",
+                "cliffhanger": "Will Tanjiro find the missing girls in the northwestern town? Watch Part 2!",
                 "time_range": [132, 420],
                 "short_title": "Tanjiro Gets His Demon Slayer Uniform! ⚔️ | Demon Slayer S1 Ep 6 Part 1 #shorts",
             },
             {
                 "part": 2,
                 "hook": "Young girls were vanishing into thin air every night, leaving only their terrified fiancés behind!",
-                "narration": "Reaching the town to the northwest, Tanjiro is met with an eerie atmosphere of dread. He encounters Kazumi, a devastated young man who was walking with his beloved fiancée Satoko when she vanished literally into the ground right before his eyes. Accused by the locals of causing her disappearance, Kazumi is hollow with grief. Tanjiro believes him completely. Dropping to his knees in the middle of the crowded dirt streets, Tanjiro presses his face to the cobblestones—using his supernatural sense of smell to hunt for demonic traces lurking beneath the town.",
+                "narration": "Setting out on his very first official assignment, Tanjiro arrives in a bustling town to the northwest. Yet beneath the lively surface of vendor stalls and busy cobblestone streets lies a chilling atmosphere of suffocating terror. Every single night, young teenage girls have been vanishing without a trace, leaving the local families gripped by paranoia and dread. Tanjiro crosses paths with Kazumi, a hollowed-out young man who appears on the verge of total collapse. Just the night before, Kazumi had been walking hand-in-hand with his beloved fiancée, Satoko, when in the blink of an eye, she literally vanished into the earth right beside him. With zero evidence of a struggle, the grieving townsfolk have accused Kazumi of murdering his own bride, ostracizing him completely. Seeing the undeniable agony in Kazumi's eyes, Tanjiro believes him without a shadow of doubt. Dropping to his knees right in the middle of the crowded dirt road, Tanjiro closes his eyes and presses his face toward the cobblestones—concentrating his superhuman sense of smell to track the faint, sulfuric stench of demon blood lingering beneath the ground.",
                 "cliffhanger": "The demon strikes again from the shadows—watch Part 3 for the explosive clash!",
                 "time_range": [420, 660],
                 "short_title": "Girls Vanishing Into Thin Air! 😱 | Demon Slayer S1 Ep 6 Part 2 #shorts",
@@ -125,7 +125,7 @@ EPISODE_KNOWLEDGE = {
             {
                 "part": 3,
                 "hook": "The ground turned into a pitch-black puddle, and a demonic hand dragged another girl under!",
-                "narration": "As midnight descends, another young girl is violently dragged beneath the ground into a mysterious black pool of swamp liquid. Reacting with lightning reflexes, Tanjiro lunges forward, plunging his Nichirin sword straight into the earth and hauling the unconscious victim free just in time. Emerging from the black puddle is the Swamp Demon—a grotesque creature grinding his teeth with a sickening clatter, furious that his tender prey was stolen. Tanjiro unleashes Water Breathing Eighth Form: Waterfall Basin, striking with immense downward momentum!",
+                "narration": "As midnight envelops the town in pitch-black shadow, the sinister energy Tanjiro had been tracking violently surges to the surface. Nearby, another young girl is dragged screaming into a sudden puddle of viscous, black swamp liquid that materializes beneath her feet. Reacting with instant combat reflexes, Tanjiro hurtles toward the dark puddle, thrusting his Nichirin sword straight into the earth and hauling the unconscious victim free seconds before she is swallowed whole. Emerging from the shifting puddle is the culprit behind the terror: the grotesque Swamp Demon. Grinding his teeth together with an irritating, rhythmic clatter, the demon fumes with rage that his tender, fresh prey was snatched away. Recognizing the horrific truth that this creature has already devoured dozens of innocent girls, including Kazumi's fiancée, pure fury ignites within Tanjiro. Leaping high into the night sky, he draws his sword and unleashes Water Breathing Eighth Form: Waterfall Basin, crashing down with overwhelming vertical kinetic force to cleave through the demon's defenses!",
                 "cliffhanger": "The demon isn't alone—watch Part 4 to see Nezuko kick into action!",
                 "time_range": [660, 940],
                 "short_title": "Water Breathing Waterfall Basin LIVE! 🌊 | Demon Slayer S1 Ep 6 Part 3 #shorts",
@@ -133,7 +133,7 @@ EPISODE_KNOWLEDGE = {
             {
                 "part": 4,
                 "hook": "The Swamp Demon multiplied into three, but Nezuko's kick from the box shocked everyone!",
-                "narration": "To Tanjiro's horror, the Swamp Demon splits his body into three identical entities, submerging into the soil to surround them from all sides. Cornered while trying to defend both Kazumi and the rescued girl, Tanjiro is pushed to his limits. But right as a demon claw reaches for Kazumi's throat, the wooden box door bursts open! Nezuko awakens with glowing fangs, delivering a brutal axe kick that sends the demon flying into a stone wall! Trusting his sister to protect the humans above ground, Tanjiro takes a deep breath and dives headfirst into the swamp dimension beneath the earth to exterminate the remaining two demons!",
+                "narration": "The devastating impact shatters the cobblestones, but the Swamp Demon is far from ordinary. Using his bizarre Blood Demon Art, the creature's body splits into three distinct identical entities, each submerging into the soil to surround Tanjiro, Kazumi, and the unconscious girl from all angles. Tanjiro finds himself pushed into a desperate tactical dilemma: fighting defensively to shield two fragile humans leaves him wide open to ambush from beneath the earth. Just as the third demon claws its way upward to tear Kazumi's throat out, the wooden box on Tanjiro's back rattles with explosive force—and Nezuko kicks the door clean off its hinges! Awakening with blazing pink eyes and sharp fangs, Nezuko launches an earth-shattering axe kick that launches the demon crashing into a stone wall. Seeing his sister handle the threat above ground with demonic ferocity, Tanjiro makes a fearless tactical decision. Taking a deep breath of total concentration, he dives headfirst into the swamp portal, submerging straight into the demon's underground realm to eliminate the remaining two threats once and for all.",
                 "cliffhanger": "Subscribe to Bhaloo Ji for Episode 7 — Tanjiro encounters Muzan Kibutsuji!",
                 "time_range": [940, 1260],
                 "short_title": "Nezuko Kicks The Swamp Demon! 💥 | Demon Slayer S1 Ep 6 Part 4 #shorts",
@@ -262,21 +262,21 @@ def generate_episode_script(episode_info: dict) -> dict:
     scene_acts = get_episode_scene_acts(episode_info, num_parts=3)
 
     # If not in cache, use LLM to generate
-    system_prompt = """You are an elite anime recap narrator and scriptwriter modeling the signature style of RecapKun (@recapkun).
-Your task is to write an ultra-engaging, high-retention English episode recap divided into sequential parts for YouTube Shorts (60-120 seconds each, 200-350 words per part), alongside a cohesive full episode recap.
+    system_prompt = """You are an elite anime documentary narrator and scriptwriter modeling the signature style of RecapKun (@recapkun).
+Your task is to write a MASTER long-form anime recap script for the full normal video.
+Shorts will later be clipped as direct excerpts from the chapters of this normal video.
 
-RECAPKUN FORMULA:
-1. Every part MUST open with an immediate hook: e.g. 'The story begins as we meet...', 'Our story kicks off when...', or a shocking dilemma that immediately grabs attention.
-2. Fast-paced, high-stakes, third-person conversational storytelling ('Little did he know...', 'Before the demon could react...', 'Tanjiro was forced to make an impossible choice...').
-3. Explain power systems, combat mechanics, and character motivations clearly and dynamically without robotic filler.
-4. Keep spoken words strictly between 200 and 350 words per part for rich, detailed recaps.
-5. Provide a clickbait high-CTR Shorts title with part number and #shorts.
-6. Provide a comprehensive title and description for the full episode normal video.
-7. CRITICAL: You MUST write each part specifically about its assigned chronological scene act, and use the EXACT time_range provided so visuals match the narration!
-8. Return ONLY valid JSON matching the requested schema.
+CRITICAL ARCHITECTURE RULES:
+1. MASTER NORMAL VIDEO FIRST: There is NO word limit or time limit for the normal video. Be exhaustive, immersive, rich, and detailed.
+2. CONTINUOUS FLOW: The narration across all chapters MUST be ONE continuous, uninterrupted story. Each chapter must flow seamlessly into the next with natural narrative transitions.
+3. NO MID-VIDEO CLIFFHANGERS IN NARRATION: Never write phrases like 'Wait until you see in Part 2' or 'In Part 3' inside the narration text. Cliffhangers are only provided in the separate 'cliffhanger' metadata field for the Short excerpt teasers.
+4. EXPLAIN THE LORE: Deeply explain combat mechanics, breathing forms, cursed energy techniques, character emotional conflicts, and power systems.
+5. CHRONOLOGICAL SCENE ACTS: You MUST write each chapter specifically about its assigned chronological scene act, matching the EXACT time_range provided.
+6. SHORTS ARE EXCERPTS: Provide an opening hook and high-CTR title for each chapter so that Shorts can be clipped as excerpts from this normal video.
+7. Return ONLY valid JSON matching the requested schema.
 """
 
-    prompt = f"""Write a RecapKun-style anime recap script for:
+    prompt = f"""Write a master RecapKun-style anime recap script for:
 Series: {series}
 Season: {season}
 Episode: {episode}
@@ -288,14 +288,14 @@ ASSIGNED CHRONOLOGICAL SCENE ACTS & TIME RANGES:
 Format strictly as JSON:
 {{
   "episode_title": "Canonical title or main theme of this episode",
-  "episode_summary": "1-2 sentence overview of the episode",
+  "episode_summary": "In-depth overview of the full episode",
   "num_parts": {len(scene_acts)},
   "parts": [
     {{
       "part": 1,
-      "hook": "The story begins as... (0-3s opening hook)",
-      "narration": "Fast-paced spoken narration in RecapKun style covering this act (200-350 words)",
-      "cliffhanger": "Ending hook urging viewers to watch next part and full video",
+      "hook": "Compelling opening hook for this chapter (0-3s)",
+      "narration": "Deep, detailed continuous narration of this act with zero word-count constraints and smooth transitions to next act",
+      "cliffhanger": "Teaser hook exclusively for the Short excerpt description/CTA",
       "time_range": {scene_acts[0]["time_range"] if scene_acts else [120, 500]},
       "short_title": "High CTR Title | {series} S{season} Ep {episode} Part 1 #shorts"
     }}
@@ -387,14 +387,14 @@ def _format_script_package(episode_info: dict, ep_title: str, ep_summary: str, p
     for i, p in enumerate(parts, 1):
         narration = p.get("narration", "").strip()
         words = len(narration.split())
-        est_duration = max(45.0, min(180.0, words / 2.3))  # ~138 wpm, up to 3 min per part
+        est_duration = max(30.0, words / 2.8)  # ~170 wpm at +8% pace, no arbitrary ceiling
 
         mins = int(current_time // 60)
         secs = int(current_time % 60)
         chapters.append(f"{mins:02d}:{secs:02d} Part {i}: {p.get('hook', '')[:40]}...")
         current_time += est_duration
 
-        # Full video script avoids repetitive cliffhangers
+        # Full video script: continuous flowing story
         full_script_paragraphs.append(narration)
 
         enriched_p = {
@@ -414,7 +414,8 @@ def _format_script_package(episode_info: dict, ep_title: str, ep_summary: str, p
             "description": f"""{p.get('hook', '')}
 Part {i} of {total_parts} covering {series} Season {season} Episode {episode}.
 
-🎬 Full episode explanation is LIVE on our channel now!
+🎬 This is an excerpt from our FULL in-depth episode breakdown! Watch the complete video on our channel:
+https://youtube.com/@bhalooji
 
 {FAIR_USE_DISCLAIMER}
 #anime #{series_tag.lower()} #animerecap #shorts #bhalooji"""

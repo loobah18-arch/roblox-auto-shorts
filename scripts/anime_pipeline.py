@@ -99,94 +99,23 @@ def run_pipeline(
     elif dry_run:
         download_gdrive_episode(target_ep["gdrive_file_id"], raw_video_path, dry_run=True)
 
-    # 4. Produce Each Part (Shorts)
-    rendered_part_videos = []
-    parts_meta = []
-
-    for part_info in script_package["parts"]:
-        p_num = part_info["part"]
-        total_p = part_info["total_parts"]
-        log(f"\n--- Processing Part {p_num}/{total_p} ---")
-
-        part_dir = ep_work_dir / f"part_{p_num:02d}"
-        part_dir.mkdir(parents=True, exist_ok=True)
-
-        audio_file = part_dir / "voice.mp3"
-        ass_file = part_dir / "subtitles.ass"
-        video_file = part_dir / f"short_{target_ep['episode_key']}_part{p_num}.mp4"
-
-        # Generate voiceover & animated subtitles
-        log(f"Generating voiceover and animated ASS subtitles for Part {p_num}...")
-        voice_res = produce_part_audio_subtitles(
-            text=part_info["narration"],
-            output_audio_path=audio_file,
-            output_ass_path=ass_file,
-            badge_text=part_info["badge"],
-            voice=voice,
-        )
-        duration = voice_res["duration"]
-        log(f"Voiceover duration: {duration:.2f}s ({voice_res['word_count']} words)")
-
-        # Render Short Part Video (9:16 vertical as it is)
-        assemble_success = assemble_short_part(
-            raw_video_path=raw_video_path,
-            voice_audio_path=audio_file,
-            ass_subtitle_path=ass_file,
-            output_video_path=video_file,
-            time_window=tuple(part_info.get("time_range", [90, 450])),
-            total_duration=duration,
-            bgm_path=bgm_path,
-            is_landscape=False,
-            dry_run=dry_run,
-        )
-
-        part_meta = {
-            "part": p_num,
-            "total_parts": total_p,
-            "title": part_info["short_title"],
-            "video_path": str(video_file),
-            "audio_path": str(audio_file),
-            "ass_path": str(ass_file),
-            "duration": duration,
-            "hashtags": part_info["hashtags"],
-            "description": part_info["description"],
-            "status": "rendered" if assemble_success else "failed",
-        }
-        parts_meta.append(part_meta)
-        if assemble_success and video_file.exists() and video_file.stat().st_size > 1024 * 50:
-            rendered_part_videos.append(video_file)
-
-        # Save individual Short manifest
-        with open(part_dir / "meta.json", "w", encoding="utf-8") as f:
-            json.dump(part_meta, f, indent=2)
-
-    all_parts_ok = (len(rendered_part_videos) == len(script_package["parts"]))
-    if not all_parts_ok:
-        log("❌ Some or all Short parts failed to render. Aborting stitching and history update.")
-        pipeline_result = {
-            "status": "error",
-            "message": "one or more shorts failed to render",
-            "episode_key": target_ep["episode_key"],
-            "display_name": target_ep["display_name"],
-            "parts": parts_meta,
-            "full_video": {"status": "skipped", "message": "parts failed"},
-        }
-        with open(ep_work_dir / "pipeline_summary.json", "w", encoding="utf-8") as f:
-            json.dump(pipeline_result, f, indent=2)
-        return pipeline_result
-
-    # 5. Render Landscape Parts and Stitch into Full Landscape Episode Video
-    log("\n=== Rendering Landscape Parts & Stitching into Full Episode Video ===")
+    # 4. Produce Master Full Normal Video (16:9 Landscape)
+    log("\n=== 🎬 Producing Master Full Normal Video (16:9 Landscape) ===")
     full_video_file = ep_work_dir / f"full_{target_ep['episode_key']}.mp4"
     rendered_landscape_videos = []
+    chapter_audio_durations = {}
+
     for part_info in script_package["parts"]:
         p_num = part_info["part"]
         p_dir = ep_work_dir / f"part_{p_num:02d}"
+        p_dir.mkdir(parents=True, exist_ok=True)
+
         audio_file = p_dir / "voice.mp3"
         ass_land_file = p_dir / "subtitles_landscape.ass"
         vid_land_file = p_dir / f"landscape_{target_ep['episode_key']}_part{p_num}.mp4"
 
-        produce_part_audio_subtitles(
+        # Generate voiceover audio and landscape karaoke subtitles for this chapter
+        v_res = produce_part_audio_subtitles(
             text=part_info["narration"],
             output_audio_path=audio_file,
             output_ass_path=ass_land_file,
@@ -194,13 +123,17 @@ def run_pipeline(
             voice=voice,
             is_landscape=True,
         )
+        duration = v_res["duration"]
+        chapter_audio_durations[p_num] = duration
+        log(f"Chapter {p_num} voiceover duration: {duration:.2f}s ({v_res['word_count']} words)")
+
         assemble_short_part(
             raw_video_path=raw_video_path,
             voice_audio_path=audio_file,
             ass_subtitle_path=ass_land_file,
             output_video_path=vid_land_file,
             time_window=tuple(part_info.get("time_range", [90, 450])),
-            total_duration=part_info.get("estimated_duration", 60.0),
+            total_duration=duration,
             bgm_path=bgm_path,
             is_landscape=True,
             dry_run=dry_run,
@@ -225,18 +158,82 @@ def run_pipeline(
         json.dump(full_video_meta, f, indent=2)
 
     if not stitch_success:
-        log("❌ Failed to stitch full episode video.")
+        log("❌ Failed to produce Master Full Normal Video.")
         pipeline_result = {
             "status": "error",
-            "message": "full episode video stitch failed",
+            "message": "master normal video production failed",
             "episode_key": target_ep["episode_key"],
             "display_name": target_ep["display_name"],
-            "parts": parts_meta,
+            "parts": [],
             "full_video": full_video_meta,
         }
         with open(ep_work_dir / "pipeline_summary.json", "w", encoding="utf-8") as f:
             json.dump(pipeline_result, f, indent=2)
         return pipeline_result
+
+    log(f"🎬 Master Full Normal Video successfully produced: {full_video_file.name}")
+
+    # 5. Derive Sequential Daily Shorts FROM Master Video (9:16 Vertical Excerpts)
+    log("\n=== 📱 Deriving Daily Shorts Excerpts from Master Video ===")
+    parts_meta = []
+    rendered_part_videos = []
+
+    for part_info in script_package["parts"]:
+        p_num = part_info["part"]
+        total_p = part_info["total_parts"]
+        log(f"\n--- Deriving Short Excerpt Part {p_num}/{total_p} ---")
+
+        part_dir = ep_work_dir / f"part_{p_num:02d}"
+        audio_file = part_dir / "voice.mp3"
+        ass_vert_file = part_dir / "subtitles.ass"
+        video_file = part_dir / f"short_{target_ep['episode_key']}_part{p_num}.mp4"
+        duration = chapter_audio_durations.get(p_num, part_info.get("estimated_duration", 60.0))
+
+        # Generate animated vertical ASS subtitles with excerpt badge
+        produce_part_audio_subtitles(
+            text=part_info["narration"],
+            output_audio_path=audio_file,
+            output_ass_path=ass_vert_file,
+            badge_text=part_info["badge"],
+            voice=voice,
+            is_landscape=False,
+        )
+
+        assemble_success = assemble_short_part(
+            raw_video_path=raw_video_path,
+            voice_audio_path=audio_file,
+            ass_subtitle_path=ass_vert_file,
+            output_video_path=video_file,
+            time_window=tuple(part_info.get("time_range", [90, 450])),
+            total_duration=duration,
+            bgm_path=bgm_path,
+            is_landscape=False,
+            dry_run=dry_run,
+        )
+
+        part_meta = {
+            "part": p_num,
+            "total_parts": total_p,
+            "title": part_info["short_title"],
+            "video_path": str(video_file),
+            "audio_path": str(audio_file),
+            "ass_path": str(ass_vert_file),
+            "duration": duration,
+            "hashtags": part_info["hashtags"],
+            "description": part_info["description"],
+            "status": "rendered" if assemble_success else "failed",
+        }
+        parts_meta.append(part_meta)
+        if assemble_success and (dry_run or (video_file.exists() and video_file.stat().st_size > 1024 * 50)):
+            rendered_part_videos.append(video_file)
+
+        # Save individual Short excerpt manifest
+        with open(part_dir / "meta.json", "w", encoding="utf-8") as f:
+            json.dump(part_meta, f, indent=2)
+
+    all_parts_ok = (len(rendered_part_videos) == len(script_package["parts"]))
+    if not all_parts_ok:
+        log("⚠️ Some Short excerpts failed to render, but Master Full Video was successfully produced.")
 
     # 6. Update History (live completion managed by anime_youtube_uploader after verified upload)
     history = load_history()

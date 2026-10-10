@@ -390,6 +390,46 @@ class TestAnimeSubtitleSync(unittest.TestCase):
         self.assertEqual(script["parts"][3]["time_range"], [940, 1260])
 
 
+class TestMasterVideoArchitecture(unittest.TestCase):
+    def test_normal_video_is_continuous_master(self):
+        sample_ep = {
+            "series": "Demon Slayer: Kimetsu no Yaiba",
+            "series_id": "demon-slayer",
+            "season": 1,
+            "episode": 6,
+            "filename": "Demon_Slayer_Kimetsu_no_Yaiba_480P_S01_E06.mp4",
+            "episode_key": "demon-slayer-s01e06"
+        }
+        script = generate_episode_script(sample_ep)
+        full_text = script["full_video"]["script"].lower()
+        
+        # Word count is unconstrained and rich (> 600 words)
+        words = len(full_text.split())
+        self.assertGreaterEqual(words, 500, f"Master video narrative too brief: {words} words")
+        
+        # Master video narration must NOT contain mid-video cliffhangers
+        for p in script["parts"]:
+            narr = p["narration"].lower()
+            self.assertNotIn("watch part 2", narr)
+            self.assertNotIn("see what happens in part 2", narr)
+            self.assertNotIn("find out in part 3", narr)
+
+    def test_shorts_are_excerpts_of_normal_video(self):
+        sample_ep = {
+            "series": "Demon Slayer: Kimetsu no Yaiba",
+            "series_id": "demon-slayer",
+            "season": 1,
+            "episode": 6,
+            "filename": "Demon_Slayer_Kimetsu_no_Yaiba_480P_S01_E06.mp4",
+            "episode_key": "demon-slayer-s01e06"
+        }
+        script = generate_episode_script(sample_ep)
+        for p in script["parts"]:
+            self.assertIn("excerpt from our full", p["description"].lower())
+            self.assertTrue(len(p["time_range"]) == 2)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
