@@ -16,6 +16,7 @@ Techniques for Content-ID Bypass & High Visual Appeal:
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -487,14 +488,32 @@ def assemble_master_full_video(
 
             beats = chap.get("beats")
             if beats and len(beats) > 0:
+                chap_narr = chap.get("narration", "")
                 shots = []
                 accum_dur = 0.0
+
+                # Dynamic Sentence-Locked Duration:
+                # Group sentences of narration across beats to lock scene cut to spoken words
+                sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', chap_narr) if s.strip()] if chap_narr else []
+                total_narr_words = sum(len(s.split()) for s in sents) if sents else 0
+
+                weights = []
+                if total_narr_words > 0 and len(sents) >= len(beats):
+                    s_per_beat = max(1, len(sents) // len(beats))
+                    for b_idx in range(len(beats)):
+                        s_start_idx = b_idx * s_per_beat
+                        s_end_idx = len(sents) if (b_idx == len(beats) - 1) else min(len(sents), (b_idx + 1) * s_per_beat)
+                        group_words = sum(len(sents[j].split()) for j in range(s_start_idx, s_end_idx))
+                        weights.append(round(group_words / total_narr_words, 3))
+                else:
+                    weights = [float(b.get("weight", 1.0 / len(beats))) for b in beats]
+
                 for b_idx, b in enumerate(beats):
                     b_start = max(0.0, float(b.get("start", safe_start)))
                     if b_idx == len(beats) - 1:
                         b_dur = max(0.5, chap_dur - accum_dur)
                     else:
-                        w = float(b.get("weight", 1.0 / len(beats)))
+                        w = weights[b_idx] if b_idx < len(weights) else (1.0 / len(beats))
                         b_dur = round(chap_dur * w, 2)
                         accum_dur += b_dur
                     shots.append((b_start, b_dur))

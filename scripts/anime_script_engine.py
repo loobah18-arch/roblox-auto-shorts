@@ -382,7 +382,10 @@ Format strictly as JSON:
       "narration": "Deep, detailed continuous narration of this act with zero word-count constraints and smooth transitions to next act",
       "cliffhanger": "Teaser hook exclusively for the Short excerpt description/CTA",
       "time_range": {scene_acts[0]["time_range"] if scene_acts else [120, 500]},
-      "short_title": "High CTR Title | {series} S{season} Ep {episode} Part 1 #shorts"
+      "short_title": "High CTR Title | {series} S{season} Ep {episode} Part 1 #shorts",
+      "beats": [
+        {{"start": 130.0, "weight": 0.25, "desc": "Action or dialogue occurring in this scene"}}
+      ]
     }}
   ]
 }}"""
@@ -395,10 +398,13 @@ Format strictly as JSON:
             if match:
                 parsed = json.loads(match.group(0))
                 parts = parsed.get("parts", [])
-                # Ensure each part preserves exact scene time_range
+                # Ensure each part preserves exact scene time_range and beats
                 for idx, p in enumerate(parts):
-                    if idx < len(scene_acts) and ("time_range" not in p or p["time_range"] == [0, 450]):
-                        p["time_range"] = scene_acts[idx]["time_range"]
+                    if idx < len(scene_acts):
+                        if "time_range" not in p or p["time_range"] == [0, 450]:
+                            p["time_range"] = scene_acts[idx]["time_range"]
+                        if "beats" not in p or not p["beats"]:
+                            p["beats"] = scene_acts[idx].get("beats", [])
                 return _format_script_package(
                     episode_info,
                     parsed.get("episode_title", f"{series} Episode {episode}"),

@@ -178,6 +178,132 @@ CURATED_ACT_TIMELINES = {
 }
 
 
+import subprocess
+
+
+def extract_subtitles_from_video(video_path: Path | str, output_srt: Path | str | None = None) -> list[dict]:
+    """
+    Extracts embedded soft subtitles from any anime video file using FFmpeg.
+    Returns parsed list of dialogue cues: [{"start": float, "end": float, "text": str}].
+    """
+    video_path = Path(video_path)
+    if not video_path.exists() or video_path.stat().st_size < 1000:
+        return []
+
+    if not output_srt:
+        output_srt = video_path.parent / f"{video_path.stem}_subs.srt"
+    output_srt = Path(output_srt)
+
+    # 1. Try extracting subtitle stream 0:s:0 via FFmpeg
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(video_path),
+        "-map", "0:s:0",
+        "-c:s", "text",
+        str(output_srt)
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0 or not output_srt.exists() or output_srt.stat().st_size == 0:
+        # Try finding any subtitle stream via s:?
+        cmd_any = [
+            "ffmpeg", "-y",
+            "-i", str(video_path),
+            "-map", "0:s?",
+            "-c:s", "text",
+            str(output_srt)
+        ]
+        res_any = subprocess.run(cmd_any, capture_output=True, text=True)
+        if res_any.returncode != 0 or not output_srt.exists() or output_srt.stat().st_size == 0:
+            return []
+
+    # 2. Parse SRT file into structured dialogue cues
+    cues = []
+    time_pat = re.compile(r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})")
+    try:
+        content = output_srt.read_text(encoding="utf-8", errors="replace")
+        blocks = content.strip().split("\n\n")
+        for b in blocks:
+            lines = [l.strip() for l in b.split("\n") if l.strip()]
+            for l_idx, line in enumerate(lines):
+                m = time_pat.search(line)
+                if m:
+                    h1, m1, s1, ms1, h2, m2, s2, ms2 = map(int, m.groups())
+                    start_sec = (h1 * 3600) + (m1 * 60) + s1 + (ms1 / 1000.0)
+                    end_sec = (h2 * 3600) + (m2 * 60) + s2 + (ms2 / 1000.0)
+                    text = " ".join(lines[l_idx + 1:]) if l_idx + 1 < len(lines) else ""
+                    # Strip ASS/HTML tags like {\\an8} or <i></i>
+                    clean_text = re.sub(r"<[^>]+>|\{[^}]+\}", "", text).strip()
+                    if clean_text:
+                        cues.append({
+                            "start": round(start_sec, 2),
+                            "end": round(end_sec, 2),
+                            "text": clean_text
+                        })
+                    break
+    except Exception:
+        pass
+
+    return cues
+
+
+def cluster_dialogue_into_acts(dialogue_cues: list[dict], num_parts: int = 4, episode_duration: float = 1420.0) -> list[dict]:
+    """
+    Clusters extracted anime dialogue into chronological narrative acts.
+    Filters out Opening Theme (~0-120s) and Ending Theme (~last 90s).
+    """
+    if not dialogue_cues:
+        return []
+
+    # Filter out OP and ED dialogue
+    story_cues = [c for c in dialogue_cues if 90.0 <= c["start"] <= (episode_duration - 90.0)]
+    if not story_cues:
+        story_cues = dialogue_cues
+
+    total_cues = len(story_cues)
+    cues_per_act = max(1, total_cues // num_parts)
+
+    acts = []
+    for i in range(num_parts):
+        start_idx = i * cues_per_act
+        end_idx = total_cues if (i == num_parts - 1) else min(total_cues, (i + 1) * cues_per_act)
+        act_cues = story_cues[start_idx:end_idx]
+        if not act_cues:
+            continue
+
+        act_start = act_cues[0]["start"]
+        act_end = act_cues[-1]["end"]
+        # Sample key dialogue lines as narrative themes
+        theme_sample = " ".join(c["text"] for c in act_cues[:3])[:100]
+
+        # Generate beats from dialogue peaks inside this act
+        beats = []
+        num_act_beats = 4
+        beat_step = max(1, len(act_cues) // num_act_beats)
+        for b_idx in range(num_act_beats):
+            c_pos = min(len(act_cues) - 1, b_idx * beat_step)
+            cue = act_cues[c_pos]
+            beats.append({
+                "start": cue["start"],
+                "weight": round(1.0 / num_act_beats, 2),
+                "desc": cue["text"][:70]
+            })
+
+        # Normalize beat weights
+        total_w = sum(b["weight"] for b in beats)
+        if total_w > 0:
+            for b in beats:
+                b["weight"] = round(b["weight"] / total_w, 2)
+
+        acts.append({
+            "part": i + 1,
+            "time_range": [int(act_start), int(act_end)],
+            "theme": theme_sample,
+            "beats": beats
+        })
+
+    return acts
+
+
 def generate_default_beats(time_range: list[int | float], num_beats: int = 3) -> list[dict]:
     """
     Generates evenly spaced narrative scene beats within a given act's time range.
@@ -204,13 +330,14 @@ def generate_default_beats(time_range: list[int | float], num_beats: int = 3) ->
     return beats
 
 
-def get_episode_scene_acts(episode_info: dict, num_parts: int = 4) -> list[dict]:
+def get_episode_scene_acts(episode_info: dict, num_parts: int = 4, raw_video_path: Path | str | None = None) -> list[dict]:
     """
     Returns exact, verified scene boundaries for any episode.
     1. Checks curated act timelines first.
-    2. If not pre-curated, computes clean, anti-OP/ED story act windows based on
-       standard anime episode timeline (skipping 0:00-2:00 OP and 21:00-23:40 ED).
-    3. Guarantees that every act includes narrative beats for beat-level visual sync.
+    2. If raw video path is provided, extracts embedded subtitles and clusters dialogue into real acts.
+    3. If uncurated, computes clean anti-OP/ED story act windows based on
+       canonical anime episode timeline (skipping 0:00-2:00 OP and 21:00-23:40 ED).
+    4. Guarantees that every act includes narrative beats for beat-level visual sync.
     """
     ep_key = episode_info.get("episode_key", "")
     if ep_key in CURATED_ACT_TIMELINES:
@@ -219,6 +346,16 @@ def get_episode_scene_acts(episode_info: dict, num_parts: int = 4) -> list[dict]
             if "beats" not in act or not act["beats"]:
                 act["beats"] = generate_default_beats(act["time_range"])
         return acts
+
+    # Try extracting subtitles from video if raw video exists
+    if raw_video_path:
+        raw_p = Path(raw_video_path)
+        if raw_p.exists():
+            cues = extract_subtitles_from_video(raw_p)
+            if cues and len(cues) >= 20:
+                clustered = cluster_dialogue_into_acts(cues, num_parts=num_parts)
+                if clustered:
+                    return clustered
 
     # Dynamic calculation for uncurated episodes:
     # Standard 23:40 anime episode (1420 seconds total)
@@ -236,7 +373,8 @@ def get_episode_scene_acts(episode_info: dict, num_parts: int = 4) -> list[dict]
             "part": i + 1,
             "time_range": tr,
             "theme": f"Chronological Act {i + 1} of {episode_info.get('display_name', ep_key)}",
-            "beats": generate_default_beats(tr)
+            "beats": generate_default_beats(tr, num_beats=3)
         })
 
     return acts
+

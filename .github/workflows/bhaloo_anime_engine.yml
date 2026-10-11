@@ -28,9 +28,9 @@ on:
           - "daily"
           - "full"
       upload_to_youtube:
-        description: "Upload rendered Shorts & Full Video to YouTube (default: false - disabled during development)"
+        description: "Upload rendered Shorts & Full Video to YouTube (default: true - live publishing enabled)"
         required: false
-        default: false
+        default: true
         type: boolean
       privacy:
         description: "YouTube upload privacy status"
@@ -112,7 +112,7 @@ jobs:
           done
 
       - name: 📺 Upload to YouTube
-        if: ${{ inputs.upload_to_youtube == true }}
+        if: ${{ inputs.upload_to_youtube != false || github.event_name == 'schedule' }}
         env:
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}

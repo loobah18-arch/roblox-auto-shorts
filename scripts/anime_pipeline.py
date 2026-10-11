@@ -130,6 +130,7 @@ def run_pipeline(
         if idx < len(script_package["parts"]):
             part_p = script_package["parts"][idx]
             chap["time_range"] = part_p.get("time_range", [120, 500])
+            chap["narration"] = part_p.get("narration", "")
             if "beats" in part_p and part_p["beats"]:
                 chap["beats"] = part_p["beats"]
 
@@ -326,6 +327,7 @@ def run_daily_funnel(
             if idx < len(script_package["parts"]):
                 part_p = script_package["parts"][idx]
                 chap["time_range"] = part_p.get("time_range", [120, 500])
+                chap["narration"] = part_p.get("narration", "")
                 if "beats" in part_p and part_p["beats"]:
                     chap["beats"] = part_p["beats"]
 

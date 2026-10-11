@@ -540,6 +540,27 @@ class TestContinuousMasterEngine(unittest.TestCase):
             self.assertEqual(len(act["beats"]), 3)
             self.assertAlmostEqual(sum(b["weight"] for b in act["beats"]), 1.0, delta=0.01)
 
+    def test_universal_dialogue_clustering_and_sentence_locked_sync(self):
+        """Verify universal dialogue clustering and dynamic sentence duration weights."""
+        from anime_subtitle_sync import cluster_dialogue_into_acts
+
+        mock_dialogue = [
+            {"start": 100.0, "end": 104.0, "text": "Ichigo Kurosaki can see ghosts."},
+            {"start": 150.0, "end": 155.0, "text": "A terrifying hollow appears in Karakura Town."},
+            {"start": 300.0, "end": 305.0, "text": "Rukia Kuchiki arrives with her Zanpakuto."},
+            {"start": 450.0, "end": 455.0, "text": "Ichigo absorbs Rukia's soul reaper powers!"},
+            {"start": 600.0, "end": 605.0, "text": "The massive blade slices the hollow in two."},
+            {"start": 800.0, "end": 805.0, "text": "A new Substitute Soul Reaper is born."},
+        ]
+
+        acts = cluster_dialogue_into_acts(mock_dialogue, num_parts=3, episode_duration=1000.0)
+        self.assertEqual(len(acts), 3)
+        for act in acts:
+            self.assertIn("time_range", act)
+            self.assertIn("beats", act)
+            self.assertGreaterEqual(len(act["beats"]), 1)
+            self.assertAlmostEqual(sum(b["weight"] for b in act["beats"]), 1.0, delta=0.02)
+
 
 if __name__ == "__main__":
     unittest.main()
