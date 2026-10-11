@@ -21,10 +21,10 @@ CURATED_ACT_TIMELINES = {
                 "time_range": [132, 420],
                 "theme": "Tanjiro dons the demon slayer uniform and departs Mt. Sagiri with Nezuko in the wooden box",
                 "beats": [
-                    {"start": 132.0, "weight": 0.24, "desc": "Tanjiro in Demon Slayer uniform"},
-                    {"start": 215.0, "weight": 0.27, "desc": "Urokodaki explaining the pitch-black Nichirin blade"},
-                    {"start": 285.0, "weight": 0.26, "desc": "Kirin timber box parting gift for Nezuko"},
-                    {"start": 370.0, "weight": 0.23, "desc": "Hoisting box and descending Mt. Sagiri"},
+                    {"start": 132.0, "weight": 0.24, "desc": "Tanjiro in Demon Slayer uniform and wisteria fiber weave"},
+                    {"start": 215.0, "weight": 0.27, "desc": "Urokodaki explaining pitch-black Nichirin blade omen and lore"},
+                    {"start": 285.0, "weight": 0.26, "desc": "Master Urokodaki presents the Kirin cedar box parting gift"},
+                    {"start": 370.0, "weight": 0.23, "desc": "Hoisting Nezuko on his back and descending Mount Sagiri"},
                 ]
             },
             {
@@ -32,9 +32,9 @@ CURATED_ACT_TIMELINES = {
                 "time_range": [420, 660],
                 "theme": "Tanjiro arrives at the northwestern town, meets devastated Kazumi whose fiancée Satoko vanished",
                 "beats": [
-                    {"start": 425.0, "weight": 0.28, "desc": "Arriving at northwestern town vendor stalls"},
-                    {"start": 495.0, "weight": 0.37, "desc": "Distraught Kazumi recounting Satoko's disappearance"},
-                    {"start": 575.0, "weight": 0.35, "desc": "Tanjiro sniffing cobblestones for sulfur demon scent"},
+                    {"start": 425.0, "weight": 0.28, "desc": "Tanjiro arrives at northwest town bustling vendor stalls"},
+                    {"start": 495.0, "weight": 0.37, "desc": "Kazumi recounts Satoko vanishing into the ground"},
+                    {"start": 575.0, "weight": 0.35, "desc": "Tanjiro sniffs cobblestones detecting sulfur scent underground"},
                 ]
             },
             {
@@ -42,10 +42,10 @@ CURATED_ACT_TIMELINES = {
                 "time_range": [660, 940],
                 "theme": "Night falls, Tanjiro sniffs the ground, senses the demon beneath the floor and slashes the swamp puddle",
                 "beats": [
-                    {"start": 665.0, "weight": 0.24, "desc": "Night falls, black puddle grabs victim"},
-                    {"start": 725.0, "weight": 0.24, "desc": "Tanjiro slashes puddle, rescues girl"},
-                    {"start": 785.0, "weight": 0.22, "desc": "Swamp Demon emerges grinding teeth"},
-                    {"start": 860.0, "weight": 0.30, "desc": "Waterfall Basin leaping strike"},
+                    {"start": 665.0, "weight": 0.24, "desc": "Night falls, black puddle opens on the ground dragging girl"},
+                    {"start": 725.0, "weight": 0.24, "desc": "Tanjiro dashes forward, stabs ground and rescues unconscious girl"},
+                    {"start": 785.0, "weight": 0.22, "desc": "Grotesque Swamp Demon surfaces grinding teeth rhythmically"},
+                    {"start": 860.0, "weight": 0.30, "desc": "Tanjiro leaps into night sky, Waterfall Basin crushing strike"},
                 ]
             },
             {
@@ -53,10 +53,10 @@ CURATED_ACT_TIMELINES = {
                 "time_range": [940, 1260],
                 "theme": "The Swamp Demon splits into three bodies; Nezuko kicks the box open to defend Kazumi as Tanjiro dives in",
                 "beats": [
-                    {"start": 945.0, "weight": 0.24, "desc": "Impact shatters cobblestones, demon splits into 3"},
-                    {"start": 1015.0, "weight": 0.24, "desc": "Tactical dilemma defending Kazumi and girl"},
-                    {"start": 1080.0, "weight": 0.27, "desc": "Nezuko kicks box open, axe kick against wall"},
-                    {"start": 1160.0, "weight": 0.25, "desc": "Tanjiro dives headfirst into swamp underground"},
+                    {"start": 945.0, "weight": 0.24, "desc": "Impact shatters ground, Swamp Demon splits into three clones"},
+                    {"start": 1015.0, "weight": 0.24, "desc": "Tactical dilemma defending Kazumi and unconscious girl"},
+                    {"start": 1080.0, "weight": 0.27, "desc": "Box rattles, Nezuko kicks door open delivering savage axe kick"},
+                    {"start": 1160.0, "weight": 0.25, "desc": "Tanjiro dives headfirst into underground swamp portal"},
                 ]
             }
         ]
