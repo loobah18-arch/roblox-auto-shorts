@@ -67,22 +67,46 @@ CURATED_ACT_TIMELINES = {
             {
                 "part": 1,
                 "time_range": [120, 390],
-                "theme": "Underwater swamp combat: Tanjiro uses Water Breathing Sixth Form Whirlpool to decapitate two swamp demons"
+                "theme": "Underwater swamp combat: Tanjiro uses Water Breathing Sixth Form Whirlpool to decapitate two swamp demons",
+                "beats": [
+                    {"start": 120.0, "weight": 0.25, "desc": "Submerging into murky underwater swamp dimension"},
+                    {"start": 210.0, "weight": 0.25, "desc": "Swamp demons taunting Tanjiro underwater"},
+                    {"start": 290.0, "weight": 0.25, "desc": "Total concentration water breathing preparation"},
+                    {"start": 355.0, "weight": 0.25, "desc": "Sixth Form Whirlpool vortex decapitation"},
+                ]
             },
             {
                 "part": 2,
                 "time_range": [390, 680],
-                "theme": "Tanjiro surfaces to interrogate the final swamp demon about Muzan Kibutsuji before executing him"
+                "theme": "Tanjiro surfaces to interrogate the final swamp demon about Muzan Kibutsuji before executing him",
+                "beats": [
+                    {"start": 395.0, "weight": 0.25, "desc": "Tanjiro bursts up onto surface streets"},
+                    {"start": 480.0, "weight": 0.25, "desc": "Nezuko combat defending above ground"},
+                    {"start": 570.0, "weight": 0.25, "desc": "Tanjiro pinning final demon to ground"},
+                    {"start": 640.0, "weight": 0.25, "desc": "Interrogating demon about Muzan Kibutsuji"},
+                ]
             },
             {
                 "part": 3,
                 "time_range": [680, 950],
-                "theme": "Tanjiro consoles Kazumi, departs for the bustling neon metropolis of Asakusa, Tokyo with Nezuko"
+                "theme": "Tanjiro consoles Kazumi, departs for the bustling neon metropolis of Asakusa, Tokyo with Nezuko",
+                "beats": [
+                    {"start": 685.0, "weight": 0.25, "desc": "Returning missing girls items to weeping Kazumi"},
+                    {"start": 765.0, "weight": 0.25, "desc": "Kazumi emotional farewell and gratitude"},
+                    {"start": 845.0, "weight": 0.25, "desc": "Journeying toward Tokyo at dusk"},
+                    {"start": 910.0, "weight": 0.25, "desc": "Arrival at neon Asakusa Tokyo metropolis"},
+                ]
             },
             {
                 "part": 4,
                 "time_range": [950, 1270],
-                "theme": "Overwhelmed by the city, Tanjiro catches the scent of his family's killer and corners Muzan Kibutsuji holding a human child"
+                "theme": "Overwhelmed by the city, Tanjiro catches the scent of his family's killer and corners Muzan Kibutsuji holding a human child",
+                "beats": [
+                    {"start": 955.0, "weight": 0.25, "desc": "Overwhelmed by electric lights eating udon"},
+                    {"start": 1035.0, "weight": 0.25, "desc": "Detecting scent of family slaughter"},
+                    {"start": 1115.0, "weight": 0.25, "desc": "Sprinting desperately through Asakusa crowd"},
+                    {"start": 1200.0, "weight": 0.25, "desc": "Confronting Muzan Kibutsuji holding human child"},
+                ]
             }
         ]
     },
