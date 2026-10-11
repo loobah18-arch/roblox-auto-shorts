@@ -66,6 +66,12 @@ EPISODE_KNOWLEDGE = {
                 "narration": "The seven days of terror on Fujikasane Mountain have finally drawn to a close as the rising morning sun drives away the demonic horrors of the night. Out of dozens of ambitious warriors who entered the trial, only four battered survivors stand before the wisteria blossoms: Tanjiro Kamado, covered in wounds and leaning on a broken blade; a blonde boy named Zenitsu Agatsuma, trembling uncontrollably and murmuring that he is going to die anyway; a quiet, stone-faced girl named Kanao Tsuyuri with a butterfly resting on her finger; and a menacing, mohawked brute named Genya Shinazugawa. Two twin guides with wisteria in their hair appear from the mist, warmly welcoming them into the Demon Slayer Corps and presenting them with the lowest starting rank of Mizunoto. But before anyone can celebrate surviving seven days in hell, Genya loses his patience completely, screaming that he doesn't care about ranks or ceremonies—he demands his Nichirin sword right now!",
                 "cliffhanger": "Genya grabs the guide girl's hair in fury—wait until you see Tanjiro's reaction in Part 2!",
                 "time_range": [505, 645],
+                "beats": [
+                    {"start": 505.0, "weight": 0.24, "desc": "Morning sun rises over Mt. Fujikasane, Tanjiro walks out battered"},
+                    {"start": 535.0, "weight": 0.28, "desc": "Four survivors stand before wisteria: Tanjiro, trembling Zenitsu, Kanao, Genya"},
+                    {"start": 575.0, "weight": 0.24, "desc": "Twin guides appear from mist presenting Mizunoto rank to survivors"},
+                    {"start": 615.0, "weight": 0.24, "desc": "Genya screams angrily demanding his Nichirin sword immediately"},
+                ],
                 "short_title": "Only 4 Survived the Deadly Mountain! 😱 | Demon Slayer S1 Ep 5 Part 1 #shorts",
             },
             {
@@ -74,6 +80,12 @@ EPISODE_KNOWLEDGE = {
                 "narration": "Enraged by the delay, Genya storms forward and violently grabs the white-haired guide girl by the hair, shouting that he only cares about killing demons. While Zenitsu cowers in fear, Tanjiro steps in without a second of hesitation. He grips Genya's wrist with inhuman crushing pressure, warning him coldly to let go of her immediately or he will snap his arm in two. When Genya tries to throw a punch, Tanjiro twists his arm with terrifying force until the brute screams in agony and releases the girl. With peace restored, the guides summon the Kasugai Crows—intelligent messenger birds assigned to deliver official demon slaying missions directly from Corps headquarters. Interestingly, while Tanjiro and Genya receive proud black crows, Zenitsu is comically assigned a tiny trembling sparrow. The survivors are then led to a table displaying several chunks of raw tamahagane ore. They are told that they must choose the specific metal from which their Nichirin swords will be forged. While the others struggle to distinguish between the identical-looking rocks, Tanjiro closes his eyes and uses his supernatural sense of smell, instantly sniffing out the purest, most resonant ore on the table.",
                 "cliffhanger": "Will Tanjiro's broken body make it back to Mount Sagiri? Find out in Part 3!",
                 "time_range": [645, 770],
+                "beats": [
+                    {"start": 645.0, "weight": 0.26, "desc": "Genya grabs white-haired guide girl violently by her hair"},
+                    {"start": 675.0, "weight": 0.28, "desc": "Tanjiro crushes Genya wrist with bare hands warning him coldly"},
+                    {"start": 710.0, "weight": 0.23, "desc": "Guides summon Kasugai crows, Zenitsu gets a tiny trembling sparrow"},
+                    {"start": 740.0, "weight": 0.23, "desc": "Tamahagane ore table: Tanjiro uses smell to find purest resonant ore"},
+                ],
                 "short_title": "Tanjiro Breaks Genya’s Arm LIVE! 💥 | Demon Slayer S1 Ep 5 Part 2 #shorts",
             },
             {
@@ -82,6 +94,12 @@ EPISODE_KNOWLEDGE = {
                 "narration": "Exhausted, battered, and relying on a wooden walking stick, Tanjiro begins the grueling trek back to Mount Sagiri. Every step sends agonizing shooting pain through his fractured ribs, but the burning thought of his sister Nezuko keeps his feet moving forward through the snow. As the familiar wooden cabin of Master Sakonji Urokodaki finally comes into view, Tanjiro collapses to his knees from pure exhaustion. But then, a deafening crash echoes through the mountain trees—the front door of the cabin is kicked clean off its hinges! Stepping out into the bright sunlight is Nezuko, fully awake from her two-year mystical slumber. Overwhelmed with emotion, Tanjiro drops his cane and crawls toward her in tears. Nezuko rushes forward with arms wide open, scooping her older brother into a tight, warm embrace. Just as Tanjiro is weeping into her shoulder, Master Urokodaki returns, dropping his bundle of firewood in shock. Tearing off his tengu mask in spirit, the stoic old master breaks down in tears and wraps his arms around both children, sobbing with profound relief that for the first time in decades, one of his beloved students has returned from the mountain alive.",
                 "cliffhanger": "Wait until you see what happens when the mysterious swordsmith arrives in Part 4!",
                 "time_range": [807, 965],
+                "beats": [
+                    {"start": 810.0, "weight": 0.25, "desc": "Exhausted Tanjiro trudges through snow with wooden walking stick"},
+                    {"start": 850.0, "weight": 0.26, "desc": "Cabin door kicked off hinges, Nezuko awakens into bright sunlight"},
+                    {"start": 895.0, "weight": 0.26, "desc": "Nezuko rushes forward embracing weeping Tanjiro tightly"},
+                    {"start": 930.0, "weight": 0.23, "desc": "Master Urokodaki drops firewood and embraces both children in tears"},
+                ],
                 "short_title": "Nezuko Kicks the Door Open & Wakes Up! 😭 | Demon Slayer S1 Ep 5 Part 3 #shorts",
             },
             {
@@ -90,6 +108,12 @@ EPISODE_KNOWLEDGE = {
                 "narration": "Fifteen days pass as Tanjiro heals his wounds under Urokodaki's care, until the sharp ringing of wind chimes heralds the arrival of an eccentric visitor. Walking up the path is Hotaru Haganezuka, an official swordsmith from the hidden Swordsmith Village, sporting a wide straw hat hung with wind chimes and an outrageously funny Hyottoko clown mask. Completely ignoring Tanjiro's polite greetings, Haganezuka sits down on the dirt porch and launches into an obsessive, passionate rant about how he forged this Nichirin blade using scarlet iron sand and sunlight-absorbing ore. Once inside, Haganezuka hands Tanjiro the pristine hilt, eagerly urging him to unsheathe it. Nichirin blades are known as color-changing swords—their metal transforms into a distinct color reflecting the user's innate breathing affinity. Given Tanjiro's training under the former Water Hashira, Haganezuka and Urokodaki eagerly anticipate a brilliant azure blue blade. Tanjiro takes a deep breath, grips the handle, and draws the steel. Within seconds, a dark wave ripples across the metal, turning the entire blade into an ominous, pitch-black void!",
                 "cliffhanger": "Why is a pitch-black blade an omen of death? Watch Part 5 for the chilling truth!",
                 "time_range": [1044, 1207],
+                "beats": [
+                    {"start": 1048.0, "weight": 0.24, "desc": "Hotaru Haganezuka arrives wearing straw hat with wind chimes and clown mask"},
+                    {"start": 1090.0, "weight": 0.26, "desc": "Haganezuka obsessive rant on porch explaining scarlet iron sand"},
+                    {"start": 1130.0, "weight": 0.25, "desc": "Inside cabin Haganezuka hands hilt urging Tanjiro to draw sword"},
+                    {"start": 1175.0, "weight": 0.25, "desc": "Dark wave ripples down blade turning steel into pitch-black void"},
+                ],
                 "short_title": "His Nichirin Sword Turned PITCH BLACK! ⚔️ | Demon Slayer S1 Ep 5 Part 4 #shorts",
             },
             {
@@ -98,6 +122,12 @@ EPISODE_KNOWLEDGE = {
                 "narration": "Haganezuka immediately flies into a furious comical rage, tackling Tanjiro to the ground because he desperately wanted to see a flashy bright red blade. Urokodaki intervenes, explaining the grave mystery of a pitch-black sword: throughout the centuries of the Demon Slayer Corps, almost no black-blade wielders have ever lived long enough for their true characteristics to be recorded, making it both exceptionally rare and historically omen-filled. Before Tanjiro can even process what this means, his Kasugai Crow swoops through the window, screeching orders in fluent human speech! The bird delivers his very first official assignment: in a town to the northwest, innocent young girls have been vanishing without a trace every single night, and Tanjiro must hunt down and exterminate the demon responsible. Urokodaki gifts Tanjiro the durable black uniform of the Corps, along with a custom light-resistant wooden box crafted from Kirin timber, allowing Nezuko to travel safely on his back during daytime. Donning his checkered haori and slinging the wooden box over his shoulders, Tanjiro takes his fateful first steps down the mountain—officially embarking on his journey to rid the world of demons!",
                 "cliffhanger": "Subscribe to Bhaloo Ji for Episode 6 — Tanjiro hunts the Swamp Demon!",
                 "time_range": [1207, 1370],
+                "beats": [
+                    {"start": 1210.0, "weight": 0.24, "desc": "Haganezuka comedic rage wrestling Tanjiro over black sword"},
+                    {"start": 1250.0, "weight": 0.26, "desc": "Urokodaki explains black blade mystery and historic omen of death"},
+                    {"start": 1290.0, "weight": 0.25, "desc": "Kasugai crow screeches first assignment in fluent human speech"},
+                    {"start": 1330.0, "weight": 0.25, "desc": "Tanjiro receives Demon Slayer uniform and wooden box for Nezuko"},
+                ],
                 "short_title": "The First Demon Slaying Mission Begins! 🦅 | Demon Slayer S1 Ep 5 Part 5 #shorts",
             }
         ]

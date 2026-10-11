@@ -19,6 +19,7 @@ from pathlib import Path
 
 from anime_catalog import get_next_episode, get_active_episode, load_catalog, load_history, save_history
 from anime_script_engine import generate_episode_script
+from anime_subtitle_sync import get_episode_scene_acts
 from anime_voice_subtitles import produce_part_audio_subtitles, produce_master_audio_subtitles
 from anime_video_engine import (
     assemble_short_part,
@@ -429,6 +430,14 @@ def run_daily_funnel(
                     voice=voice,
                     is_landscape=True,
                 )
+                part_beats = part_info.get("beats")
+                if not part_beats:
+                    acts = get_episode_scene_acts({"episode_key": ep_key}, num_parts=len(script_package.get("parts", [])), raw_video_path=raw_video_path)
+                    for act in acts:
+                        if act.get("part") == p_num and "beats" in act:
+                            part_beats = act["beats"]
+                            break
+
                 assemble_short_part(
                     raw_video_path=raw_video_path,
                     voice_audio_path=audio_f,
@@ -439,6 +448,8 @@ def run_daily_funnel(
                     bgm_path=bgm_path,
                     is_landscape=True,
                     dry_run=dry_run,
+                    beats=part_beats,
+                    narration=part_info.get("narration", ""),
                 )
                 rendered_landscape.append(vid_f)
 
@@ -524,6 +535,14 @@ def run_daily_funnel(
         badge_text=part_info.get("badge", f"PART {next_p}/{total_parts}"),
         voice=voice,
     )
+    part_beats = part_info.get("beats")
+    if not part_beats:
+        acts = get_episode_scene_acts({"episode_key": ep_key}, num_parts=total_parts, raw_video_path=raw_video_path)
+        for act in acts:
+            if act.get("part") == next_p and "beats" in act:
+                part_beats = act["beats"]
+                break
+
     assemble_short_part(
         raw_video_path=raw_video_path,
         voice_audio_path=audio_f,
@@ -534,6 +553,8 @@ def run_daily_funnel(
         bgm_path=bgm_path,
         is_landscape=False,
         dry_run=dry_run,
+        beats=part_beats,
+        narration=part_info.get("narration", ""),
     )
 
     normal_vid_info = active_ep.get("normal_video", {})

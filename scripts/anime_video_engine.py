@@ -177,14 +177,16 @@ def assemble_short_part(
     bgm_path: str | Path | None = None,
     is_landscape: bool = False,
     dry_run: bool = False,
+    beats: list[dict] | None = None,
+    narration: str = "",
 ) -> bool:
     """
-    Renders an individual part with comprehensive anti-copyright tactics:
+    Renders an individual part with comprehensive anti-copyright tactics & dynamic sentence-locking:
     - If is_landscape=True: 16:9 Landscape Fullscreen (1920x1080) for Full Long-Form Videos.
     - If is_landscape=False: 9:16 Vertical Canvas (1080x1920) for YouTube Shorts.
     1. 100% Original Anime Audio Stripped (-an) - Zero music/OST/dialogue claims.
-    2. Scene-Synchronized Slicing - Slices footage strictly within the narrative scene's timeframe.
-    3. Rapid Dynamic Cuts (< 2.8s per cut) - Bypasses visual Content ID matching.
+    2. Dynamic Sentence-Locked Slicing - Slices match spoken narration sentence-by-sentence.
+    3. CFR 30fps stream synchronization to prevent audio/video drift.
     4. Royalty-Free BGM (RecapKun AERØHEAD) mixed cleanly behind crystal-clear voiceover.
     """
     raw_video = Path(raw_video_path)
@@ -202,52 +204,80 @@ def assemble_short_part(
     w_start, w_end = time_window
     safe_start = max(60.0, float(w_start))
     safe_end = max(safe_start + 30.0, float(w_end))
-
-    # 2. Compute cinematic scene cuts (~4.8-5.2s each) across this scene's timeline
     window_length = max(30.0, safe_end - safe_start)
-    cut_len = 4.8  # Narrative scene cut length matching RecapKun storytelling
-    num_cuts = max(4, int(total_duration / cut_len) + 1)
-    step = (window_length - cut_len) / max(1, num_cuts)
+
+    # 2. Dynamic Sentence-Locked Scene Allocation
+    shots = []
+    if beats and len(beats) > 0:
+        sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', narration) if s.strip()] if narration else []
+        total_narr_words = sum(len(s.split()) for s in sents) if sents else 0
+
+        weights = []
+        if total_narr_words > 0 and len(sents) >= len(beats):
+            s_per_beat = max(1, len(sents) // len(beats))
+            for b_idx in range(len(beats)):
+                s_start_idx = b_idx * s_per_beat
+                s_end_idx = len(sents) if (b_idx == len(beats) - 1) else min(len(sents), (b_idx + 1) * s_per_beat)
+                group_words = sum(len(sents[j].split()) for j in range(s_start_idx, s_end_idx))
+                weights.append(round(group_words / total_narr_words, 3))
+        else:
+            weights = [float(b.get("weight", 1.0 / len(beats))) for b in beats]
+
+        accum_dur = 0.0
+        for b_idx, b in enumerate(beats):
+            b_start = max(0.0, float(b.get("start", safe_start)))
+            if b_idx == len(beats) - 1:
+                b_dur = max(0.5, total_duration - accum_dur)
+            else:
+                w = weights[b_idx] if b_idx < len(weights) else (1.0 / len(beats))
+                b_dur = round(total_duration * w, 2)
+                accum_dur += b_dur
+            shots.append((b_start, b_dur))
+    else:
+        # Fallback if no explicit beats: 4 narrative cuts with sentence word weights
+        num_cuts = max(3, min(5, int(total_duration / 15.0)))
+        step = (window_length - 4.8) / max(1, num_cuts)
+        sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', narration) if s.strip()] if narration else []
+        total_narr_words = sum(len(s.split()) for s in sents) if sents else 0
+        accum_dur = 0.0
+        for idx in range(num_cuts):
+            s_start = safe_start + (idx * step)
+            if total_narr_words > 0 and len(sents) >= num_cuts:
+                s_per_cut = max(1, len(sents) // num_cuts)
+                s_start_idx = idx * s_per_cut
+                s_end_idx = len(sents) if (idx == num_cuts - 1) else min(len(sents), (idx + 1) * s_per_cut)
+                w = sum(len(sents[j].split()) for j in range(s_start_idx, s_end_idx)) / total_narr_words
+            else:
+                w = 1.0 / num_cuts
+            if idx == num_cuts - 1:
+                s_dur = max(0.5, total_duration - accum_dur)
+            else:
+                s_dur = round(total_duration * w, 2)
+                accum_dur += s_dur
+            shots.append((s_start, s_dur))
 
     temp_dir = output_video.parent / f"temp_slices_{output_video.stem}"
     temp_dir.mkdir(parents=True, exist_ok=True)
     slice_files = []
-    current_time = 0.0
 
-    log(f"Composing {mode_label}: Slicing {num_cuts} scene-synced cuts (~{cut_len:.1f}s each) between {safe_start:.1f}s and {safe_end:.1f}s...")
+    log(f"Composing {mode_label}: Slicing {len(shots)} sentence-locked shots between {safe_start:.1f}s and {safe_end:.1f}s...")
 
     try:
-        for idx in range(num_cuts):
-            if current_time >= total_duration:
-                break
-            seg_dur = min(cut_len, total_duration - current_time)
-            if seg_dur <= 0.4:
-                break
-            seg_start = safe_start + (idx * step)
+        for idx, (s_start, s_dur) in enumerate(shots):
+            if s_dur <= 0.4:
+                continue
             seg_file = temp_dir / f"slice_{idx:03d}.mp4"
 
-            # Anti-copyright visual variance without jarring mirror flips:
-            # Subtle cinematic punch-in and gentle crop variance
             if is_landscape:
-                if idx == 0:
-                    vf_slice = "scale=2016:1134:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
-                elif idx % 2 == 1:
-                    vf_slice = "scale=1960:1102:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
-                else:
-                    vf_slice = "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                vf_slice = "fps=30,scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
             else:
-                if idx == 0:
-                    vf_slice = "scale=1344:756:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
-                elif idx % 2 == 1:
-                    vf_slice = "scale=1300:731:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
-                else:
-                    vf_slice = "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+                vf_slice = "fps=30,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
 
             cmd_slice = [
                 "ffmpeg", "-y",
-                "-ss", f"{seg_start:.2f}",
+                "-ss", f"{s_start:.2f}",
                 "-i", str(raw_video),
-                "-t", f"{seg_dur:.2f}",
+                "-t", f"{s_dur:.2f}",
                 "-vf", vf_slice,
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
@@ -258,13 +288,12 @@ def assemble_short_part(
             res_slice = subprocess.run(cmd_slice, capture_output=True, text=True)
             if res_slice.returncode == 0 and seg_file.exists() and seg_file.stat().st_size > 5000:
                 slice_files.append(seg_file)
-                current_time += seg_dur
 
         if not slice_files:
             log("Failed to slice any scenes from raw anime video.")
             return False
 
-        # Concat slices into a unified spliced video stream
+        # Concat slices into a unified CFR 30fps video stream
         concat_txt = temp_dir / "slices.txt"
         with open(concat_txt, "w", encoding="utf-8") as f:
             for sf in slice_files:
@@ -276,7 +305,12 @@ def assemble_short_part(
             "-f", "concat",
             "-safe", "0",
             "-i", str(concat_txt),
-            "-c", "copy",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "18",
+            "-pix_fmt", "yuv420p",
+            "-r", "30",
+            "-vsync", "cfr",
             str(spliced_video)
         ]
         res_cat = subprocess.run(cmd_concat, capture_output=True, text=True)

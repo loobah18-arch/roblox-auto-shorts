@@ -13,6 +13,66 @@ from pathlib import Path
 
 # Curated act breakdowns for upcoming catalog episodes
 CURATED_ACT_TIMELINES = {
+    "demon-slayer-s01e05": {
+        "title": "His Own Sword",
+        "acts": [
+            {
+                "part": 1,
+                "time_range": [505, 645],
+                "theme": "Only four battered survivors emerge from Mt. Fujikasane to face the twin guides before Genya demands his sword",
+                "beats": [
+                    {"start": 505.0, "weight": 0.24, "desc": "Morning sun rises over Mt. Fujikasane, Tanjiro walks out battered"},
+                    {"start": 535.0, "weight": 0.28, "desc": "Four survivors stand before wisteria: Tanjiro, trembling Zenitsu, Kanao, Genya"},
+                    {"start": 575.0, "weight": 0.24, "desc": "Twin guides appear from mist presenting Mizunoto rank to survivors"},
+                    {"start": 615.0, "weight": 0.24, "desc": "Genya screams angrily demanding his Nichirin sword immediately"},
+                ]
+            },
+            {
+                "part": 2,
+                "time_range": [645, 770],
+                "theme": "Genya assaults the guide girl, Tanjiro crushes his wrist, crows are assigned, and survivors choose tamahagane ore",
+                "beats": [
+                    {"start": 645.0, "weight": 0.26, "desc": "Genya grabs white-haired guide girl violently by her hair"},
+                    {"start": 675.0, "weight": 0.28, "desc": "Tanjiro crushes Genya wrist with bare hands warning him coldly"},
+                    {"start": 710.0, "weight": 0.23, "desc": "Guides summon Kasugai crows, Zenitsu gets a tiny trembling sparrow"},
+                    {"start": 740.0, "weight": 0.23, "desc": "Tamahagane ore table: Tanjiro uses smell to find purest resonant ore"},
+                ]
+            },
+            {
+                "part": 3,
+                "time_range": [807, 965],
+                "theme": "Tanjiro crawls back to Mt. Sagiri where Nezuko awakens from her two-year sleep and Urokodaki weeps in relief",
+                "beats": [
+                    {"start": 810.0, "weight": 0.25, "desc": "Exhausted Tanjiro trudges through snow with wooden walking stick"},
+                    {"start": 850.0, "weight": 0.26, "desc": "Cabin door kicked off hinges, Nezuko awakens into bright sunlight"},
+                    {"start": 895.0, "weight": 0.26, "desc": "Nezuko rushes forward embracing weeping Tanjiro tightly"},
+                    {"start": 930.0, "weight": 0.23, "desc": "Master Urokodaki drops firewood and embraces both children in tears"},
+                ]
+            },
+            {
+                "part": 4,
+                "time_range": [1044, 1207],
+                "theme": "Eccentric swordsmith Hotaru Haganezuka arrives with wind chimes, and Tanjiro draws a rare pitch-black Nichirin sword",
+                "beats": [
+                    {"start": 1048.0, "weight": 0.24, "desc": "Hotaru Haganezuka arrives wearing straw hat with wind chimes and clown mask"},
+                    {"start": 1090.0, "weight": 0.26, "desc": "Haganezuka obsessive rant on porch explaining scarlet iron sand"},
+                    {"start": 1130.0, "weight": 0.25, "desc": "Inside cabin Haganezuka hands hilt urging Tanjiro to draw sword"},
+                    {"start": 1175.0, "weight": 0.25, "desc": "Dark wave ripples down blade turning steel into pitch-black void"},
+                ]
+            },
+            {
+                "part": 5,
+                "time_range": [1207, 1370],
+                "theme": "Haganezuka comedic rage over black blade, Urokodaki explains the omen, Kasugai crow announces first mission, Tanjiro departs",
+                "beats": [
+                    {"start": 1210.0, "weight": 0.24, "desc": "Haganezuka comedic rage wrestling Tanjiro over black sword"},
+                    {"start": 1250.0, "weight": 0.26, "desc": "Urokodaki explains black blade mystery and historic omen of death"},
+                    {"start": 1290.0, "weight": 0.25, "desc": "Kasugai crow screeches first assignment in fluent human speech"},
+                    {"start": 1330.0, "weight": 0.25, "desc": "Tanjiro receives Demon Slayer uniform and wooden box for Nezuko"},
+                ]
+            }
+        ]
+    },
     "demon-slayer-s01e06": {
         "title": "Swordsman with a Demon",
         "acts": [

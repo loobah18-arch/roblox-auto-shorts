@@ -279,11 +279,19 @@ def review_rendered_episode(ep_dir: Path) -> dict:
                 sample_times.append(beat_accum + (b_dur * 0.5))
                 beat_accum += b_dur
             accum_time += est_dur
-        else:
-            # Fallback 25%, 50%, 75%
-            dur = est_dur if use_master else 60.0
+        elif use_master:
+            dur = est_dur
             sample_times = [accum_time + dur * 0.25, accum_time + dur * 0.50, accum_time + dur * 0.75]
             accum_time += dur
+        elif beats:
+            sample_times = []
+            b_accum = 0.0
+            for b in beats:
+                b_dur = est_dur * float(b.get("weight", 1.0 / len(beats)))
+                sample_times.append(b_accum + (b_dur * 0.5))
+                b_accum += b_dur
+        else:
+            sample_times = [est_dur * 0.25, est_dur * 0.50, est_dur * 0.75]
 
         part_evals = []
         log(f"🔍 Part {p_num} ({vid_f.name}): Evaluating {len(sample_times)} beat frames...")

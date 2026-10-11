@@ -561,6 +561,44 @@ class TestContinuousMasterEngine(unittest.TestCase):
             self.assertGreaterEqual(len(act["beats"]), 1)
             self.assertAlmostEqual(sum(b["weight"] for b in act["beats"]), 1.0, delta=0.02)
 
+    def test_demon_slayer_s01e05_curated_beats(self):
+        """Verify demon-slayer-s01e05 is fully curated with 5 acts and sentence-locked beats."""
+        from anime_subtitle_sync import CURATED_ACT_TIMELINES
+        self.assertIn("demon-slayer-s01e05", CURATED_ACT_TIMELINES)
+        acts = CURATED_ACT_TIMELINES["demon-slayer-s01e05"]["acts"]
+        self.assertEqual(len(acts), 5)
+        for act in acts:
+            self.assertIn("time_range", act)
+            self.assertIn("beats", act)
+            self.assertEqual(len(act["beats"]), 4)
+            for b in act["beats"]:
+                self.assertGreaterEqual(b["start"], act["time_range"][0])
+                self.assertLessEqual(b["start"], act["time_range"][1])
+
+    def test_assemble_short_part_with_beats_dry_run(self):
+        """Verify assemble_short_part accepts beats and narration with dynamic sentence-locking."""
+        from anime_video_engine import assemble_short_part
+        mock_beats = [
+            {"start": 505.0, "weight": 0.25, "desc": "Beat 1"},
+            {"start": 540.0, "weight": 0.25, "desc": "Beat 2"},
+            {"start": 580.0, "weight": 0.25, "desc": "Beat 3"},
+            {"start": 620.0, "weight": 0.25, "desc": "Beat 4"},
+        ]
+        mock_narration = "First sentence here. Second sentence here. Third sentence here. Fourth sentence here."
+        res = assemble_short_part(
+            raw_video_path="/tmp/fake.mp4",
+            voice_audio_path="/tmp/fake.mp3",
+            ass_subtitle_path="/tmp/fake.ass",
+            output_video_path="/tmp/fake_short.mp4",
+            time_window=(505, 645),
+            total_duration=55.0,
+            is_landscape=False,
+            dry_run=True,
+            beats=mock_beats,
+            narration=mock_narration,
+        )
+        self.assertTrue(res)
+
 
 if __name__ == "__main__":
     unittest.main()
