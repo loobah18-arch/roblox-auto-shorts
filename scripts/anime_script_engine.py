@@ -163,6 +163,68 @@ EPISODE_KNOWLEDGE = {
             }
         ]
     },
+    "demon-slayer-s01e07": {
+        "title": "Muzan Kibutsuji",
+        "summary": "Tanjiro descends into the murky swamp dimension to exterminate two swamp clones using Water Breathing Sixth Form: Whirlpool. Returning to the surface, Tanjiro and Nezuko defeat the final demon and comfort Kazumi. Tanjiro journeys to neon Asakusa, Tokyo, where he catches the unmistakable scent of his family's slaughter—and confronts Muzan Kibutsuji living in plain sight.",
+        "parts": [
+            {
+                "part": 1,
+                "hook": "He dove straight into a pitch-black demonic swamp dimension, where demons thought he was completely helpless!",
+                "narration": "Plunging headfirst into the viscous, liquid abyss, Tanjiro Kamado enters the Swamp Demon's subterranean pocket dimension. Suspended in pitch-black murk where normal humans would suffocate in seconds, two sinister demon clones encircle him with predatory glee, believing the young slayer is immobilized by immense hydrostatic pressure and zero traction. But they severely underestimate the brutal conditioning of former Water Hashira Sakonji Urokodaki! Water Breathing is fundamentally engineered to dominate aquatic physics. Planting his core and twisting his entire upper body with ferocious rotational torque, Tanjiro unleashes Water Breathing Sixth Form: Whirlpool! A violent, high-pressure hydro-vortex violently erupts through the dark marsh, sucking both demon clones into its razor-sharp spiral current and cleanly decapitating them before they can even scream!",
+                "cliffhanger": "Can Nezuko survive on the surface alone? Watch Part 2 for the brutal clash!",
+                "time_range": [120, 390],
+                "beats": [
+                    {"start": 120.0, "weight": 0.25, "desc": "Submerging into murky underwater swamp dimension"},
+                    {"start": 210.0, "weight": 0.25, "desc": "Swamp demons taunting Tanjiro underwater"},
+                    {"start": 290.0, "weight": 0.25, "desc": "Total concentration water breathing preparation"},
+                    {"start": 355.0, "weight": 0.25, "desc": "Sixth Form Whirlpool vortex decapitation"},
+                ],
+                "short_title": "Water Breathing Sixth Form Whirlpool! 🌀 | Demon Slayer S1 Ep 7 Part 1 #shorts",
+            },
+            {
+                "part": 2,
+                "hook": "He pinned the terrified demon to the cobblestones, but mentioning one name caused pure cellular horror!",
+                "narration": "Bursting through the muddy portal back onto the moonlit cobblestones, Tanjiro arrives just as Nezuko delivers a barrage of ferocious blows against the third and final demon clone. Moving with lightning precision, Tanjiro pins the mangled demon to the earth with his pitch-black Nichirin blade pressed hard against its neck. Looking coldly into the creature's panicked eyes, Tanjiro demands answers: 'How many innocent lives have you devoured? And what do you know about Muzan Kibutsuji?!' At the mere mention of that forbidden name, the demon's eyes dilate in absolute, paralyzing cellular terror. An ingrained biological curse planted deep in every demon's blood threatens instant vaporization if Muzan's identity is betrayed. Driven mad with hysteria, the demon lunges in a suicidal counterattack—and Tanjiro's blade severs his head in one clean stroke.",
+                "cliffhanger": "Wait until you see Tanjiro's emotional farewell in Part 3!",
+                "time_range": [390, 680],
+                "beats": [
+                    {"start": 395.0, "weight": 0.25, "desc": "Tanjiro bursts up onto surface streets"},
+                    {"start": 480.0, "weight": 0.25, "desc": "Nezuko combat defending above ground"},
+                    {"start": 570.0, "weight": 0.25, "desc": "Tanjiro pinning final demon to ground"},
+                    {"start": 640.0, "weight": 0.25, "desc": "Interrogating demon about Muzan Kibutsuji"},
+                ],
+                "short_title": "The Demon Who Feared Muzan Kibutsuji! 😱 | Demon Slayer S1 Ep 7 Part 2 #shorts",
+            },
+            {
+                "part": 3,
+                "hook": "He handed back the keepsakes of the murdered brides, and his parting words will make you cry!",
+                "narration": "With the nightmare over, Tanjiro recovers a collection of stolen hairpins and hair ribbons from the demon's lair, presenting them to the shattered Kazumi. Clutching his deceased fiancée Satoko's ribbon against his chest, Kazumi breaks down in uncontrollable sobs, crying out that no matter how many trinkets remain, the love of his life will never return to his arms. Tanjiro gently places his calloused, battle-scarred hand over Kazumi's trembling fingers. Looking directly into his grief-stricken eyes with profound warmth, Tanjiro speaks words carved from his own tragedy: 'No matter how much you lose, you have no choice but to keep on living.' Kazumi looks at Tanjiro's weathered face and realizes with heartbreaking clarity that this young swordsman has already endured losses far beyond comprehension. As the sun rises, Tanjiro and Nezuko depart for their next mission—marching toward the dazzling, electric-lit metropolis of Asakusa, Tokyo.",
+                "cliffhanger": "What awaits Tanjiro in the neon streets of Tokyo? Watch Part 4 for the ultimate shock!",
+                "time_range": [680, 950],
+                "beats": [
+                    {"start": 685.0, "weight": 0.25, "desc": "Returning missing girls items to weeping Kazumi"},
+                    {"start": 765.0, "weight": 0.25, "desc": "Kazumi emotional farewell and gratitude"},
+                    {"start": 845.0, "weight": 0.25, "desc": "Journeying toward Tokyo at dusk"},
+                    {"start": 910.0, "weight": 0.25, "desc": "Arrival at neon Asakusa Tokyo metropolis"},
+                ],
+                "short_title": "The Most Heartbreaking Farewell in Demon Slayer 😭 | Demon Slayer S1 Ep 7 Part 3 #shorts",
+            },
+            {
+                "part": 4,
+                "hook": "He caught the scent of his family's killer in the crowded city, but what he found froze his blood solid!",
+                "narration": "Arriving in Taisho-era Asakusa, Tanjiro is utterly overwhelmed by the dazzling sea of electric lamps, roaring streetcars, and bustling nighttime crowds. Seeking refuge from sensory overload, he retreats to an alley cart to eat a bowl of yam udon. But suddenly, mid-bite, his superhuman sense of smell catches a terrifying, unmistakable scent—the exact repulsive odor that permeated the frozen pool of blood at his family's slaughter! Dropping his bowl, Tanjiro sprints desperately through the packed streets, shoving through pedestrians with wild urgency until his hand clutches the shoulder of an elegant gentleman in a white fedora and western suit. The man turns around, revealing chilling crimson eyes and slit pupils—it is Muzan Kibutsuji himself! But as Tanjiro draws his blade to strike, his heart stops in pure, paralyzed horror: cradled gently in Muzan's arms is a smiling human toddler, and standing beside him is a loving human woman who calls him her husband!",
+                "cliffhanger": "Subscribe to Bhaloo Ji for Episode 8 — The Blood Demon Art of Lady Tamayo!",
+                "time_range": [950, 1270],
+                "beats": [
+                    {"start": 955.0, "weight": 0.25, "desc": "Overwhelmed by electric lights eating udon"},
+                    {"start": 1035.0, "weight": 0.25, "desc": "Detecting scent of family slaughter"},
+                    {"start": 1115.0, "weight": 0.25, "desc": "Sprinting desperately through Asakusa crowd"},
+                    {"start": 1200.0, "weight": 0.25, "desc": "Confronting Muzan Kibutsuji holding human child"},
+                ],
+                "short_title": "Tanjiro Confronts Muzan Kibutsuji IN PUBLIC! 😱 | Demon Slayer S1 Ep 7 Part 4 #shorts",
+            }
+        ]
+    },
     "jujutsu-kaisen-s01e01": {
         "title": "Ryomen Sukuna",
         "summary": "Yuji Itadori discovers a cursed talisman at his high school. When curses attack his friends, Yuji swallows Sukuna's finger to gain cursed energy, becoming the vessel for the King of Curses.",
