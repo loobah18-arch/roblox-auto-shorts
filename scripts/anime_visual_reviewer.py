@@ -230,38 +230,63 @@ def review_rendered_episode(ep_dir: Path) -> dict:
 
     log(f"🎬 Starting Visual Review for {ep_dir.name} ({len(parts)} parts)...")
 
-    for part_info in parts:
-        p_num = part_info.get("part", 1)
-        p_dir = ep_dir / f"part_{p_num:02d}"
+    master_vid = ep_dir / f"full_{ep_dir.name}.mp4"
+    use_master = master_vid.exists()
 
-        # Look for landscape video first, fallback to short
-        candidates = [
-            p_dir / f"landscape_{ep_dir.name}_part{p_num}.mp4",
-            p_dir / f"short_{ep_dir.name}_part{p_num}.mp4",
-        ]
-        vid_f = next((c for c in candidates if c.exists()), None)
-        if not vid_f:
-            log(f"Part {p_num} video not found in {p_dir}")
-            continue
+    log(f"🎬 Starting Visual Review for {ep_dir.name} ({len(parts)} parts, master_mode={use_master})...")
 
-        # Get video duration via ffprobe
+    master_dur = 0.0
+    if use_master:
         probe_cmd = [
             "ffprobe", "-v", "error",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
-            str(vid_f)
+            str(master_vid)
         ]
         try:
             dur_res = subprocess.run(probe_cmd, capture_output=True, text=True)
-            dur = float(dur_res.stdout.strip())
+            master_dur = float(dur_res.stdout.strip())
         except Exception:
-            dur = 50.0
+            master_dur = 240.0
 
-        # Sample at 25%, 50%, and 75%
-        sample_times = [dur * 0.25, dur * 0.50, dur * 0.75]
+    accum_time = 0.0
+    for part_info in parts:
+        p_num = part_info.get("part", 1)
+        p_dir = ep_dir / f"part_{p_num:02d}"
+
+        # Prioritize master video if available, else check landscape/short parts
+        vid_f = master_vid if use_master else None
+        if not vid_f or not vid_f.exists():
+            candidates = [
+                p_dir / f"landscape_{ep_dir.name}_part{p_num}.mp4",
+                p_dir / f"short_{ep_dir.name}_part{p_num}.mp4",
+            ]
+            vid_f = next((c for c in candidates if c.exists()), None)
+
+        if not vid_f or not vid_f.exists():
+            log(f"Part {p_num} video not found in {p_dir}")
+            continue
+
+        # Determine chapter duration & beat sample times
+        est_dur = float(part_info.get("estimated_duration", 60.0))
+        beats = part_info.get("beats", [])
+
+        if use_master and beats:
+            sample_times = []
+            beat_accum = accum_time
+            for b in beats:
+                b_dur = est_dur * float(b.get("weight", 1.0 / len(beats)))
+                sample_times.append(beat_accum + (b_dur * 0.5))
+                beat_accum += b_dur
+            accum_time += est_dur
+        else:
+            # Fallback 25%, 50%, 75%
+            dur = est_dur if use_master else 60.0
+            sample_times = [accum_time + dur * 0.25, accum_time + dur * 0.50, accum_time + dur * 0.75]
+            accum_time += dur
+
         part_evals = []
-
-        log(f"🔍 Part {p_num} ({vid_f.name}, {dur:.1f}s): Evaluating 3 frames...")
+        log(f"🔍 Part {p_num} ({vid_f.name}): Evaluating {len(sample_times)} beat frames...")
 
         for idx, t in enumerate(sample_times, start=1):
             frame_img = frames_dir / f"part_{p_num:02d}_frame_{idx}.jpg"
@@ -275,7 +300,7 @@ def review_rendered_episode(ep_dir: Path) -> dict:
                 eval_data["frame_path"] = str(frame_img.relative_to(ep_dir))
                 eval_data["timestamp_in_clip"] = round(t, 2)
                 part_evals.append(eval_data)
-                log(f"  Frame {idx} ({t:.1f}s): Score {eval_data.get('alignment_score', '?')}/10 | {eval_data.get('visual_description', '')[:70]}...")
+                log(f"  Beat Frame {idx} ({t:.1f}s): Score {eval_data.get('alignment_score', '?')}/10 | {eval_data.get('visual_description', '')[:70]}...")
 
         # Calculate average score for this part
         scores = [e.get("alignment_score", 7) for e in part_evals]

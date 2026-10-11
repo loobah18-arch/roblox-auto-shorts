@@ -548,7 +548,12 @@ def assemble_master_full_video(
             "-f", "concat",
             "-safe", "0",
             "-i", str(concat_txt),
-            "-c", "copy",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "18",
+            "-pix_fmt", "yuv420p",
+            "-r", "30",
+            "-vsync", "cfr",
             str(spliced_video)
         ]
         res_cat = subprocess.run(cmd_concat, capture_output=True, text=True)
