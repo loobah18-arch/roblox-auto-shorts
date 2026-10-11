@@ -215,6 +215,128 @@ def produce_part_audio_subtitles(
     )
 
 
+async def generate_master_voice_and_subtitles(
+    chapter_texts: list[str],
+    output_audio_path: str | Path,
+    output_ass_path: str | Path,
+    voice: str = DEFAULT_VOICE,
+    rate: str = DEFAULT_RATE,
+    is_landscape: bool = True,
+) -> dict:
+    """
+    Generates ONE single continuous audio and subtitle track for the full master video.
+    Also calculates exact chapter start/end timestamps and durations from word boundaries.
+    """
+    full_text = " ".join(t.strip() for t in chapter_texts if t.strip())
+    output_audio_path = Path(output_audio_path)
+    output_ass_path = Path(output_ass_path)
+    output_audio_path.parent.mkdir(parents=True, exist_ok=True)
+    output_ass_path.parent.mkdir(parents=True, exist_ok=True)
+
+    communicate = edge_tts.Communicate(full_text, voice=voice, rate=rate)
+
+    word_cues = []
+    sentence_cues = []
+
+    with open(output_audio_path, "wb") as audio_file:
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_file.write(chunk["data"])
+            elif chunk["type"] == "WordBoundary":
+                word_cues.append({
+                    "word": chunk["text"],
+                    "start": chunk["offset"] / 10_000_000.0,
+                    "end": (chunk["offset"] + chunk["duration"]) / 10_000_000.0,
+                })
+            elif chunk["type"] == "SentenceBoundary":
+                sentence_cues.append({
+                    "text": chunk["text"],
+                    "offset": chunk["offset"],
+                    "duration": chunk["duration"],
+                })
+
+    if not word_cues and sentence_cues:
+        for sent in sentence_cues:
+            words = sent["text"].strip().split()
+            if not words:
+                continue
+            total_chars = max(1, sum(len(w) for w in words))
+            cur_offset = sent["offset"]
+            for w in words:
+                w_dur = int(sent["duration"] * (len(w) / total_chars))
+                word_cues.append({
+                    "word": w,
+                    "start": cur_offset / 10_000_000.0,
+                    "end": (cur_offset + w_dur) / 10_000_000.0,
+                })
+                cur_offset += w_dur
+
+    ass_content = cues_to_ass(word_cues, badge_text="", is_landscape=is_landscape)
+    with open(output_ass_path, "w", encoding="utf-8") as f:
+        f.write(ass_content)
+
+    total_duration = word_cues[-1]["end"] if word_cues else 0.0
+
+    # Calculate exact chapter start/end timestamps from word counts
+    chapter_segments = []
+    current_word_idx = 0
+    total_words = len(word_cues)
+
+    for idx, chap_text in enumerate(chapter_texts, 1):
+        num_chap_words = len(chap_text.strip().split())
+        start_idx = current_word_idx
+        end_idx = min(current_word_idx + num_chap_words, total_words)
+
+        if total_words > 0 and start_idx < total_words:
+            c_start = word_cues[start_idx]["start"] if idx > 1 else 0.0
+            last_word_idx = min(end_idx - 1, total_words - 1)
+            c_end = word_cues[last_word_idx]["end"] if idx < len(chapter_texts) else total_duration
+            c_dur = max(0.5, c_end - c_start)
+        else:
+            c_start = 0.0
+            c_end = total_duration
+            c_dur = total_duration
+
+        chapter_segments.append({
+            "part": idx,
+            "start_time": round(c_start, 3),
+            "end_time": round(c_end, 3),
+            "duration": round(c_dur, 3),
+            "word_count": num_chap_words,
+        })
+        current_word_idx = end_idx
+
+    return {
+        "audio_path": str(output_audio_path),
+        "ass_path": str(output_ass_path),
+        "duration": total_duration,
+        "word_count": len(word_cues),
+        "chapter_segments": chapter_segments,
+    }
+
+
+def produce_master_audio_subtitles(
+    chapter_texts: list[str],
+    output_audio_path: str | Path,
+    output_ass_path: str | Path,
+    voice: str = DEFAULT_VOICE,
+    rate: str = DEFAULT_RATE,
+    is_landscape: bool = True,
+) -> dict:
+    """Synchronous wrapper for generate_master_voice_and_subtitles."""
+    return asyncio.run(
+        generate_master_voice_and_subtitles(
+            chapter_texts=chapter_texts,
+            output_audio_path=output_audio_path,
+            output_ass_path=output_ass_path,
+            voice=voice,
+            rate=rate,
+            is_landscape=is_landscape,
+        )
+    )
+
+
+
 if __name__ == "__main__":
     sample_text = (
         "Tanjiro Kamado spent the night selling charcoal in town, completely unaware of the nightmare waiting for him at home. "

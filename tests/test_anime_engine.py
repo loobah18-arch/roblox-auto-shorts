@@ -429,7 +429,41 @@ class TestMasterVideoArchitecture(unittest.TestCase):
             self.assertTrue(len(p["time_range"]) == 2)
 
 
+class TestContinuousMasterEngine(unittest.TestCase):
+    def test_assemble_master_full_video_dry_run(self):
+        from anime_video_engine import assemble_master_full_video
+        
+        chapter_segs = [
+            {"part": 1, "start_time": 0.0, "end_time": 65.0, "duration": 65.0, "time_range": [132, 420]},
+            {"part": 2, "start_time": 65.0, "end_time": 130.0, "duration": 65.0, "time_range": [420, 660]},
+        ]
+        ok = assemble_master_full_video(
+            raw_video_path="fake_raw.mp4",
+            voice_audio_path="fake_voice.mp3",
+            ass_subtitle_path="fake_sub.ass",
+            output_video_path="fake_master.mp4",
+            chapter_segments=chapter_segs,
+            total_duration=130.0,
+            dry_run=True,
+        )
+        self.assertTrue(ok)
+
+    def test_derive_short_from_master_dry_run(self):
+        from anime_video_engine import derive_short_from_master
+        
+        ok = derive_short_from_master(
+            master_video_path="fake_master.mp4",
+            output_short_path="fake_short.mp4",
+            start_time=0.0,
+            end_time=65.0,
+            badge_text="DEMON SLAYER • PART 1/4",
+            dry_run=True,
+        )
+        self.assertTrue(ok)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 

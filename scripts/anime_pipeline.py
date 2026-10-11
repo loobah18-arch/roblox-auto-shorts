@@ -19,8 +19,15 @@ from pathlib import Path
 
 from anime_catalog import get_next_episode, get_active_episode, load_catalog, load_history, save_history
 from anime_script_engine import generate_episode_script
-from anime_voice_subtitles import produce_part_audio_subtitles
-from anime_video_engine import assemble_short_part, download_gdrive_episode, stitch_full_episode_video, pick_bgm_for_episode
+from anime_voice_subtitles import produce_part_audio_subtitles, produce_master_audio_subtitles
+from anime_video_engine import (
+    assemble_short_part,
+    download_gdrive_episode,
+    stitch_full_episode_video,
+    pick_bgm_for_episode,
+    assemble_master_full_video,
+    derive_short_from_master,
+)
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = WORKSPACE_DIR / "output"
@@ -99,50 +106,38 @@ def run_pipeline(
     elif dry_run:
         download_gdrive_episode(target_ep["gdrive_file_id"], raw_video_path, dry_run=True)
 
-    # 4. Produce Master Full Normal Video (16:9 Landscape)
+    # 4. Produce Master Full Normal Video (16:9 Landscape) as ONE UNIFIED Continuous Master
     log("\n=== 🎬 Producing Master Full Normal Video (16:9 Landscape) ===")
     full_video_file = ep_work_dir / f"full_{target_ep['episode_key']}.mp4"
-    rendered_landscape_videos = []
-    chapter_audio_durations = {}
+    full_audio_file = ep_work_dir / "full_voice.mp3"
+    full_ass_file = ep_work_dir / "full_subtitles.ass"
 
-    for part_info in script_package["parts"]:
-        p_num = part_info["part"]
-        p_dir = ep_work_dir / f"part_{p_num:02d}"
-        p_dir.mkdir(parents=True, exist_ok=True)
+    # Generate single continuous voiceover audio and landscape karaoke subtitles
+    chapter_texts = [p["narration"] for p in script_package["parts"]]
+    master_audio_res = produce_master_audio_subtitles(
+        chapter_texts=chapter_texts,
+        output_audio_path=full_audio_file,
+        output_ass_path=full_ass_file,
+        voice=voice,
+        is_landscape=True,
+    )
+    total_master_duration = master_audio_res["duration"]
+    log(f"Master continuous voiceover duration: {total_master_duration:.2f}s ({master_audio_res['word_count']} words)")
 
-        audio_file = p_dir / "voice.mp3"
-        ass_land_file = p_dir / "subtitles_landscape.ass"
-        vid_land_file = p_dir / f"landscape_{target_ep['episode_key']}_part{p_num}.mp4"
+    # Build chapter segments mapping with exact time_ranges from script package
+    chapter_segments = master_audio_res.get("chapter_segments", [])
+    for idx, chap in enumerate(chapter_segments):
+        if idx < len(script_package["parts"]):
+            chap["time_range"] = script_package["parts"][idx].get("time_range", [120, 500])
 
-        # Generate voiceover audio and landscape karaoke subtitles for this chapter
-        v_res = produce_part_audio_subtitles(
-            text=part_info["narration"],
-            output_audio_path=audio_file,
-            output_ass_path=ass_land_file,
-            badge_text="",
-            voice=voice,
-            is_landscape=True,
-        )
-        duration = v_res["duration"]
-        chapter_audio_durations[p_num] = duration
-        log(f"Chapter {p_num} voiceover duration: {duration:.2f}s ({v_res['word_count']} words)")
-
-        assemble_short_part(
-            raw_video_path=raw_video_path,
-            voice_audio_path=audio_file,
-            ass_subtitle_path=ass_land_file,
-            output_video_path=vid_land_file,
-            time_window=tuple(part_info.get("time_range", [90, 450])),
-            total_duration=duration,
-            bgm_path=bgm_path,
-            is_landscape=True,
-            dry_run=dry_run,
-        )
-        rendered_landscape_videos.append(vid_land_file)
-
-    stitch_success = stitch_full_episode_video(
-        part_video_paths=rendered_landscape_videos,
-        output_full_path=full_video_file,
+    master_render_success = assemble_master_full_video(
+        raw_video_path=raw_video_path,
+        voice_audio_path=full_audio_file,
+        ass_subtitle_path=full_ass_file,
+        output_video_path=full_video_file,
+        chapter_segments=chapter_segments,
+        total_duration=total_master_duration,
+        bgm_path=bgm_path,
         dry_run=dry_run,
     )
 
@@ -152,12 +147,13 @@ def run_pipeline(
         "chapters": script_package["full_video"]["chapters"],
         "description": script_package["full_video"]["description"],
         "hashtags": script_package["full_video"]["hashtags"],
-        "status": "rendered" if stitch_success else "failed",
+        "duration": total_master_duration,
+        "status": "rendered" if master_render_success else "failed",
     }
     with open(ep_work_dir / "full_video_meta.json", "w", encoding="utf-8") as f:
         json.dump(full_video_meta, f, indent=2)
 
-    if not stitch_success:
+    if not master_render_success:
         log("❌ Failed to produce Master Full Normal Video.")
         pipeline_result = {
             "status": "error",
@@ -178,36 +174,31 @@ def run_pipeline(
     parts_meta = []
     rendered_part_videos = []
 
-    for part_info in script_package["parts"]:
+    for idx, part_info in enumerate(script_package["parts"]):
         p_num = part_info["part"]
         total_p = part_info["total_parts"]
         log(f"\n--- Deriving Short Excerpt Part {p_num}/{total_p} ---")
 
         part_dir = ep_work_dir / f"part_{p_num:02d}"
-        audio_file = part_dir / "voice.mp3"
-        ass_vert_file = part_dir / "subtitles.ass"
+        part_dir.mkdir(parents=True, exist_ok=True)
         video_file = part_dir / f"short_{target_ep['episode_key']}_part{p_num}.mp4"
-        duration = chapter_audio_durations.get(p_num, part_info.get("estimated_duration", 60.0))
 
-        # Generate animated vertical ASS subtitles with excerpt badge
-        produce_part_audio_subtitles(
-            text=part_info["narration"],
-            output_audio_path=audio_file,
-            output_ass_path=ass_vert_file,
-            badge_text=part_info["badge"],
-            voice=voice,
-            is_landscape=False,
-        )
+        # Lookup chapter start and end from master audio segments
+        if idx < len(chapter_segments):
+            c_start = chapter_segments[idx]["start_time"]
+            c_end = chapter_segments[idx]["end_time"]
+            c_dur = chapter_segments[idx]["duration"]
+        else:
+            c_start = 0.0
+            c_end = 60.0
+            c_dur = 60.0
 
-        assemble_success = assemble_short_part(
-            raw_video_path=raw_video_path,
-            voice_audio_path=audio_file,
-            ass_subtitle_path=ass_vert_file,
-            output_video_path=video_file,
-            time_window=tuple(part_info.get("time_range", [90, 450])),
-            total_duration=duration,
-            bgm_path=bgm_path,
-            is_landscape=False,
+        derive_ok = derive_short_from_master(
+            master_video_path=full_video_file,
+            output_short_path=video_file,
+            start_time=c_start,
+            end_time=c_end,
+            badge_text=part_info.get("badge", f"PART {p_num}/{total_p}"),
             dry_run=dry_run,
         )
 
@@ -216,15 +207,15 @@ def run_pipeline(
             "total_parts": total_p,
             "title": part_info["short_title"],
             "video_path": str(video_file),
-            "audio_path": str(audio_file),
-            "ass_path": str(ass_vert_file),
-            "duration": duration,
+            "start_time": c_start,
+            "end_time": c_end,
+            "duration": c_dur,
             "hashtags": part_info["hashtags"],
             "description": part_info["description"],
-            "status": "rendered" if assemble_success else "failed",
+            "status": "rendered" if derive_ok else "failed",
         }
         parts_meta.append(part_meta)
-        if assemble_success and (dry_run or (video_file.exists() and video_file.stat().st_size > 1024 * 50)):
+        if derive_ok and (dry_run or (video_file.exists() and video_file.stat().st_size > 1024 * 50)):
             rendered_part_videos.append(video_file)
 
         # Save individual Short excerpt manifest
@@ -312,52 +303,34 @@ def run_daily_funnel(
         elif dry_run:
             download_gdrive_episode(target_ep["gdrive_file_id"], raw_video_path, dry_run=True)
 
-        # Render all parts in true 16:9 Landscape (1920x1080) and stitch Full Normal Video
-        rendered_part_videos = []
-        parts_meta = []
-        for part_info in script_package["parts"]:
-            p_num = part_info["part"]
-            p_dir = ep_work_dir / f"part_{p_num:02d}"
-            p_dir.mkdir(parents=True, exist_ok=True)
-            audio_f = p_dir / "voice.mp3"
-            ass_f = p_dir / "subtitles_landscape.ass"
-            vid_f = p_dir / f"landscape_{ep_key}_part{p_num}.mp4"
-
-            v_res = produce_part_audio_subtitles(
-                text=part_info["narration"],
-                output_audio_path=audio_f,
-                output_ass_path=ass_f,
-                badge_text="",  # Clean presentation for landscape full movie recap
-                voice=voice,
-                is_landscape=True,
-            )
-            assemble_short_part(
-                raw_video_path=raw_video_path,
-                voice_audio_path=audio_f,
-                ass_subtitle_path=ass_f,
-                output_video_path=vid_f,
-                time_window=tuple(part_info.get("time_range", [90, 450])),
-                total_duration=v_res["duration"],
-                bgm_path=bgm_path,
-                is_landscape=True,
-                dry_run=dry_run,
-            )
-            part_meta = {
-                "part": p_num,
-                "title": part_info.get("short_title", f"Part {p_num}"),
-                "video_path": str(vid_f),
-                "hashtags": part_info.get("hashtags", []),
-                "description": part_info.get("description", ""),
-                "status": "rendered",
-            }
-            parts_meta.append(part_meta)
-            rendered_part_videos.append(vid_f)
-
-        # Stitch 16:9 Full Normal Video (true fullscreen landscape)
+        # Produce Master Full Normal Video (16:9 Landscape) as ONE UNIFIED Continuous Master
         full_video_f = ep_work_dir / f"full_{ep_key}.mp4"
-        stitch_full_episode_video(
-            part_video_paths=rendered_part_videos,
-            output_full_path=full_video_f,
+        full_audio_f = ep_work_dir / "full_voice.mp3"
+        full_ass_f = ep_work_dir / "full_subtitles.ass"
+
+        chapter_texts = [p["narration"] for p in script_package["parts"]]
+        master_audio_res = produce_master_audio_subtitles(
+            chapter_texts=chapter_texts,
+            output_audio_path=full_audio_f,
+            output_ass_path=full_ass_f,
+            voice=voice,
+            is_landscape=True,
+        )
+        total_master_dur = master_audio_res["duration"]
+
+        chapter_segments = master_audio_res.get("chapter_segments", [])
+        for idx, chap in enumerate(chapter_segments):
+            if idx < len(script_package["parts"]):
+                chap["time_range"] = script_package["parts"][idx].get("time_range", [120, 500])
+
+        master_ok = assemble_master_full_video(
+            raw_video_path=raw_video_path,
+            voice_audio_path=full_audio_f,
+            ass_subtitle_path=full_ass_f,
+            output_video_path=full_video_f,
+            chapter_segments=chapter_segments,
+            total_duration=total_master_dur,
+            bgm_path=bgm_path,
             dry_run=dry_run,
         )
 
@@ -367,7 +340,8 @@ def run_daily_funnel(
             "chapters": script_package["full_video"]["chapters"],
             "description": script_package["full_video"]["description"],
             "hashtags": script_package["full_video"]["hashtags"],
-            "status": "rendered",
+            "duration": total_master_dur,
+            "status": "rendered" if master_ok else "failed",
         }
 
         # Initialize active episode in history (normal video ready to upload first)
@@ -383,6 +357,18 @@ def run_daily_funnel(
             "script_package": script_package,
             "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
+        parts_meta = []
+        for p in script_package["parts"]:
+            p_num = p["part"]
+            parts_meta.append({
+                "part": p_num,
+                "title": p.get("short_title", f"Part {p_num}"),
+                "video_path": str(ep_work_dir / f"part_{p_num:02d}" / f"short_{ep_key}_part{p_num}.mp4"),
+                "hashtags": p.get("hashtags", []),
+                "description": p.get("description", ""),
+                "status": "pending",
+            })
+
         save_history(history)
 
         result = {
