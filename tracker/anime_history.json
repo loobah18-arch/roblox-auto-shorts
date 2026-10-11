@@ -122,9 +122,18 @@
       "url": "https://youtu.be/XWFqFkQiBaw",
       "title": "Demon Slayer: Kimetsu no Yaiba Season 1 Episode 5 Full Recap & Explanation | His Own Sword",
       "uploaded_at": "2026-10-09T08:02:21Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e05",
+      "part": 1,
+      "is_full_video": false,
+      "video_id": "_mbUnpz_vgM",
+      "url": "https://youtube.com/shorts/_mbUnpz_vgM",
+      "title": "Only 4 Survived the Deadly Mountain! 😱 | Demon Slayer S1 Ep 5 Part 1 #shorts",
+      "uploaded_at": "2026-10-11T15:18:02Z"
     }
   ],
-  "last_updated": "2026-10-09T08:02:21Z",
+  "last_updated": "2026-10-11T15:18:02Z",
   "active_episode": {
     "episode_key": "demon-slayer-s01e05",
     "series_id": "demon-slayer",
@@ -133,7 +142,9 @@
     "gdrive_file_id": "1JSWsGFlPeRxaJ8mG_dalDs_5obK5IicM",
     "total_parts": 5,
     "normal_video_uploaded": true,
-    "uploaded_shorts": [],
+    "uploaded_shorts": [
+      1
+    ],
     "script_package": {
       "series": "Demon Slayer: Kimetsu no Yaiba",
       "season": 1,
