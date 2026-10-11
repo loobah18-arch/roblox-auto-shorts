@@ -36,7 +36,7 @@ EPISODE_KNOWLEDGE = {
                 "narration": "High in the snowy mountain villages of Taisho-era Japan, Tanjiro Kamado was just a kind-hearted boy who sold charcoal to support his family. One evening, he stayed in town overnight because the roads were too dangerous. When he returns home the next morning, the scene he finds will haunt him for the rest of his life. The front door is hanging open. The smell of blood is overwhelming. Inside, his mother, his brothers, his sisters — all brutally slaughtered in pools of frozen blood. This is not a robbery. This is not an accident. This is the signature of a demon. But then he hears a sound. His sister Nezuko is still breathing, barely clinging to life. Relief floods through him as he lifts her and begins to sprint down the mountain to find help — but then something terrible happens. Nezuko's eyes snap open, glowing pink. Her nails extend into claws. Her body grows with supernatural strength. She turns her head, and she lunges straight for Tanjiro's throat with fangs like needles. His own sister has become a flesh-eating demon, and right as she is about to tear him apart — a figure in a haori slashes from the treeline with a blade of pure ice!",
                 "cliffhanger": "Wait until you see who just arrived to execute Nezuko in Part 2!",
                 "time_range": [180, 520],
-                "short_title": "His Entire Family Was Slaughtered... 🩸 | Demon Slayer S1 Ep 1 Part 1 #shorts",
+                "short_title": "His Entire Family Was Slaughtered... 🩸 | Demon Slayer S1 Ep 1 Explanation Part 1 #shorts",
             },
             {
                 "part": 2,
@@ -44,7 +44,7 @@ EPISODE_KNOWLEDGE = {
                 "narration": "Water Hashira Giyu Tomioka is one of the most powerful demon slayers alive, and he didn't come here to talk. He swoops in with his blade already drawn, moving to decapitate Nezuko before she can harm another human. Tanjiro throws himself in front of the blow, screaming desperately: she still recognizes him, she is still his sister! But Giyu is unmoved. Compassion for demons is a fatal luxury. The weak have no rights in this world, and tears change nothing. Giyu kicks Tanjiro aside like he weighs nothing. But Tanjiro refuses to stay down. Every time he hits the ground, he drags himself back to his feet. His body is untrained, his strength is human, but his determination is something Giyu has genuinely never seen before. He charges again and again, taking hit after hit, refusing to beg but also refusing to quit. Then, in one desperate last gamble, Tanjiro flings his hand axe directly at Giyu's head — Giyu dodges by a hair — but that was just the distraction. Tanjiro dives low, catching Giyu in a surprise grapple from below. Giyu realizes with genuine shock: this ordinary boy just outsmarted him. And then Nezuko does something that stops every thought in Giyu's head cold.",
                 "cliffhanger": "Did Tanjiro's secret counter actually work? See what Nezuko does in Part 3!",
                 "time_range": [520, 860],
-                "short_title": "Why Giyu Spared Nezuko's Life! 😱 | Demon Slayer S1 Ep 1 Part 2 #shorts",
+                "short_title": "Why Giyu Spared Nezuko's Life! 😱 | Demon Slayer S1 Ep 1 Explanation Part 2 #shorts",
             },
             {
                 "part": 3,
@@ -52,7 +52,7 @@ EPISODE_KNOWLEDGE = {
                 "narration": "Giyu Tomioka has hunted demons his entire life. He has seen them eat children, betray their own kind, and manipulate every emotion in pursuit of blood. He has never — not once in his career — seen a demon protect a human. But right now, with Tanjiro lying unconscious on the snow, Nezuko stands over her brother's body with her arms spread wide, growling with burning, protective defiance directly at one of the deadliest men alive. She will not move. She will not attack him. She just stands there, shielding her brother even though every demon instinct in her body must be screaming at her to feed. Giyu lowers his blade. He raises Tanjiro's hand, testing his grip unconsciously — it's the grip of someone who threw that axe on purpose, with perfect calculated timing. He has been underestimating this kid from the start. After a long silence, Giyu makes a decision that breaks every rule in the Demon Slayer Corps handbook. He gently but firmly knocks Nezuko unconscious, places a bamboo tube in her muzzle, and wraps her onto Tanjiro's back. When Tanjiro wakes up, there is a letter in his hand: seek out Master Sakonji Urokodaki on Mount Sagiri. The journey of the Demon Slayer officially begins — and nothing in the world of anime will ever be the same again.",
                 "cliffhanger": "Subscribe to Bhaloo Ji for Episode 2 — the brutal training arc begins!",
                 "time_range": [860, 1260],
-                "short_title": "The First Demon Who Protected A Human! 🛡️ | Demon Slayer S1 Ep 1 Part 3 #shorts",
+                "short_title": "The First Demon Who Protected A Human! 🛡️ | Demon Slayer S1 Ep 1 Explanation Part 3 #shorts",
             }
         ]
     },
@@ -72,7 +72,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 575.0, "weight": 0.24, "desc": "Twin guides appear from mist presenting Mizunoto rank to survivors"},
                     {"start": 615.0, "weight": 0.24, "desc": "Genya screams angrily demanding his Nichirin sword immediately"},
                 ],
-                "short_title": "Only 4 Survived the Deadly Mountain! 😱 | Demon Slayer S1 Ep 5 Part 1 #shorts",
+                "short_title": "Only 4 Survived the Deadly Mountain! 😱 | Demon Slayer S1 Ep 5 Explanation Part 1 #shorts",
             },
             {
                 "part": 2,
@@ -86,7 +86,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 710.0, "weight": 0.23, "desc": "Guides summon Kasugai crows, Zenitsu gets a tiny trembling sparrow"},
                     {"start": 740.0, "weight": 0.23, "desc": "Tamahagane ore table: Tanjiro uses smell to find purest resonant ore"},
                 ],
-                "short_title": "Tanjiro Breaks Genya’s Arm LIVE! 💥 | Demon Slayer S1 Ep 5 Part 2 #shorts",
+                "short_title": "Tanjiro Breaks Genya’s Arm LIVE! 💥 | Demon Slayer S1 Ep 5 Explanation Part 2 #shorts",
             },
             {
                 "part": 3,
@@ -100,7 +100,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 895.0, "weight": 0.26, "desc": "Nezuko rushes forward embracing weeping Tanjiro tightly"},
                     {"start": 930.0, "weight": 0.23, "desc": "Master Urokodaki drops firewood and embraces both children in tears"},
                 ],
-                "short_title": "Nezuko Kicks the Door Open & Wakes Up! 😭 | Demon Slayer S1 Ep 5 Part 3 #shorts",
+                "short_title": "Nezuko Kicks the Door Open & Wakes Up! 😭 | Demon Slayer S1 Ep 5 Explanation Part 3 #shorts",
             },
             {
                 "part": 4,
@@ -114,7 +114,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 1130.0, "weight": 0.25, "desc": "Inside cabin Haganezuka hands hilt urging Tanjiro to draw sword"},
                     {"start": 1175.0, "weight": 0.25, "desc": "Dark wave ripples down blade turning steel into pitch-black void"},
                 ],
-                "short_title": "His Nichirin Sword Turned PITCH BLACK! ⚔️ | Demon Slayer S1 Ep 5 Part 4 #shorts",
+                "short_title": "His Nichirin Sword Turned PITCH BLACK! ⚔️ | Demon Slayer S1 Ep 5 Explanation Part 4 #shorts",
             },
             {
                 "part": 5,
@@ -128,7 +128,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 1290.0, "weight": 0.25, "desc": "Kasugai crow screeches first assignment in fluent human speech"},
                     {"start": 1330.0, "weight": 0.25, "desc": "Tanjiro receives Demon Slayer uniform and wooden box for Nezuko"},
                 ],
-                "short_title": "The First Demon Slaying Mission Begins! 🦅 | Demon Slayer S1 Ep 5 Part 5 #shorts",
+                "short_title": "The First Demon Slaying Mission Begins! 🦅 | Demon Slayer S1 Ep 5 Explanation Part 5 #shorts",
             }
         ]
     },
@@ -148,7 +148,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 285.0, "weight": 0.26, "desc": "Master Urokodaki presents the Kirin cedar box parting gift"},
                     {"start": 370.0, "weight": 0.23, "desc": "Hoisting Nezuko on his back and descending Mount Sagiri"},
                 ],
-                "short_title": "The Secret Omen of Tanjiro's Black Sword! ⚔️ | Demon Slayer S1 Ep 6 Part 1 #shorts",
+                "short_title": "The Secret Omen of Tanjiro's Black Sword! ⚔️ | Demon Slayer S1 Ep 6 Explanation Part 1 #shorts",
             },
             {
                 "part": 2,
@@ -161,7 +161,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 495.0, "weight": 0.37, "desc": "Kazumi recounts Satoko vanishing into the ground"},
                     {"start": 575.0, "weight": 0.35, "desc": "Tanjiro sniffs cobblestones detecting sulfur scent underground"},
                 ],
-                "short_title": "Girls Vanishing Into Thin Air! 😱 | Demon Slayer S1 Ep 6 Part 2 #shorts",
+                "short_title": "Girls Vanishing Into Thin Air! 😱 | Demon Slayer S1 Ep 6 Explanation Part 2 #shorts",
             },
             {
                 "part": 3,
@@ -175,7 +175,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 785.0, "weight": 0.22, "desc": "Grotesque Swamp Demon surfaces grinding teeth rhythmically"},
                     {"start": 860.0, "weight": 0.30, "desc": "Tanjiro leaps into night sky, Waterfall Basin crushing strike"},
                 ],
-                "short_title": "Water Breathing Waterfall Basin LIVE! 🌊 | Demon Slayer S1 Ep 6 Part 3 #shorts",
+                "short_title": "Water Breathing Waterfall Basin LIVE! 🌊 | Demon Slayer S1 Ep 6 Explanation Part 3 #shorts",
             },
             {
                 "part": 4,
@@ -189,7 +189,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 1080.0, "weight": 0.27, "desc": "Box rattles, Nezuko kicks door open delivering savage axe kick"},
                     {"start": 1160.0, "weight": 0.25, "desc": "Tanjiro dives headfirst into underground swamp portal"},
                 ],
-                "short_title": "Nezuko Kicks The Swamp Demon! 💥 | Demon Slayer S1 Ep 6 Part 4 #shorts",
+                "short_title": "Nezuko Kicks The Swamp Demon! 💥 | Demon Slayer S1 Ep 6 Explanation Part 4 #shorts",
             }
         ]
     },
@@ -209,7 +209,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 290.0, "weight": 0.25, "desc": "Total concentration water breathing preparation"},
                     {"start": 355.0, "weight": 0.25, "desc": "Sixth Form Whirlpool vortex decapitation"},
                 ],
-                "short_title": "Water Breathing Sixth Form Whirlpool! 🌀 | Demon Slayer S1 Ep 7 Part 1 #shorts",
+                "short_title": "Water Breathing Sixth Form Whirlpool! 🌀 | Demon Slayer S1 Ep 7 Explanation Part 1 #shorts",
             },
             {
                 "part": 2,
@@ -223,7 +223,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 570.0, "weight": 0.25, "desc": "Tanjiro pinning final demon to ground"},
                     {"start": 640.0, "weight": 0.25, "desc": "Interrogating demon about Muzan Kibutsuji"},
                 ],
-                "short_title": "The Demon Who Feared Muzan Kibutsuji! 😱 | Demon Slayer S1 Ep 7 Part 2 #shorts",
+                "short_title": "The Demon Who Feared Muzan Kibutsuji! 😱 | Demon Slayer S1 Ep 7 Explanation Part 2 #shorts",
             },
             {
                 "part": 3,
@@ -237,7 +237,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 845.0, "weight": 0.25, "desc": "Journeying toward Tokyo at dusk"},
                     {"start": 910.0, "weight": 0.25, "desc": "Arrival at neon Asakusa Tokyo metropolis"},
                 ],
-                "short_title": "The Most Heartbreaking Farewell in Demon Slayer 😭 | Demon Slayer S1 Ep 7 Part 3 #shorts",
+                "short_title": "The Most Heartbreaking Farewell in Demon Slayer 😭 | Demon Slayer S1 Ep 7 Explanation Part 3 #shorts",
             },
             {
                 "part": 4,
@@ -251,7 +251,7 @@ EPISODE_KNOWLEDGE = {
                     {"start": 1115.0, "weight": 0.25, "desc": "Sprinting desperately through Asakusa crowd"},
                     {"start": 1200.0, "weight": 0.25, "desc": "Confronting Muzan Kibutsuji holding human child"},
                 ],
-                "short_title": "Tanjiro Confronts Muzan Kibutsuji IN PUBLIC! 😱 | Demon Slayer S1 Ep 7 Part 4 #shorts",
+                "short_title": "Tanjiro Confronts Muzan Kibutsuji IN PUBLIC! 😱 | Demon Slayer S1 Ep 7 Explanation Part 4 #shorts",
             }
         ]
     },
@@ -265,7 +265,7 @@ EPISODE_KNOWLEDGE = {
                 "narration": "Yuji Itadori was just an unnaturally athletic high schooler living a quiet life visiting his grandfather in the hospital. Before passing away, his grandfather gives him one final command: 'You are strong, so help others.' Little did Yuji know, his occult research club had just unsealed a special grade cursed object—a rotting, severed finger belonging to Ryomen Sukuna, the King of Curses! As darkness falls, bloodthirsty cursed spirits swarm the school, hunting down the students to feast on the finger's demonic power!",
                 "cliffhanger": "Will Jujutsu sorcerer Megumi Fushiguro make it in time? Watch Part 2!",
                 "time_range": [180, 540],
-                "short_title": "The Rotten Finger That Started Everything! 💀 | Jujutsu Kaisen S1 Ep 1 Part 1 #shorts",
+                "short_title": "The Rotten Finger That Started Everything! 💀 | Jujutsu Kaisen S1 Ep 1 Explanation Part 1 #shorts",
             },
             {
                 "part": 2,
@@ -273,7 +273,7 @@ EPISODE_KNOWLEDGE = {
                 "narration": "Megumi Fushiguro arrives with his shadow shikigami, but the curse is overwhelming. A colossal cursed spirit traps Megumi and Yuji's friends in its jaws, crushing them to near death. Yuji charges in barehanded, landing superhuman blows, but physical strength cannot destroy a curse. Cornered with seconds before his friends are eaten alive, Yuji looks at the grotesque finger of Sukuna in his hand. Realizing only cursed energy can defeat a curse, Yuji does the unthinkable—he tosses the rotting demon finger into his mouth and swallows it whole!",
                 "cliffhanger": "Did Yuji just die, or awaken the King of Curses? Part 3 will blow your mind!",
                 "time_range": [540, 900],
-                "short_title": "He Swallowed Sukuna's Finger LIVE! 😱 | Jujutsu Kaisen S1 Ep 1 Part 2 #shorts",
+                "short_title": "He Swallowed Sukuna's Finger LIVE! 😱 | Jujutsu Kaisen S1 Ep 1 Explanation Part 2 #shorts",
             },
             {
                 "part": 3,
@@ -281,7 +281,7 @@ EPISODE_KNOWLEDGE = {
                 "narration": "Demonic black tattoos erupt across Yuji's skin as Ryomen Sukuna takes over his body. With a single casual swipe, Sukuna vaporizes the giant curse into bloody mist, laughing maniacally as he revels in the moonlight: 'The light feels best in the flesh! Women and children are crawling everywhere—it will be a massacre!' But before Sukuna can slaughter Megumi, Yuji's sheer willpower forcibly suppresses Sukuna, regaining control of his body like nothing happened! Just as Megumi prepares to execute Yuji as a curse, the strongest sorcerer Gojo Satoru makes his legendary entrance!",
                 "cliffhanger": "Gojo vs Sukuna is about to begin!",
                 "time_range": [900, 1260],
-                "short_title": "Sukuna Awakens & Gojo Arrives! 🔥 | Jujutsu Kaisen S1 Ep 1 Part 3 #shorts",
+                "short_title": "Sukuna Awakens & Gojo Arrives! 🔥 | Jujutsu Kaisen S1 Ep 1 Explanation Part 3 #shorts",
             }
         ]
     }
@@ -412,7 +412,7 @@ Format strictly as JSON:
       "narration": "Deep, detailed continuous narration of this act with zero word-count constraints and smooth transitions to next act",
       "cliffhanger": "Teaser hook exclusively for the Short excerpt description/CTA",
       "time_range": {scene_acts[0]["time_range"] if scene_acts else [120, 500]},
-      "short_title": "High CTR Title | {series} S{season} Ep {episode} Part 1 #shorts",
+      "short_title": "High CTR Title | {series} S{season} Ep {episode} Explanation Part 1 #shorts",
       "beats": [
         {{"start": 130.0, "weight": 0.25, "desc": "Action or dialogue occurring in this scene"}}
       ]
@@ -481,7 +481,7 @@ def _generate_heuristic_script(episode_info: dict, scene_acts: list[dict] = None
             "narration": f"{default_narrations[idx % len(default_narrations)]} Focusing on {theme}.",
             "cliffhanger": f"Check Part {p_num + 1} right now!" if p_num < len(scene_acts) else f"Subscribe to Bhaloo Ji for Episode {episode + 1} next!",
             "time_range": tr,
-            "short_title": f"The Shocking Clashes of {series}! 💥 | S{season} Ep {episode} Part {p_num} #shorts"
+            "short_title": f"The Shocking Clashes of {series}! 💥 | S{season} Ep {episode} Explanation Part {p_num} #shorts"
         })
 
     return _format_script_package(
@@ -526,6 +526,18 @@ def _format_script_package(episode_info: dict, ep_title: str, ep_summary: str, p
             if not beats:
                 beats = generate_default_beats(p.get("time_range", [0, 450]))
 
+        # Guarantee 'Explanation' is explicitly present in every Short title
+        raw_st = p.get("short_title", "").strip()
+        if not raw_st:
+            raw_st = f"{series} S{season} Ep {episode} Explanation Part {i} #shorts"
+        elif "explanation" not in raw_st.lower() and "explained" not in raw_st.lower():
+            if re.search(rf"\bPart\s*{i}\b", raw_st, re.IGNORECASE):
+                raw_st = re.sub(rf"\bPart\s*{i}\b", f"Explanation Part {i}", raw_st, count=1, flags=re.IGNORECASE)
+            elif "#shorts" in raw_st.lower():
+                raw_st = re.sub(r"#shorts", f"Explanation Part {i} #shorts", raw_st, count=1, flags=re.IGNORECASE)
+            else:
+                raw_st = f"{raw_st} | Explanation Part {i} #shorts"
+
         enriched_p = {
             "part": i,
             "total_parts": total_parts,
@@ -535,7 +547,7 @@ def _format_script_package(episode_info: dict, ep_title: str, ep_summary: str, p
             "time_range": p.get("time_range", [0, 450]),
             "beats": beats,
             "estimated_duration": est_duration,
-            "short_title": p.get("short_title", f"{series} S{season} Ep {episode} Part {i} #shorts"),
+            "short_title": raw_st,
             "badge": f"{series.upper()} • S{season:02d}E{episode:02d} • PART {i}/{total_parts}",
             "hashtags": [
                 "anime", "animerecap", "animeexplanation", "shorts",

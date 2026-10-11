@@ -13,6 +13,7 @@ Orchestrates:
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -369,9 +370,17 @@ def run_daily_funnel(
         parts_meta = []
         for p in script_package["parts"]:
             p_num = p["part"]
+            p_title = p.get("short_title", f"Part {p_num}")
+            if "explanation" not in p_title.lower() and "explained" not in p_title.lower():
+                if re.search(rf"\bPart\s*{p_num}\b", p_title, re.IGNORECASE):
+                    p_title = re.sub(rf"\bPart\s*{p_num}\b", f"Explanation Part {p_num}", p_title, count=1, flags=re.IGNORECASE)
+                elif "#shorts" in p_title.lower():
+                    p_title = re.sub(r"#shorts", f"Explanation Part {p_num} #shorts", p_title, count=1, flags=re.IGNORECASE)
+                else:
+                    p_title = f"{p_title} | Explanation Part {p_num} #shorts"
             parts_meta.append({
                 "part": p_num,
-                "title": p.get("short_title", f"Part {p_num}"),
+                "title": p_title,
                 "video_path": str(ep_work_dir / f"part_{p_num:02d}" / f"short_{ep_key}_part{p_num}.mp4"),
                 "hashtags": p.get("hashtags", []),
                 "description": p.get("description", ""),
@@ -561,9 +570,18 @@ def run_daily_funnel(
     normal_url = normal_vid_info.get("url", "")
     teaser = f"\n🎬 Full episode explanation is live on our channel now: {normal_url}\n" if normal_url else "\n🎬 Full episode explanation is live on our channel now!\n"
 
+    raw_title = part_info.get("short_title", f"{active_ep['display_name']} Part {next_p} #shorts")
+    if "explanation" not in raw_title.lower() and "explained" not in raw_title.lower():
+        if re.search(rf"\bPart\s*{next_p}\b", raw_title, re.IGNORECASE):
+            raw_title = re.sub(rf"\bPart\s*{next_p}\b", f"Explanation Part {next_p}", raw_title, count=1, flags=re.IGNORECASE)
+        elif "#shorts" in raw_title.lower():
+            raw_title = re.sub(r"#shorts", f"Explanation Part {next_p} #shorts", raw_title, count=1, flags=re.IGNORECASE)
+        else:
+            raw_title = f"{raw_title} | Explanation Part {next_p} #shorts"
+
     short_meta = {
         "part": next_p,
-        "title": part_info["short_title"],
+        "title": raw_title,
         "video_path": str(vid_f),
         "hashtags": part_info["hashtags"],
         "description": f"{part_info.get('hook', '')}\nPart {next_p} of {total_parts} covering {active_ep['display_name']}.{teaser}\n#anime #animerecap #shorts #bhalooji",

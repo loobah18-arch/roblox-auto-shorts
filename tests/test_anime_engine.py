@@ -114,7 +114,10 @@ class TestAnimeVideoFiltergraph(unittest.TestCase):
         self.assertIn("pad=1040:584", fg)
         self.assertIn("setsar=1", fg)
         self.assertIn("ass='/tmp/test.ass'", fg)
-        self.assertIn("eq=contrast=1.06", fg)
+        self.assertIn("eq=contrast=1.12", fg)
+        self.assertIn("vignette", fg)
+        self.assertIn("unsharp", fg)
+        self.assertIn("hflip", fg)
 
     def test_filtergraph_ffmpeg_execution(self):
         import subprocess
@@ -136,7 +139,9 @@ class TestAnimeVideoFiltergraph(unittest.TestCase):
         self.assertIn("scale=1920:1080", fg)
         self.assertIn("pad=1920:1080", fg)
         self.assertIn("ass='/tmp/test.ass'", fg)
-        self.assertIn("eq=contrast=1.06", fg)
+        self.assertIn("eq=contrast=1.12", fg)
+        self.assertIn("vignette", fg)
+        self.assertIn("hflip", fg)
         self.assertNotIn("boxblur", fg)  # Pure fullscreen landscape without side blur bars!
 
     def test_assemble_short_part_dry_run(self):
@@ -284,6 +289,7 @@ class TestDailyFunnel(unittest.TestCase):
         with patch("anime_pipeline.load_history", return_value=mock_history), \
              patch("anime_pipeline.save_history") as mock_save, \
              patch("anime_pipeline.generate_episode_script", return_value=mock_script), \
+             patch("anime_pipeline.produce_master_audio_subtitles", return_value={"duration": 45.0, "word_count": 150, "chapter_segments": []}), \
              patch("anime_pipeline.produce_part_audio_subtitles", return_value={"duration": 45.0, "word_count": 150}):
             res = run_daily_funnel(dry_run=True)
             self.assertEqual(res["status"], "success")
@@ -598,6 +604,31 @@ class TestContinuousMasterEngine(unittest.TestCase):
             narration=mock_narration,
         )
         self.assertTrue(res)
+
+    def test_all_episode_knowledge_titles_contain_explanation(self):
+        """Verify every single short_title in EPISODE_KNOWLEDGE explicitly includes 'Explanation'."""
+        from anime_script_engine import EPISODE_KNOWLEDGE
+        for ep_key, ep_data in EPISODE_KNOWLEDGE.items():
+            for p in ep_data.get("parts", []):
+                title = p.get("short_title", "")
+                self.assertIn(
+                    "Explanation",
+                    title,
+                    f"EPISODE_KNOWLEDGE {ep_key} Part {p.get('part')} title lacks 'Explanation': {title}"
+                )
+
+    def test_format_script_package_enforces_explanation(self):
+        """Verify _format_script_package automatically injects 'Explanation' into any raw title."""
+        from anime_script_engine import _format_script_package
+        ep_info = {"series": "Demon Slayer", "season": 1, "episode": 5}
+        raw_parts = [
+            {"part": 1, "narration": "Narration 1", "short_title": "Cool Scene | Demon Slayer S1 Ep 5 Part 1 #shorts"},
+            {"part": 2, "narration": "Narration 2", "short_title": "Epic Clash #shorts"},
+            {"part": 3, "narration": "Narration 3"},  # missing short_title
+        ]
+        pkg = _format_script_package(ep_info, "Title", "Summary", raw_parts)
+        for p in pkg["parts"]:
+            self.assertIn("Explanation", p["short_title"], f"Part {p['part']} title lacks 'Explanation': {p['short_title']}")
 
 
 if __name__ == "__main__":

@@ -101,17 +101,19 @@ def download_gdrive_episode(file_id: str, dest_path: str | Path, dry_run: bool =
 def build_landscape_ffmpeg_filtergraph(
     has_subtitles: bool = True,
     ass_path: str = "",
-    mirror: bool = False,
+    mirror: bool = True,
 ) -> str:
     """
     Constructs the 16:9 Landscape Fullscreen (1920x1080) anti-copyright FFmpeg filtergraph:
-    - 16:9 widescreen canvas (1920x1080)
-    - Anime footage fills widescreen frame with cinematic film color grade & subtle contrast
-    - Bottom-third dynamic ASS karaoke subtitles (no blurred sidebars!)
+    - Horizontal mirroring (hflip) inverts 2D spatial coordinate maps
+    - Filmic color grade: contrast 1.12, saturation 1.15, gamma 0.95
+    - Soft cinematic vignette (darkens corners) + unsharp mask + micro temporal noise
+    - Bottom-third dynamic ASS karaoke subtitles
     """
     flip_filter = "hflip," if mirror else ""
     filter_chain = (
-        f"[0:v]{flip_filter}eq=contrast=1.06:brightness=-0.02:saturation=1.12,"
+        f"[0:v]{flip_filter}eq=contrast=1.12:brightness=-0.02:saturation=1.15:gamma=0.95,"
+        f"vignette=PI/4.8,unsharp=5:5:0.8:5:5:0.4,noise=alls=5:allf=t,"
         f"scale=1920:1080:force_original_aspect_ratio=decrease,"
         f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1"
     )
@@ -125,33 +127,37 @@ def build_landscape_ffmpeg_filtergraph(
 def build_ffmpeg_filtergraph(
     has_subtitles: bool = True,
     ass_path: str = "",
-    mirror: bool = False,
+    mirror: bool = True,
 ) -> str:
     """
-    Constructs the high-aesthetic anti-copyright FFmpeg filtergraph:
-    - 9:16 canvas (1080x1920)
+    Constructs the high-aesthetic anti-copyright FFmpeg filtergraph for 9:16 Shorts:
+    - 9:16 vertical canvas (1080x1920)
     - Blurred motion background (duplicate of footage blurred 25px, darkened)
-    - Foreground card: 1040x585 centered with subtle border & film color grade
-    - Micro-zoom / Ken Burns drift
-    - Optional horizontal flip (mirroring)
+    - Foreground card: 1040x584 centered with transformative glowing border
+    - Multi-layer anti-Content ID filters: horizontal flip, cinematic filmic color grade,
+      vignette corner darkening, unsharp mask, and temporal micro-noise
     - Dynamic ASS subtitle burn
     """
     filters = []
 
-    # 1. Base input split
+    # 1. Base input split with transformative color grade, vignette, and micro-noise
     flip_filter = "hflip," if mirror else ""
-    filters.append(f"[0:v]{flip_filter}eq=contrast=1.06:brightness=-0.02:saturation=1.12,split=2[raw_bg][raw_fg]")
+    filters.append(
+        f"[0:v]{flip_filter}eq=contrast=1.12:brightness=-0.03:saturation=1.16:gamma=0.95,"
+        f"vignette=PI/4.5,unsharp=5:5:0.8:5:5:0.4,noise=alls=5:allf=t,split=2[raw_bg][raw_fg]"
+    )
 
     # 2. Background: fill 1080x1920, heavy blur, darkened
     filters.append(
         "[raw_bg]scale=1080:1920:force_original_aspect_ratio=increase,"
-        "crop=1080:1920,setsar=1,boxblur=25:5,eq=brightness=-0.12[bg]"
+        "crop=1080:1920,setsar=1,boxblur=25:5,eq=brightness=-0.14[bg]"
     )
 
-    # 3. Foreground: crisp card centered (1040x584 for 16:9 even dims), slight subtle zoom drift
+    # 3. Foreground: crisp card centered (1040x584) with subtle glowing border
     filters.append(
         "[raw_fg]scale=1040:584:force_original_aspect_ratio=decrease,"
-        "pad=1040:584:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[fg]"
+        "pad=1040:584:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,"
+        "drawbox=x=0:y=0:w=iw:h=ih:color=white@0.22:t=3[fg]"
     )
 
     # 4. Overlay foreground on background (shifted slightly up to make room for captions)
@@ -256,22 +262,37 @@ def assemble_short_part(
                 accum_dur += s_dur
             shots.append((s_start, s_dur))
 
+    # Anti-copyright duration guard: split any shot > 5.5s to evade contiguous fingerprinting
+    expanded_shots = []
+    for s_start, s_dur in shots:
+        if s_dur > 5.5:
+            half = round(s_dur / 2.0, 2)
+            rem = round(s_dur - half, 2)
+            expanded_shots.append((s_start, half, 1.12))
+            expanded_shots.append((s_start + half, rem, 1.16))
+        else:
+            expanded_shots.append((s_start, s_dur, 1.13))
+
     temp_dir = output_video.parent / f"temp_slices_{output_video.stem}"
     temp_dir.mkdir(parents=True, exist_ok=True)
     slice_files = []
 
-    log(f"Composing {mode_label}: Slicing {len(shots)} sentence-locked shots between {safe_start:.1f}s and {safe_end:.1f}s...")
+    log(f"Composing {mode_label}: Slicing {len(expanded_shots)} anti-copyright protected shots between {safe_start:.1f}s and {safe_end:.1f}s...")
 
     try:
-        for idx, (s_start, s_dur) in enumerate(shots):
+        for idx, (s_start, s_dur, zoom) in enumerate(expanded_shots):
             if s_dur <= 0.4:
                 continue
             seg_file = temp_dir / f"slice_{idx:03d}.mp4"
 
             if is_landscape:
-                vf_slice = "fps=30,scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                w_s = int(1920 * zoom)
+                h_s = int(1080 * zoom)
+                vf_slice = f"fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
             else:
-                vf_slice = "fps=30,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+                w_s = int(1280 * zoom)
+                h_s = int(720 * zoom)
+                vf_slice = f"fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
 
             cmd_slice = [
                 "ffmpeg", "-y",
@@ -318,18 +339,18 @@ def assemble_short_part(
             log(f"Slice concat failed: {res_cat.stderr[-300:]}")
             return False
 
-        # 3. Canvas Compositor (Landscape 16:9 or Vertical 9:16)
+        # 3. Canvas Compositor (Landscape 16:9 or Vertical 9:16) with anti-copyright mirroring & filters
         if is_landscape:
             filtergraph = build_landscape_ffmpeg_filtergraph(
                 has_subtitles=ass_subs.exists(),
                 ass_path=str(ass_subs.resolve()),
-                mirror=False,
+                mirror=True,
             )
         else:
             filtergraph = build_ffmpeg_filtergraph(
                 has_subtitles=ass_subs.exists(),
                 ass_path=str(ass_subs.resolve()),
-                mirror=False,
+                mirror=True,
             )
 
         # Default BGM fallback
@@ -566,7 +587,7 @@ def assemble_master_full_video(
                 if s_dur <= 0.5:
                     continue
                 seg_file = temp_dir / f"slice_{slice_idx:03d}.mp4"
-                vf_slice = "fps=30,scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                vf_slice = "fps=30,scale=2150:1210:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
                 cmd_slice = [
                     "ffmpeg", "-y",
                     "-ss", f"{s_start:.2f}",
@@ -618,7 +639,7 @@ def assemble_master_full_video(
         filtergraph = build_landscape_ffmpeg_filtergraph(
             has_subtitles=ass_subs.exists(),
             ass_path=str(ass_subs.resolve()),
-            mirror=False,
+            mirror=True,
         )
 
         if not bgm_path or not Path(bgm_path).exists():
@@ -734,8 +755,8 @@ Dialogue: 1,0:00:00.00,9:59:59.00,CardHeader,,0,0,0,,{{\\an8\\bord3\\shad1\\c&H0
 
         filters = [
             "[0:v]split=2[raw_bg][raw_fg]",
-            "[raw_bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,boxblur=25:5,eq=brightness=-0.12[bg]",
-            "[raw_fg]scale=1040:584:force_original_aspect_ratio=decrease,pad=1040:584:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[fg]",
+            "[raw_bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,boxblur=25:5,eq=brightness=-0.14[bg]",
+            "[raw_fg]hflip,scale=1040:584:force_original_aspect_ratio=decrease,pad=1040:584:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,drawbox=x=0:y=0:w=iw:h=ih:color=white@0.22:t=3[fg]",
             f"[bg][fg]overlay=(W-w)/2:(H-h)/2-60{badge_filter}",
         ]
         filtergraph = ";".join(filters)
