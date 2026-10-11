@@ -19,22 +19,45 @@ CURATED_ACT_TIMELINES = {
             {
                 "part": 1,
                 "time_range": [132, 420],
-                "theme": "Tanjiro dons the demon slayer uniform and departs Mt. Sagiri with Nezuko in the wooden box"
+                "theme": "Tanjiro dons the demon slayer uniform and departs Mt. Sagiri with Nezuko in the wooden box",
+                "beats": [
+                    {"start": 132.0, "weight": 0.24, "desc": "Tanjiro in Demon Slayer uniform"},
+                    {"start": 215.0, "weight": 0.27, "desc": "Urokodaki explaining the pitch-black Nichirin blade"},
+                    {"start": 285.0, "weight": 0.26, "desc": "Kirin timber box parting gift for Nezuko"},
+                    {"start": 370.0, "weight": 0.23, "desc": "Hoisting box and descending Mt. Sagiri"},
+                ]
             },
             {
                 "part": 2,
                 "time_range": [420, 660],
-                "theme": "Tanjiro arrives at the northwestern town, meets devastated Kazumi whose fiancée Satoko vanished"
+                "theme": "Tanjiro arrives at the northwestern town, meets devastated Kazumi whose fiancée Satoko vanished",
+                "beats": [
+                    {"start": 425.0, "weight": 0.28, "desc": "Arriving at northwestern town vendor stalls"},
+                    {"start": 495.0, "weight": 0.37, "desc": "Distraught Kazumi recounting Satoko's disappearance"},
+                    {"start": 575.0, "weight": 0.35, "desc": "Tanjiro sniffing cobblestones for sulfur demon scent"},
+                ]
             },
             {
                 "part": 3,
                 "time_range": [660, 940],
-                "theme": "Night falls, Tanjiro sniffs the ground, senses the demon beneath the floor and slashes the swamp puddle"
+                "theme": "Night falls, Tanjiro sniffs the ground, senses the demon beneath the floor and slashes the swamp puddle",
+                "beats": [
+                    {"start": 665.0, "weight": 0.24, "desc": "Night falls, black puddle grabs victim"},
+                    {"start": 725.0, "weight": 0.24, "desc": "Tanjiro slashes puddle, rescues girl"},
+                    {"start": 785.0, "weight": 0.22, "desc": "Swamp Demon emerges grinding teeth"},
+                    {"start": 860.0, "weight": 0.30, "desc": "Waterfall Basin leaping strike"},
+                ]
             },
             {
                 "part": 4,
                 "time_range": [940, 1260],
-                "theme": "The Swamp Demon splits into three bodies; Nezuko kicks the box open to defend Kazumi as Tanjiro dives in"
+                "theme": "The Swamp Demon splits into three bodies; Nezuko kicks the box open to defend Kazumi as Tanjiro dives in",
+                "beats": [
+                    {"start": 945.0, "weight": 0.24, "desc": "Impact shatters cobblestones, demon splits into 3"},
+                    {"start": 1015.0, "weight": 0.24, "desc": "Tactical dilemma defending Kazumi and girl"},
+                    {"start": 1080.0, "weight": 0.27, "desc": "Nezuko kicks box open, axe kick against wall"},
+                    {"start": 1160.0, "weight": 0.25, "desc": "Tanjiro dives headfirst into swamp underground"},
+                ]
             }
         ]
     },
@@ -131,16 +154,47 @@ CURATED_ACT_TIMELINES = {
 }
 
 
+def generate_default_beats(time_range: list[int | float], num_beats: int = 3) -> list[dict]:
+    """
+    Generates evenly spaced narrative scene beats within a given act's time range.
+    Ensures beat weights sum exactly to 1.0.
+    """
+    start_t = float(time_range[0])
+    end_t = float(time_range[1])
+    win_len = max(30.0, end_t - start_t)
+    step = win_len / max(1, num_beats)
+    base_weight = round(1.0 / max(1, num_beats), 2)
+    beats = []
+    accum_w = 0.0
+    for i in range(num_beats):
+        if i == num_beats - 1:
+            w = round(1.0 - accum_w, 2)
+        else:
+            w = base_weight
+            accum_w += w
+        beats.append({
+            "start": round(start_t + (i * step), 1),
+            "weight": w,
+            "desc": f"Scene Beat {i + 1}"
+        })
+    return beats
+
+
 def get_episode_scene_acts(episode_info: dict, num_parts: int = 4) -> list[dict]:
     """
     Returns exact, verified scene boundaries for any episode.
     1. Checks curated act timelines first.
     2. If not pre-curated, computes clean, anti-OP/ED story act windows based on
        standard anime episode timeline (skipping 0:00-2:00 OP and 21:00-23:40 ED).
+    3. Guarantees that every act includes narrative beats for beat-level visual sync.
     """
     ep_key = episode_info.get("episode_key", "")
     if ep_key in CURATED_ACT_TIMELINES:
-        return CURATED_ACT_TIMELINES[ep_key]["acts"]
+        acts = CURATED_ACT_TIMELINES[ep_key]["acts"]
+        for act in acts:
+            if "beats" not in act or not act["beats"]:
+                act["beats"] = generate_default_beats(act["time_range"])
+        return acts
 
     # Dynamic calculation for uncurated episodes:
     # Standard 23:40 anime episode (1420 seconds total)
@@ -153,10 +207,12 @@ def get_episode_scene_acts(episode_info: dict, num_parts: int = 4) -> list[dict]
     for i in range(num_parts):
         start_t = round(story_start + (i * act_duration), 1)
         end_t = round(story_start + ((i + 1) * act_duration), 1)
+        tr = [int(start_t), int(end_t)]
         acts.append({
             "part": i + 1,
-            "time_range": [int(start_t), int(end_t)],
-            "theme": f"Chronological Act {i + 1} of {episode_info.get('display_name', ep_key)}"
+            "time_range": tr,
+            "theme": f"Chronological Act {i + 1} of {episode_info.get('display_name', ep_key)}",
+            "beats": generate_default_beats(tr)
         })
 
     return acts

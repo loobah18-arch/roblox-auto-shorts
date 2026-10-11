@@ -448,6 +448,47 @@ class TestContinuousMasterEngine(unittest.TestCase):
         )
         self.assertTrue(ok)
 
+    def test_assemble_master_full_video_with_beats_dry_run(self):
+        from anime_video_engine import assemble_master_full_video
+        
+        chapter_segs = [
+            {
+                "part": 1,
+                "start_time": 0.0,
+                "end_time": 75.0,
+                "duration": 75.0,
+                "time_range": [132, 420],
+                "beats": [
+                    {"start": 132.0, "weight": 0.24, "desc": "Tanjiro in uniform"},
+                    {"start": 215.0, "weight": 0.27, "desc": "Nichirin blade lore"},
+                    {"start": 285.0, "weight": 0.26, "desc": "Kirin box gift"},
+                    {"start": 370.0, "weight": 0.23, "desc": "Descending Mt. Sagiri"},
+                ]
+            },
+            {
+                "part": 2,
+                "start_time": 75.0,
+                "end_time": 139.0,
+                "duration": 64.0,
+                "time_range": [420, 660],
+                "beats": [
+                    {"start": 425.0, "weight": 0.28, "desc": "Town arrival"},
+                    {"start": 495.0, "weight": 0.37, "desc": "Kazumi despair"},
+                    {"start": 575.0, "weight": 0.35, "desc": "Sniffing cobblestones"},
+                ]
+            },
+        ]
+        ok = assemble_master_full_video(
+            raw_video_path="fake_raw.mp4",
+            voice_audio_path="fake_voice.mp3",
+            ass_subtitle_path="fake_sub.ass",
+            output_video_path="fake_master.mp4",
+            chapter_segments=chapter_segs,
+            total_duration=139.0,
+            dry_run=True,
+        )
+        self.assertTrue(ok)
+
     def test_derive_short_from_master_dry_run(self):
         from anime_video_engine import derive_short_from_master
         
@@ -460,6 +501,44 @@ class TestContinuousMasterEngine(unittest.TestCase):
             dry_run=True,
         )
         self.assertTrue(ok)
+
+    def test_episode_script_beats_structure(self):
+        from anime_script_engine import generate_episode_script
+        sample_ep = {
+            "series": "Demon Slayer: Kimetsu no Yaiba",
+            "series_id": "demon-slayer",
+            "season": 1,
+            "episode": 6,
+            "filename": "Demon_Slayer_Kimetsu_no_Yaiba_480P_S01_E06.mp4",
+            "episode_key": "demon-slayer-s01e06"
+        }
+        script = generate_episode_script(sample_ep)
+        for p in script["parts"]:
+            self.assertIn("beats", p)
+            self.assertGreaterEqual(len(p["beats"]), 2)
+            total_weight = sum(b["weight"] for b in p["beats"])
+            self.assertAlmostEqual(total_weight, 1.0, delta=0.05)
+            for b in p["beats"]:
+                self.assertIn("start", b)
+                self.assertIn("weight", b)
+                self.assertIn("desc", b)
+
+    def test_get_episode_scene_acts_always_includes_beats(self):
+        from anime_subtitle_sync import get_episode_scene_acts
+        # Curated episode
+        curated_ep = {"episode_key": "demon-slayer-s01e06"}
+        acts = get_episode_scene_acts(curated_ep)
+        for act in acts:
+            self.assertIn("beats", act)
+            self.assertGreaterEqual(len(act["beats"]), 2)
+
+        # Uncurated episode
+        uncurated_ep = {"episode_key": "bleach-s01e01"}
+        acts = get_episode_scene_acts(uncurated_ep, num_parts=4)
+        for act in acts:
+            self.assertIn("beats", act)
+            self.assertEqual(len(act["beats"]), 3)
+            self.assertAlmostEqual(sum(b["weight"] for b in act["beats"]), 1.0, delta=0.01)
 
 
 if __name__ == "__main__":

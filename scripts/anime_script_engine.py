@@ -12,7 +12,7 @@ import re
 import urllib.request
 import urllib.error
 from pathlib import Path
-from anime_subtitle_sync import get_episode_scene_acts
+from anime_subtitle_sync import get_episode_scene_acts, generate_default_beats, CURATED_ACT_TIMELINES
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 
@@ -112,6 +112,12 @@ EPISODE_KNOWLEDGE = {
                 "narration": "The journey of a true demon slayer begins in earnest as Tanjiro Kamado stands before Master Sakonji Urokodaki, officially donning the black uniform of the Demon Slayer Corps. Woven from extraordinary, resilient fibers, this uniform is far more than standard attire—it is an impenetrable weave designed to repel minor demon claws, water, and fire, while remaining breathable in high-intensity combat. As Tanjiro fastens his checkered haori over the uniform, Urokodaki shares crucial insight regarding the dark Nichirin blade hanging at his hip. Throughout the centuries-long history of the Corps, pitch-black blades have remained one of the most enigmatic mysteries; so few swordsmen who wielded them ever lived long enough to record their true strengths or master an advanced breathing branch. But before sending his pupil out into the brutal world, the former Water Hashira presents Tanjiro with an invaluable parting gift: a custom-crafted wooden box fashioned from sacred Kirin timber. Coated in natural lacquer, this reinforced box is completely light-resistant, enabling Nezuko to travel safely through harsh sunlight while resting inside in a mystical sleep. With his sister securely hoisted onto his back and Urokodaki's silent blessing behind him, Tanjiro begins his descent from Mount Sagiri, stepping onto the perilous road where humans and demons collide.",
                 "cliffhanger": "Will Tanjiro find the missing girls in the northwestern town? Watch Part 2!",
                 "time_range": [132, 420],
+                "beats": [
+                    {"start": 132.0, "weight": 0.24, "desc": "Tanjiro in Demon Slayer uniform"},
+                    {"start": 215.0, "weight": 0.27, "desc": "Urokodaki explaining the pitch-black Nichirin blade"},
+                    {"start": 285.0, "weight": 0.26, "desc": "Kirin timber box parting gift for Nezuko"},
+                    {"start": 370.0, "weight": 0.23, "desc": "Hoisting box and descending Mt. Sagiri"},
+                ],
                 "short_title": "Tanjiro Gets His Demon Slayer Uniform! ⚔️ | Demon Slayer S1 Ep 6 Part 1 #shorts",
             },
             {
@@ -120,6 +126,11 @@ EPISODE_KNOWLEDGE = {
                 "narration": "Setting out on his very first official assignment, Tanjiro arrives in a bustling town to the northwest. Yet beneath the lively surface of vendor stalls and busy cobblestone streets lies a chilling atmosphere of suffocating terror. Every single night, young teenage girls have been vanishing without a trace, leaving the local families gripped by paranoia and dread. Tanjiro crosses paths with Kazumi, a hollowed-out young man who appears on the verge of total collapse. Just the night before, Kazumi had been walking hand-in-hand with his beloved fiancée, Satoko, when in the blink of an eye, she literally vanished into the earth right beside him. With zero evidence of a struggle, the grieving townsfolk have accused Kazumi of murdering his own bride, ostracizing him completely. Seeing the undeniable agony in Kazumi's eyes, Tanjiro believes him without a shadow of doubt. Dropping to his knees right in the middle of the crowded dirt road, Tanjiro closes his eyes and presses his face toward the cobblestones—concentrating his superhuman sense of smell to track the faint, sulfuric stench of demon blood lingering beneath the ground.",
                 "cliffhanger": "The demon strikes again from the shadows—watch Part 3 for the explosive clash!",
                 "time_range": [420, 660],
+                "beats": [
+                    {"start": 425.0, "weight": 0.28, "desc": "Arriving at northwestern town vendor stalls"},
+                    {"start": 495.0, "weight": 0.37, "desc": "Distraught Kazumi recounting Satoko's disappearance"},
+                    {"start": 575.0, "weight": 0.35, "desc": "Tanjiro sniffing cobblestones for sulfur demon scent"},
+                ],
                 "short_title": "Girls Vanishing Into Thin Air! 😱 | Demon Slayer S1 Ep 6 Part 2 #shorts",
             },
             {
@@ -128,6 +139,12 @@ EPISODE_KNOWLEDGE = {
                 "narration": "As midnight envelops the town in pitch-black shadow, the sinister energy Tanjiro had been tracking violently surges to the surface. Nearby, another young girl is dragged screaming into a sudden puddle of viscous, black swamp liquid that materializes beneath her feet. Reacting with instant combat reflexes, Tanjiro hurtles toward the dark puddle, thrusting his Nichirin sword straight into the earth and hauling the unconscious victim free seconds before she is swallowed whole. Emerging from the shifting puddle is the culprit behind the terror: the grotesque Swamp Demon. Grinding his teeth together with an irritating, rhythmic clatter, the demon fumes with rage that his tender, fresh prey was snatched away. Recognizing the horrific truth that this creature has already devoured dozens of innocent girls, including Kazumi's fiancée, pure fury ignites within Tanjiro. Leaping high into the night sky, he draws his sword and unleashes Water Breathing Eighth Form: Waterfall Basin, crashing down with overwhelming vertical kinetic force to cleave through the demon's defenses!",
                 "cliffhanger": "The demon isn't alone—watch Part 4 to see Nezuko kick into action!",
                 "time_range": [660, 940],
+                "beats": [
+                    {"start": 665.0, "weight": 0.24, "desc": "Night falls, black puddle grabs victim"},
+                    {"start": 725.0, "weight": 0.24, "desc": "Tanjiro slashes puddle, rescues girl"},
+                    {"start": 785.0, "weight": 0.22, "desc": "Swamp Demon emerges grinding teeth"},
+                    {"start": 860.0, "weight": 0.30, "desc": "Waterfall Basin leaping strike"},
+                ],
                 "short_title": "Water Breathing Waterfall Basin LIVE! 🌊 | Demon Slayer S1 Ep 6 Part 3 #shorts",
             },
             {
@@ -136,6 +153,12 @@ EPISODE_KNOWLEDGE = {
                 "narration": "The devastating impact shatters the cobblestones, but the Swamp Demon is far from ordinary. Using his bizarre Blood Demon Art, the creature's body splits into three distinct identical entities, each submerging into the soil to surround Tanjiro, Kazumi, and the unconscious girl from all angles. Tanjiro finds himself pushed into a desperate tactical dilemma: fighting defensively to shield two fragile humans leaves him wide open to ambush from beneath the earth. Just as the third demon claws its way upward to tear Kazumi's throat out, the wooden box on Tanjiro's back rattles with explosive force—and Nezuko kicks the door clean off its hinges! Awakening with blazing pink eyes and sharp fangs, Nezuko launches an earth-shattering axe kick that launches the demon crashing into a stone wall. Seeing his sister handle the threat above ground with demonic ferocity, Tanjiro makes a fearless tactical decision. Taking a deep breath of total concentration, he dives headfirst into the swamp portal, submerging straight into the demon's underground realm to eliminate the remaining two threats once and for all.",
                 "cliffhanger": "Subscribe to Bhaloo Ji for Episode 7 — Tanjiro encounters Muzan Kibutsuji!",
                 "time_range": [940, 1260],
+                "beats": [
+                    {"start": 945.0, "weight": 0.24, "desc": "Impact shatters cobblestones, demon splits into 3"},
+                    {"start": 1015.0, "weight": 0.24, "desc": "Tactical dilemma defending Kazumi and girl"},
+                    {"start": 1080.0, "weight": 0.27, "desc": "Nezuko kicks box open, axe kick against wall"},
+                    {"start": 1160.0, "weight": 0.25, "desc": "Tanjiro dives headfirst into swamp underground"},
+                ],
                 "short_title": "Nezuko Kicks The Swamp Demon! 💥 | Demon Slayer S1 Ep 6 Part 4 #shorts",
             }
         ]
@@ -397,6 +420,14 @@ def _format_script_package(episode_info: dict, ep_title: str, ep_summary: str, p
         # Full video script: continuous flowing story
         full_script_paragraphs.append(narration)
 
+        beats = p.get("beats")
+        if not beats:
+            ep_key = episode_info.get("episode_key", "")
+            if ep_key in CURATED_ACT_TIMELINES and i - 1 < len(CURATED_ACT_TIMELINES[ep_key]["acts"]):
+                beats = CURATED_ACT_TIMELINES[ep_key]["acts"][i - 1].get("beats")
+            if not beats:
+                beats = generate_default_beats(p.get("time_range", [0, 450]))
+
         enriched_p = {
             "part": i,
             "total_parts": total_parts,
@@ -404,6 +435,7 @@ def _format_script_package(episode_info: dict, ep_title: str, ep_summary: str, p
             "narration": narration,
             "cliffhanger": p.get("cliffhanger", "").strip(),
             "time_range": p.get("time_range", [0, 450]),
+            "beats": beats,
             "estimated_duration": est_duration,
             "short_title": p.get("short_title", f"{series} S{season} Ep {episode} Part {i} #shorts"),
             "badge": f"{series.upper()} • S{season:02d}E{episode:02d} • PART {i}/{total_parts}",

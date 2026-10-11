@@ -485,9 +485,20 @@ def assemble_master_full_video(
             safe_end = max(safe_start + 30.0, float(w_end))
             win_len = max(30.0, safe_end - safe_start)
 
-            # Continuous scenes: 2 smooth continuous scenes per chapter (each ~25-35s)
-            # or 1 continuous scene if chapter is short (<= 35s)
-            if chap_dur <= 35.0:
+            beats = chap.get("beats")
+            if beats and len(beats) > 0:
+                shots = []
+                accum_dur = 0.0
+                for b_idx, b in enumerate(beats):
+                    b_start = max(0.0, float(b.get("start", safe_start)))
+                    if b_idx == len(beats) - 1:
+                        b_dur = max(0.5, chap_dur - accum_dur)
+                    else:
+                        w = float(b.get("weight", 1.0 / len(beats)))
+                        b_dur = round(chap_dur * w, 2)
+                        accum_dur += b_dur
+                    shots.append((b_start, b_dur))
+            elif chap_dur <= 35.0:
                 shots = [(safe_start, chap_dur)]
             else:
                 s1_dur = chap_dur / 2.0
@@ -502,7 +513,7 @@ def assemble_master_full_video(
                 if s_dur <= 0.5:
                     continue
                 seg_file = temp_dir / f"slice_{slice_idx:03d}.mp4"
-                vf_slice = "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                vf_slice = "fps=30,scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
                 cmd_slice = [
                     "ffmpeg", "-y",
                     "-ss", f"{s_start:.2f}",
@@ -511,7 +522,8 @@ def assemble_master_full_video(
                     "-vf", vf_slice,
                     "-c:v", "libx264",
                     "-preset", "ultrafast",
-                    "-crf", "22",
+                    "-crf", "20",
+                    "-avoid_negative_ts", "make_zero",
                     "-an",
                     str(seg_file)
                 ]

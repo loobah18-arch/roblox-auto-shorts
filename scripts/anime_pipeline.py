@@ -124,11 +124,14 @@ def run_pipeline(
     total_master_duration = master_audio_res["duration"]
     log(f"Master continuous voiceover duration: {total_master_duration:.2f}s ({master_audio_res['word_count']} words)")
 
-    # Build chapter segments mapping with exact time_ranges from script package
+    # Build chapter segments mapping with exact time_ranges and beats from script package
     chapter_segments = master_audio_res.get("chapter_segments", [])
     for idx, chap in enumerate(chapter_segments):
         if idx < len(script_package["parts"]):
-            chap["time_range"] = script_package["parts"][idx].get("time_range", [120, 500])
+            part_p = script_package["parts"][idx]
+            chap["time_range"] = part_p.get("time_range", [120, 500])
+            if "beats" in part_p and part_p["beats"]:
+                chap["beats"] = part_p["beats"]
 
     master_render_success = assemble_master_full_video(
         raw_video_path=raw_video_path,
@@ -321,7 +324,10 @@ def run_daily_funnel(
         chapter_segments = master_audio_res.get("chapter_segments", [])
         for idx, chap in enumerate(chapter_segments):
             if idx < len(script_package["parts"]):
-                chap["time_range"] = script_package["parts"][idx].get("time_range", [120, 500])
+                part_p = script_package["parts"][idx]
+                chap["time_range"] = part_p.get("time_range", [120, 500])
+                if "beats" in part_p and part_p["beats"]:
+                    chap["beats"] = part_p["beats"]
 
         master_ok = assemble_master_full_video(
             raw_video_path=raw_video_path,
