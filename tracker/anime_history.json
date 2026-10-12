@@ -131,9 +131,18 @@
       "url": "https://youtube.com/shorts/WDFaqiQS1xc",
       "title": "Only 4 Survived the Deadly Mountain! 😱 | Demon Slayer S1 Ep 5 Explanation Part 1 #shorts",
       "uploaded_at": "2026-10-11T21:06:39Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e05",
+      "part": 2,
+      "is_full_video": false,
+      "video_id": "G-zNVrRr82I",
+      "url": "https://youtube.com/shorts/G-zNVrRr82I",
+      "title": "Tanjiro Breaks Genya’s Arm LIVE! 💥 | Demon Slayer S1 Ep 5 Explanation Part 2 #shorts",
+      "uploaded_at": "2026-10-12T18:56:27Z"
     }
   ],
-  "last_updated": "2026-10-11T21:06:39Z",
+  "last_updated": "2026-10-12T18:56:27Z",
   "active_episode": {
     "episode_key": "demon-slayer-s01e05",
     "series_id": "demon-slayer",
@@ -143,7 +152,8 @@
     "total_parts": 5,
     "normal_video_uploaded": true,
     "uploaded_shorts": [
-      1
+      1,
+      2
     ],
     "script_package": {
       "series": "Demon Slayer: Kimetsu no Yaiba",
