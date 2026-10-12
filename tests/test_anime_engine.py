@@ -630,6 +630,16 @@ class TestContinuousMasterEngine(unittest.TestCase):
         for p in pkg["parts"]:
             self.assertIn("Explanation", p["short_title"], f"Part {p['part']} title lacks 'Explanation': {p['short_title']}")
 
+    def test_synthesize_word_cues(self):
+        """Verify proportional word cue generation for fallback TTS."""
+        from anime_voice_subtitles import synthesize_word_cues
+        text = "Tanjiro uses water breathing tenth form"
+        cues = synthesize_word_cues(text, total_duration=6.0)
+        self.assertEqual(len(cues), 6)
+        self.assertEqual(cues[0]["word"], "Tanjiro")
+        self.assertEqual(cues[0]["start"], 0.0)
+        self.assertAlmostEqual(cues[-1]["end"], 6.0, delta=0.1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,5 +2,6 @@ google-api-python-client
 google-auth-oauthlib
 google-auth-httplib2
 edge-tts
+gTTS>=2.5.0
 requests
 gdown>=5.1.0

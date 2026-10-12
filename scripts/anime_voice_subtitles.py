@@ -8,6 +8,7 @@ word-by-word animated ASS karaoke subtitles.
 import asyncio
 import os
 import re
+import subprocess
 from datetime import timedelta
 from pathlib import Path
 import edge_tts
@@ -122,6 +123,141 @@ def cues_to_ass(word_cues: list[dict], badge_text: str = "", is_landscape: bool 
     return "\n".join(ass_lines) + "\n"
 
 
+def get_audio_duration(audio_path: str | Path) -> float:
+    """Extract precise audio duration in seconds using ffprobe."""
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration:stream=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(audio_path)
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        for line in res.stdout.splitlines():
+            clean = line.strip()
+            if clean and clean != "N/A":
+                try:
+                    val = float(clean)
+                    if val > 0:
+                        return val
+                except ValueError:
+                    continue
+        return float(res.stdout.strip())
+    except Exception:
+        return 0.0
+
+
+def synthesize_word_cues(text: str, total_duration: float) -> list[dict]:
+    """Generate proportional word cues across total_duration when boundary data is absent."""
+    words = text.strip().split()
+    if not words or total_duration <= 0:
+        return []
+    total_chars = max(1, sum(len(w) for w in words))
+    cur = 0.0
+    cues = []
+    for w in words:
+        dur = total_duration * (len(w) / total_chars)
+        cues.append({
+            "word": w,
+            "start": round(cur, 3),
+            "end": round(cur + dur, 3),
+        })
+        cur += dur
+    return cues
+
+
+async def _synthesize_speech_and_cues(
+    text: str,
+    output_audio_path: Path,
+    voice: str = DEFAULT_VOICE,
+    rate: str = DEFAULT_RATE,
+) -> list[dict]:
+    """
+    Synthesize audio and obtain word boundary cues with automated retries,
+    sister-voice failover, and zero-dependency gTTS cloud fallback.
+    """
+    voices_to_try = [voice, "en-US-ChristopherNeural", "en-US-GuyNeural", "en-US-EricNeural", "en-US-AndrewNeural"]
+    voices_to_try = list(dict.fromkeys(voices_to_try))
+
+    last_error = None
+    audio_data = bytearray()
+    word_cues = []
+    sentence_cues = []
+
+    for v in voices_to_try:
+        for attempt in range(1, 3):
+            try:
+                communicate = edge_tts.Communicate(text, voice=v, rate=rate)
+                audio_data = bytearray()
+                word_cues = []
+                sentence_cues = []
+
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        audio_data.extend(chunk["data"])
+                    elif chunk["type"] == "WordBoundary":
+                        word_cues.append({
+                            "word": chunk["text"],
+                            "start": chunk["offset"] / 10_000_000.0,
+                            "end": (chunk["offset"] + chunk["duration"]) / 10_000_000.0,
+                        })
+                    elif chunk["type"] == "SentenceBoundary":
+                        sentence_cues.append({
+                            "text": chunk["text"],
+                            "offset": chunk["offset"],
+                            "duration": chunk["duration"],
+                        })
+
+                if len(audio_data) > 2000:
+                    with open(output_audio_path, "wb") as f:
+                        f.write(audio_data)
+                    break
+            except Exception as e:
+                last_error = e
+                print(f"[anime_voice] ⚠️ TTS warning for voice '{v}' (attempt {attempt}/2): {e}", flush=True)
+                await asyncio.sleep(1.0 * attempt)
+
+        if len(audio_data) > 2000:
+            break
+
+    # If Edge-TTS succeeded, ensure word_cues are populated
+    if len(audio_data) > 2000:
+        if not word_cues and sentence_cues:
+            for sent in sentence_cues:
+                words = sent["text"].strip().split()
+                if not words:
+                    continue
+                total_chars = max(1, sum(len(w) for w in words))
+                cur_offset = sent["offset"]
+                for w in words:
+                    w_dur = int(sent["duration"] * (len(w) / total_chars))
+                    word_cues.append({
+                        "word": w,
+                        "start": cur_offset / 10_000_000.0,
+                        "end": (cur_offset + w_dur) / 10_000_000.0,
+                    })
+                    cur_offset += w_dur
+        if word_cues:
+            return word_cues
+        total_dur = get_audio_duration(output_audio_path)
+        return synthesize_word_cues(text, total_dur)
+
+    # Edge-TTS failed or was blocked; fall back to gTTS
+    print(f"[anime_voice] ⚠️ Edge-TTS unavailable or blocked ({last_error}); switching to reliable gTTS fallback...", flush=True)
+    try:
+        from gtts import gTTS
+        tts = gTTS(text=text, lang="en")
+        tts.save(str(output_audio_path))
+        total_dur = get_audio_duration(output_audio_path)
+        if total_dur <= 0:
+            words_cnt = len(text.strip().split())
+            total_dur = max(3.0, words_cnt / 2.8)
+        print(f"[anime_voice] ✅ Voiceover generated via gTTS fallback ({total_dur:.1f}s).", flush=True)
+        return synthesize_word_cues(text, total_dur)
+    except Exception as ge:
+        raise RuntimeError(f"All speech generation attempts failed. Edge-TTS: {last_error}; gTTS: {ge}")
+
+
 async def generate_voice_and_subtitles(
     text: str,
     output_audio_path: str | Path,
@@ -132,51 +268,14 @@ async def generate_voice_and_subtitles(
     is_landscape: bool = False,
 ) -> dict:
     """
-    Generate audio and word-aligned ASS subtitles using Edge-TTS.
+    Generate audio and word-aligned ASS subtitles with robust retry & gTTS fallback.
     """
     output_audio_path = Path(output_audio_path)
     output_ass_path = Path(output_ass_path)
     output_audio_path.parent.mkdir(parents=True, exist_ok=True)
     output_ass_path.parent.mkdir(parents=True, exist_ok=True)
 
-    communicate = edge_tts.Communicate(text, voice=voice, rate=rate)
-    
-    word_cues = []
-    sentence_cues = []
-
-    with open(output_audio_path, "wb") as audio_file:
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_file.write(chunk["data"])
-            elif chunk["type"] == "WordBoundary":
-                word_cues.append({
-                    "word": chunk["text"],
-                    "start": chunk["offset"] / 10_000_000.0,
-                    "end": (chunk["offset"] + chunk["duration"]) / 10_000_000.0,
-                })
-            elif chunk["type"] == "SentenceBoundary":
-                sentence_cues.append({
-                    "text": chunk["text"],
-                    "offset": chunk["offset"],
-                    "duration": chunk["duration"],
-                })
-
-    # If WordBoundary wasn't provided, interpolate from SentenceBoundary
-    if not word_cues and sentence_cues:
-        for sent in sentence_cues:
-            words = sent["text"].strip().split()
-            if not words:
-                continue
-            total_chars = max(1, sum(len(w) for w in words))
-            cur_offset = sent["offset"]
-            for w in words:
-                w_dur = int(sent["duration"] * (len(w) / total_chars))
-                word_cues.append({
-                    "word": w,
-                    "start": cur_offset / 10_000_000.0,
-                    "end": (cur_offset + w_dur) / 10_000_000.0,
-                })
-                cur_offset += w_dur
+    word_cues = await _synthesize_speech_and_cues(text, output_audio_path, voice=voice, rate=rate)
 
     ass_content = cues_to_ass(word_cues, badge_text=badge_text, is_landscape=is_landscape)
     with open(output_ass_path, "w", encoding="utf-8") as f:
@@ -233,43 +332,7 @@ async def generate_master_voice_and_subtitles(
     output_audio_path.parent.mkdir(parents=True, exist_ok=True)
     output_ass_path.parent.mkdir(parents=True, exist_ok=True)
 
-    communicate = edge_tts.Communicate(full_text, voice=voice, rate=rate)
-
-    word_cues = []
-    sentence_cues = []
-
-    with open(output_audio_path, "wb") as audio_file:
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_file.write(chunk["data"])
-            elif chunk["type"] == "WordBoundary":
-                word_cues.append({
-                    "word": chunk["text"],
-                    "start": chunk["offset"] / 10_000_000.0,
-                    "end": (chunk["offset"] + chunk["duration"]) / 10_000_000.0,
-                })
-            elif chunk["type"] == "SentenceBoundary":
-                sentence_cues.append({
-                    "text": chunk["text"],
-                    "offset": chunk["offset"],
-                    "duration": chunk["duration"],
-                })
-
-    if not word_cues and sentence_cues:
-        for sent in sentence_cues:
-            words = sent["text"].strip().split()
-            if not words:
-                continue
-            total_chars = max(1, sum(len(w) for w in words))
-            cur_offset = sent["offset"]
-            for w in words:
-                w_dur = int(sent["duration"] * (len(w) / total_chars))
-                word_cues.append({
-                    "word": w,
-                    "start": cur_offset / 10_000_000.0,
-                    "end": (cur_offset + w_dur) / 10_000_000.0,
-                })
-                cur_offset += w_dur
+    word_cues = await _synthesize_speech_and_cues(full_text, output_audio_path, voice=voice, rate=rate)
 
     ass_content = cues_to_ass(word_cues, badge_text="", is_landscape=is_landscape)
     with open(output_ass_path, "w", encoding="utf-8") as f:
