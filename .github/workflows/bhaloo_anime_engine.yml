@@ -41,6 +41,10 @@ on:
           - "public"
           - "unlisted"
           - "private"
+      delete_video_id:
+        description: "Optional: Video ID to delete from channel before running (e.g. G-zNVrRr82I)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -72,6 +76,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install gdown>=5.1.0
+
+      - name: 🗑️ Delete Flagged / Blocked Video from YouTube
+        if: ${{ inputs.delete_video_id != '' && inputs.delete_video_id != null }}
+        env:
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+        run: |
+          echo "🗑️ Deleting video ${{ inputs.delete_video_id }} from YouTube channel..."
+          python3 scripts/anime_youtube_uploader.py --delete "${{ inputs.delete_video_id }}"
 
       - name: 💾 Cache Raw Anime Video Files
         uses: actions/cache@v4

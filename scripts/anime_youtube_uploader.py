@@ -428,15 +428,61 @@ def upload_episode_package(
     return results
 
 
+def delete_video(youtube, video_id: str) -> bool:
+    """Delete a video by ID."""
+    try:
+        youtube.videos().delete(id=video_id).execute()
+        log(f"🗑️ Successfully deleted video {video_id} from YouTube channel.")
+        return True
+    except Exception as e:
+        log(f"⚠️ Failed to delete video {video_id}: {e}")
+        return False
+
+
+def set_video_visibility(youtube, video_id: str, privacy: str = "private") -> bool:
+    """Update privacy status of a video."""
+    try:
+        youtube.videos().update(
+            part="status",
+            body={"id": video_id, "status": {"privacyStatus": privacy}},
+        ).execute()
+        log(f"🔒 Successfully set visibility for {video_id} to '{privacy}'.")
+        return True
+    except Exception as e:
+        log(f"⚠️ Failed to set visibility for {video_id}: {e}")
+        return False
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Upload anime episode to YouTube")
-    parser.add_argument("--dir", required=True, help="Episode output directory (e.g. output/demon-slayer-s01e01)")
+    parser = argparse.ArgumentParser(description="Upload or manage anime videos on YouTube")
+    parser.add_argument("--dir", help="Episode output directory (e.g. output/demon-slayer-s01e01)")
     parser.add_argument("--live", action="store_true", help="Perform real YouTube upload")
     parser.add_argument("--privacy", default="public", choices=["public", "unlisted", "private"])
     parser.add_argument("--no-shorts", action="store_true", help="Skip Shorts upload")
     parser.add_argument("--no-full", action="store_true", help="Skip Full Video upload")
+    parser.add_argument("--delete", help="Video ID to delete from channel")
+    parser.add_argument("--set-privacy", nargs=2, metavar=("VIDEO_ID", "PRIVACY"), help="Update video privacy (e.g. --set-privacy G-zNVrRr82I private)")
 
     args = parser.parse_args()
+
+    if args.delete:
+        yt = get_youtube_service()
+        if not yt:
+            sys.exit(1)
+        ok = delete_video(yt, args.delete)
+        sys.exit(0 if ok else 1)
+
+    if args.set_privacy:
+        yt = get_youtube_service()
+        if not yt:
+            sys.exit(1)
+        vid_id, priv = args.set_privacy
+        ok = set_video_visibility(yt, vid_id, priv)
+        sys.exit(0 if ok else 1)
+
+    if not args.dir:
+        parser.error("--dir is required when uploading")
+
     res = upload_episode_package(
         episode_dir=args.dir,
         live=args.live,

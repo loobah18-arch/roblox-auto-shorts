@@ -143,25 +143,25 @@ def build_ffmpeg_filtergraph(
     # 1. Base input split with transformative color grade, vignette, and micro-noise
     flip_filter = "hflip," if mirror else ""
     filters.append(
-        f"[0:v]{flip_filter}eq=contrast=1.12:brightness=-0.03:saturation=1.16:gamma=0.95,"
-        f"vignette=PI/4.5,unsharp=5:5:0.8:5:5:0.4,noise=alls=5:allf=t,split=2[raw_bg][raw_fg]"
+        f"[0:v]{flip_filter}eq=contrast=1.15:brightness=-0.03:saturation=1.20:gamma=0.94,"
+        f"vignette=PI/4.2,unsharp=5:5:0.9:5:5:0.5,noise=alls=6:allf=t,split=2[raw_bg][raw_fg]"
     )
 
     # 2. Background: fill 1080x1920, heavy blur, darkened
     filters.append(
         "[raw_bg]scale=1080:1920:force_original_aspect_ratio=increase,"
-        "crop=1080:1920,setsar=1,boxblur=25:5,eq=brightness=-0.14[bg]"
+        "crop=1080:1920,setsar=1,boxblur=28:6,eq=brightness=-0.14:contrast=1.06[bg]"
     )
 
-    # 3. Foreground: crisp card centered (1040x584) with subtle glowing border
+    # 3. Foreground: crisp card centered (1020x574) with subtle glowing border
     filters.append(
-        "[raw_fg]scale=1040:584:force_original_aspect_ratio=decrease,"
-        "pad=1040:584:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,"
+        "[raw_fg]scale=1020:574:force_original_aspect_ratio=decrease,"
+        "pad=1020:574:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,"
         "drawbox=x=0:y=0:w=iw:h=ih:color=white@0.22:t=3[fg]"
     )
 
     # 4. Overlay foreground on background (shifted slightly up to make room for captions)
-    filters.append("[bg][fg]overlay=(W-w)/2:(H-h)/2-60[comp]")
+    filters.append("[bg][fg]overlay=(W-w)/2:(H-h)/2-50[comp]")
 
     # 5. Burn subtitles if available
     if has_subtitles and ass_path:
@@ -262,16 +262,47 @@ def assemble_short_part(
                 accum_dur += s_dur
             shots.append((s_start, s_dur))
 
-    # Anti-copyright duration guard: split any shot > 5.5s to evade contiguous fingerprinting
+    # Anti-copyright duration guard & non-linear micro-slicing:
+    # 1. Hard ceiling: NO single shot ever exceeds 3.2 seconds (Content ID needs >=4.5s contiguous).
+    # 2. Alternating punch-in zooms (1.14x, 1.20x, 1.16x, 1.22x).
+    # 3. Dynamic PTS tempo modulation (setpts=0.96*PTS, 0.94*PTS) to alter keyframe timestamps.
+    # 4. Micro-temporal offsets to prevent contiguous frame-hash playback matching.
+    MAX_SHOT_DURATION = 3.2
+    ZOOM_CYCLES = [1.14, 1.20, 1.16, 1.22, 1.18]
+    TEMPO_CYCLES = [0.96, 0.94, 0.97, 0.95]
+
     expanded_shots = []
+    z_idx = 0
+    t_idx = 0
+
     for s_start, s_dur in shots:
-        if s_dur > 5.5:
-            half = round(s_dur / 2.0, 2)
-            rem = round(s_dur - half, 2)
-            expanded_shots.append((s_start, half, 1.12))
-            expanded_shots.append((s_start + half, rem, 1.16))
-        else:
-            expanded_shots.append((s_start, s_dur, 1.13))
+        if s_dur <= 0.4:
+            continue
+        remaining_dur = s_dur
+        curr_offset = s_start
+        chunk_idx = 0
+
+        while remaining_dur > 0:
+            if remaining_dur <= MAX_SHOT_DURATION:
+                c_dur = round(remaining_dur, 2)
+            elif remaining_dur <= (MAX_SHOT_DURATION + 1.2):
+                c_dur = round(remaining_dur / 2.0, 2)
+            else:
+                c_dur = round(min(MAX_SHOT_DURATION, max(2.2, remaining_dur / max(2, int(remaining_dur / 2.6)))), 2)
+
+            zoom = ZOOM_CYCLES[z_idx % len(ZOOM_CYCLES)]
+            tempo = TEMPO_CYCLES[t_idx % len(TEMPO_CYCLES)]
+            z_idx += 1
+            t_idx += 1
+
+            # Micro-temporal jump for alternating subdivisions
+            sample_start = curr_offset + (1.6 if chunk_idx % 2 == 1 else 0.0)
+            sample_start = max(safe_start, sample_start)
+
+            expanded_shots.append((sample_start, c_dur, zoom, tempo))
+            curr_offset += c_dur
+            remaining_dur = round(remaining_dur - c_dur, 2)
+            chunk_idx += 1
 
     temp_dir = output_video.parent / f"temp_slices_{output_video.stem}"
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -280,7 +311,7 @@ def assemble_short_part(
     log(f"Composing {mode_label}: Slicing {len(expanded_shots)} anti-copyright protected shots between {safe_start:.1f}s and {safe_end:.1f}s...")
 
     try:
-        for idx, (s_start, s_dur, zoom) in enumerate(expanded_shots):
+        for idx, (s_start, s_dur, zoom, tempo) in enumerate(expanded_shots):
             if s_dur <= 0.4:
                 continue
             seg_file = temp_dir / f"slice_{idx:03d}.mp4"
@@ -288,11 +319,11 @@ def assemble_short_part(
             if is_landscape:
                 w_s = int(1920 * zoom)
                 h_s = int(1080 * zoom)
-                vf_slice = f"fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                vf_slice = f"setpts={tempo:.3f}*PTS,fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
             else:
                 w_s = int(1280 * zoom)
                 h_s = int(720 * zoom)
-                vf_slice = f"fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+                vf_slice = f"setpts={tempo:.3f}*PTS,fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
 
             cmd_slice = [
                 "ffmpeg", "-y",
@@ -303,6 +334,7 @@ def assemble_short_part(
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-crf", "22",
+                "-avoid_negative_ts", "make_zero",
                 "-an",  # Strip 100% of raw anime audio!
                 str(seg_file)
             ]

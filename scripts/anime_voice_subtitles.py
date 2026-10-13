@@ -246,13 +246,39 @@ async def _synthesize_speech_and_cues(
     print(f"[anime_voice] ⚠️ Edge-TTS unavailable or blocked ({last_error}); switching to reliable gTTS fallback...", flush=True)
     try:
         from gtts import gTTS
+        import shutil
+        raw_tts_path = output_audio_path.parent / f"raw_gtts_{output_audio_path.name}"
         tts = gTTS(text=text, lang="en")
-        tts.save(str(output_audio_path))
+        tts.save(str(raw_tts_path))
+
+        raw_dur = get_audio_duration(raw_tts_path)
+        # If gTTS audio is too slow (>58s), accelerate tempo to match dynamic anime narrator pace (~185 wpm)
+        if raw_dur > 58.0:
+            speed = min(1.48, max(1.20, raw_dur / 56.0))
+            cmd_speed = [
+                "ffmpeg", "-y",
+                "-i", str(raw_tts_path),
+                "-filter:a", f"atempo={speed:.3f}",
+                "-b:a", "192k",
+                str(output_audio_path)
+            ]
+            res_s = subprocess.run(cmd_speed, capture_output=True, text=True)
+            if res_s.returncode != 0 or not output_audio_path.exists():
+                shutil.copy2(raw_tts_path, output_audio_path)
+        else:
+            shutil.copy2(raw_tts_path, output_audio_path)
+
+        if raw_tts_path.exists():
+            try:
+                raw_tts_path.unlink()
+            except Exception:
+                pass
+
         total_dur = get_audio_duration(output_audio_path)
         if total_dur <= 0:
             words_cnt = len(text.strip().split())
-            total_dur = max(3.0, words_cnt / 2.8)
-        print(f"[anime_voice] ✅ Voiceover generated via gTTS fallback ({total_dur:.1f}s).", flush=True)
+            total_dur = max(3.0, words_cnt / 3.1)
+        print(f"[anime_voice] ✅ Voiceover generated via gTTS fallback ({total_dur:.1f}s, paced for Shorts <=58s).", flush=True)
         return synthesize_word_cues(text, total_dur)
     except Exception as ge:
         raise RuntimeError(f"All speech generation attempts failed. Edge-TTS: {last_error}; gTTS: {ge}")

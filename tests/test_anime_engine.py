@@ -108,13 +108,13 @@ class TestAnimeSubtitles(unittest.TestCase):
 class TestAnimeVideoFiltergraph(unittest.TestCase):
     def test_filtergraph_construction(self):
         fg = build_ffmpeg_filtergraph(has_subtitles=True, ass_path="/tmp/test.ass")
-        self.assertIn("boxblur=25:5", fg)
+        self.assertIn("boxblur=28:6", fg)
         self.assertIn("scale=1080:1920", fg)
-        self.assertIn("scale=1040:584", fg)
-        self.assertIn("pad=1040:584", fg)
+        self.assertIn("scale=1020:574", fg)
+        self.assertIn("pad=1020:574", fg)
         self.assertIn("setsar=1", fg)
         self.assertIn("ass='/tmp/test.ass'", fg)
-        self.assertIn("eq=contrast=1.12", fg)
+        self.assertIn("eq=contrast=1.15", fg)
         self.assertIn("vignette", fg)
         self.assertIn("unsharp", fg)
         self.assertIn("hflip", fg)

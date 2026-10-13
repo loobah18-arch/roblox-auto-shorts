@@ -579,6 +579,11 @@ def run_daily_funnel(
         else:
             raw_title = f"{raw_title} | Explanation Part {next_p} #shorts"
 
+    # Anti-copyright crawler protection: sanitize exact episode tags (e.g. S1 Ep 5) to Story Recap
+    raw_title = re.sub(r'\b[Ss]\d+[\s._-]*[Ee][Pp]?\s*\d+\b', 'Story Recap', raw_title)
+    raw_title = re.sub(r'\bSeason\s*\d+\s*Episode\s*\d+\b', 'Story Recap', raw_title, flags=re.IGNORECASE)
+    raw_title = re.sub(r'\s+', ' ', raw_title).strip()
+
     short_meta = {
         "part": next_p,
         "title": raw_title,
