@@ -140,9 +140,18 @@
       "url": "https://youtube.com/shorts/Pvuky2WZCt4",
       "title": "Tanjiro Breaks Genya’s Arm LIVE! 💥 | Demon Slayer Story Recap Explanation Part 2 #shorts",
       "uploaded_at": "2026-10-13T07:47:58Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e05",
+      "part": 3,
+      "is_full_video": false,
+      "video_id": "T8x8y93qI6k",
+      "url": "https://youtube.com/shorts/T8x8y93qI6k",
+      "title": "Nezuko Kicks the Door Open & Wakes Up! 😭 | Demon Slayer Story Recap Explanation Part 3 #shorts",
+      "uploaded_at": "2026-10-13T12:18:26Z"
     }
   ],
-  "last_updated": "2026-10-13T07:47:58Z",
+  "last_updated": "2026-10-13T12:18:26Z",
   "active_episode": {
     "episode_key": "demon-slayer-s01e05",
     "series_id": "demon-slayer",
@@ -153,7 +162,8 @@
     "normal_video_uploaded": true,
     "uploaded_shorts": [
       1,
-      2
+      2,
+      3
     ],
     "script_package": {
       "series": "Demon Slayer: Kimetsu no Yaiba",
