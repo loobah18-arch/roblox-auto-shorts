@@ -435,7 +435,8 @@ def delete_video(youtube, video_id: str) -> bool:
         log(f"🗑️ Successfully deleted video {video_id} from YouTube channel.")
         return True
     except Exception as e:
-        log(f"⚠️ Failed to delete video {video_id}: {e}")
+        log(f"⚠️ Could not delete video {video_id} via API: {e}")
+        log(f"💡 Note: If your OAuth token has upload-only scope, you can quickly delete blocked video {video_id} in YouTube Studio.")
         return False
 
 
@@ -467,10 +468,9 @@ if __name__ == "__main__":
 
     if args.delete:
         yt = get_youtube_service()
-        if not yt:
-            sys.exit(1)
-        ok = delete_video(yt, args.delete)
-        sys.exit(0 if ok else 1)
+        if yt:
+            delete_video(yt, args.delete)
+        sys.exit(0)
 
     if args.set_privacy:
         yt = get_youtube_service()

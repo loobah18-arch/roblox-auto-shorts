@@ -79,13 +79,14 @@ jobs:
 
       - name: 🗑️ Delete Flagged / Blocked Video from YouTube
         if: ${{ inputs.delete_video_id != '' && inputs.delete_video_id != null }}
+        continue-on-error: true
         env:
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
         run: |
-          echo "🗑️ Deleting video ${{ inputs.delete_video_id }} from YouTube channel..."
-          python3 scripts/anime_youtube_uploader.py --delete "${{ inputs.delete_video_id }}"
+          echo "🗑️ Attempting to delete video ${{ inputs.delete_video_id }} from YouTube channel..."
+          python3 scripts/anime_youtube_uploader.py --delete "${{ inputs.delete_video_id }}" || true
 
       - name: 💾 Cache Raw Anime Video Files
         uses: actions/cache@v4
