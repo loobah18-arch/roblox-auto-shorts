@@ -149,9 +149,18 @@
       "url": "https://youtube.com/shorts/T8x8y93qI6k",
       "title": "Nezuko Kicks the Door Open & Wakes Up! 😭 | Demon Slayer Story Recap Explanation Part 3 #shorts",
       "uploaded_at": "2026-10-13T12:18:26Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e05",
+      "part": 4,
+      "is_full_video": false,
+      "video_id": "LReyaOt41ro",
+      "url": "https://youtube.com/shorts/LReyaOt41ro",
+      "title": "His Nichirin Sword Turned PITCH BLACK! ⚔️ | Demon Slayer Story Recap Explanation Part 4 #shorts",
+      "uploaded_at": "2026-10-14T09:52:55Z"
     }
   ],
-  "last_updated": "2026-10-13T12:18:26Z",
+  "last_updated": "2026-10-14T09:52:55Z",
   "active_episode": {
     "episode_key": "demon-slayer-s01e05",
     "series_id": "demon-slayer",
@@ -163,7 +172,8 @@
     "uploaded_shorts": [
       1,
       2,
-      3
+      3,
+      4
     ],
     "script_package": {
       "series": "Demon Slayer: Kimetsu no Yaiba",
