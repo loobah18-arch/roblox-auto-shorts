@@ -126,6 +126,11 @@ jobs:
             fi
           done
 
+      - name: 🛡️ Multi-Agent Anti-Copyright Filter Verification
+        run: |
+          echo "🛡️ Running Multi-Agent Anti-Copyright Filter on all rendered outputs..."
+          python3 scripts/anime_copyright_filter.py --verify-output output/
+
       - name: 📺 Upload to YouTube
         if: ${{ inputs.upload_to_youtube != false || github.event_name == 'schedule' }}
         env:

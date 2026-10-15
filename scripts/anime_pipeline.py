@@ -22,6 +22,7 @@ from anime_catalog import get_next_episode, get_active_episode, load_catalog, lo
 from anime_script_engine import generate_episode_script
 from anime_subtitle_sync import get_episode_scene_acts
 from anime_voice_subtitles import produce_part_audio_subtitles, produce_master_audio_subtitles
+from anime_copyright_filter import MultiAgentCopyrightShield
 from anime_video_engine import (
     assemble_short_part,
     download_gdrive_episode,
@@ -570,26 +571,76 @@ def run_daily_funnel(
     normal_url = normal_vid_info.get("url", "")
     teaser = f"\n🎬 Full episode explanation is live on our channel now: {normal_url}\n" if normal_url else "\n🎬 Full episode explanation is live on our channel now!\n"
 
+    shield = MultiAgentCopyrightShield()
     raw_title = part_info.get("short_title", f"{active_ep['display_name']} Part {next_p} #shorts")
-    if "explanation" not in raw_title.lower() and "explained" not in raw_title.lower():
-        if re.search(rf"\bPart\s*{next_p}\b", raw_title, re.IGNORECASE):
-            raw_title = re.sub(rf"\bPart\s*{next_p}\b", f"Explanation Part {next_p}", raw_title, count=1, flags=re.IGNORECASE)
-        elif "#shorts" in raw_title.lower():
-            raw_title = re.sub(r"#shorts", f"Explanation Part {next_p} #shorts", raw_title, count=1, flags=re.IGNORECASE)
-        else:
-            raw_title = f"{raw_title} | Explanation Part {next_p} #shorts"
+    raw_desc = f"{part_info.get('hook', '')}\nPart {next_p} of {total_parts} covering {active_ep['display_name']}.{teaser}\n#anime #animerecap #shorts #bhalooji"
 
-    # Anti-copyright crawler protection: sanitize exact episode tags (e.g. S1 Ep 5) to Story Recap
-    raw_title = re.sub(r'\b[Ss]\d+[\s._-]*[Ee][Pp]?\s*\d+\b', 'Story Recap', raw_title)
-    raw_title = re.sub(r'\bSeason\s*\d+\s*Episode\s*\d+\b', 'Story Recap', raw_title, flags=re.IGNORECASE)
-    raw_title = re.sub(r'\s+', ' ', raw_title).strip()
+    # Multi-Agent Anti-Copyright Filter & Remediation Retry Loop
+    MAX_FILTER_RETRIES = 3
+    candidate_passed = False
+    last_filter_res = None
+
+    for attempt in range(1, MAX_FILTER_RETRIES + 1):
+        clean_title, clean_desc = shield.remediate_metadata(
+            title=raw_title,
+            description=raw_desc,
+            is_short=True,
+            part_num=next_p,
+            display_name=active_ep['display_name'],
+        )
+        raw_title = clean_title
+        raw_desc = clean_desc
+
+        filter_res = shield.inspect_candidate(
+            video_path=vid_f,
+            title=raw_title,
+            description=raw_desc,
+            is_short=True,
+            time_window=tuple(part_info.get("time_range", [90, 450])),
+            hashtags=part_info.get("hashtags", []),
+        )
+        last_filter_res = filter_res
+        log(f"🛡️ [MultiAgentShield] Attempt {attempt}/{MAX_FILTER_RETRIES}: {filter_res.summary}")
+
+        if filter_res.passed or dry_run:
+            candidate_passed = True
+            break
+
+        log(f"⚠️ [MultiAgentShield] Candidate rejected on attempt {attempt}. Retrying with enhanced remediation...")
+        if not dry_run and attempt < MAX_FILTER_RETRIES:
+            log(f"🔄 Re-rendering Short Part {next_p} with tightened micro-cuts and safe bounds...")
+            assemble_short_part(
+                raw_video_path=raw_video_path,
+                voice_audio_path=audio_f,
+                ass_subtitle_path=ass_f,
+                output_video_path=vid_f,
+                time_window=tuple(part_info.get("time_range", [90, 450])),
+                total_duration=min(58.0, v_res["duration"]),
+                bgm_path=bgm_path,
+                is_landscape=False,
+                dry_run=dry_run,
+                beats=part_beats,
+                narration=part_info.get("narration", ""),
+            )
+
+    if not candidate_passed and not dry_run:
+        log("🛑 [MultiAgentShield] All retry attempts failed copyright checks. Video will NOT be uploaded to prevent block.")
+        result = {
+            "status": "filter_rejected",
+            "message": "Candidate failed multi-agent anti-copyright verification",
+            "violations": last_filter_res.violations if last_filter_res else ["Unknown violation"],
+            "episode_key": ep_key,
+        }
+        with open(ep_work_dir / "pipeline_summary.json", "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2)
+        return result
 
     short_meta = {
         "part": next_p,
         "title": raw_title,
         "video_path": str(vid_f),
         "hashtags": part_info["hashtags"],
-        "description": f"{part_info.get('hook', '')}\nPart {next_p} of {total_parts} covering {active_ep['display_name']}.{teaser}\n#anime #animerecap #shorts #bhalooji",
+        "description": raw_desc,
         "status": "rendered",
     }
 

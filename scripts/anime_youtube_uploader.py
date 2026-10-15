@@ -19,6 +19,7 @@ TRACKER_DIR = WORKSPACE_DIR / "tracker"
 HISTORY_PATH = TRACKER_DIR / "anime_history.json"
 
 from anime_catalog import load_history, save_history
+from anime_copyright_filter import MultiAgentCopyrightShield
 
 
 def log(msg: str) -> None:
@@ -320,6 +321,20 @@ def upload_episode_package(
                 })
                 continue
 
+            shield = MultiAgentCopyrightShield()
+            check_res = shield.inspect_candidate(
+                video_path=part["video_path"],
+                title=part["title"],
+                description=part["description"],
+                is_short=True,
+                hashtags=part.get("hashtags", []),
+            )
+            if not check_res.passed:
+                log(f"🛑 [Uploader Shield] Part {p_num} REJECTED by copyright filter: {check_res.summary}")
+                log("Aborting upload for this part to protect channel standing.")
+                results["shorts"].append({"part": p_num, "status": "filter_rejected", "violations": check_res.violations})
+                continue
+
             short_res = upload_video_file(
                 youtube=youtube,
                 video_path=part["video_path"],
@@ -367,14 +382,27 @@ def upload_episode_package(
                     "title": full["title"],
                 }
             else:
-                full_res = upload_video_file(
-                    youtube=youtube,
+                shield = MultiAgentCopyrightShield()
+                check_full = shield.inspect_candidate(
                     video_path=full["video_path"],
                     title=full["title"],
                     description=full["description"],
-                    tags=full["hashtags"],
-                    privacy=privacy,
+                    is_short=False,
+                    hashtags=full.get("hashtags", []),
                 )
+                if not check_full.passed:
+                    log(f"🛑 [Uploader Shield] Full Video REJECTED by copyright filter: {check_full.summary}")
+                    log("Aborting full video upload to protect channel standing.")
+                    results["full_video"] = {"status": "filter_rejected", "violations": check_full.violations}
+                else:
+                    full_res = upload_video_file(
+                        youtube=youtube,
+                        video_path=full["video_path"],
+                        title=full["title"],
+                        description=full["description"],
+                        tags=full["hashtags"],
+                        privacy=privacy,
+                    )
                 if full_res.get("status") == "uploaded":
                     record = {
                         "episode_key": ep_key,
