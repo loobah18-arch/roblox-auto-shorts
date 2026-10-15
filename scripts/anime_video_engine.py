@@ -206,10 +206,13 @@ def assemble_short_part(
         log(f"[DRY-RUN] Simulating {mode_label} render for window {time_window} -> {output_video.name}")
         return True
 
-    # 1. Timeline Clamping for the specific scene: Keep within scene boundaries
+    # 1. Timeline Clamping for the specific scene: Keep within story boundaries
+    # Standard TV anime episodes have ending credits/ED song starting at ~1285s (21m25s).
+    # Slicing past 1285s cuts directly into the ED credit crawl / music video, triggering instant Aniplex Content ID.
+    MAX_SAFE_ANIME_STORY_TIMESTAMP = 1285.0
     w_start, w_end = time_window
-    safe_start = max(60.0, float(w_start))
-    safe_end = max(safe_start + 30.0, float(w_end))
+    safe_start = max(60.0, min(MAX_SAFE_ANIME_STORY_TIMESTAMP - 30.0, float(w_start)))
+    safe_end = min(MAX_SAFE_ANIME_STORY_TIMESTAMP, max(safe_start + 30.0, float(w_end)))
     window_length = max(30.0, safe_end - safe_start)
 
     # 2. Dynamic Sentence-Locked Scene Allocation
@@ -231,7 +234,8 @@ def assemble_short_part(
 
         accum_dur = 0.0
         for b_idx, b in enumerate(beats):
-            b_start = max(0.0, float(b.get("start", safe_start)))
+            raw_b_start = float(b.get("start", safe_start))
+            b_start = max(safe_start, min(safe_end - 5.0, raw_b_start))
             if b_idx == len(beats) - 1:
                 b_dur = max(0.5, total_duration - accum_dur)
             else:
@@ -297,7 +301,7 @@ def assemble_short_part(
 
             # Micro-temporal jump for alternating subdivisions
             sample_start = curr_offset + (1.6 if chunk_idx % 2 == 1 else 0.0)
-            sample_start = max(safe_start, sample_start)
+            sample_start = max(safe_start, min(max(safe_start, safe_end - c_dur), sample_start))
 
             expanded_shots.append((sample_start, c_dur, zoom, tempo))
             curr_offset += c_dur

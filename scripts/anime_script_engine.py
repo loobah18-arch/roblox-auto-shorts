@@ -121,14 +121,14 @@ EPISODE_KNOWLEDGE = {
                 "hook": "A pitch-black sword was considered a deadly omen, but his first mission was already waiting!",
                 "narration": "Haganezuka immediately flies into a furious comical rage, tackling Tanjiro to the ground because he desperately wanted to see a flashy bright red blade. Urokodaki intervenes, explaining the grave mystery of a pitch-black sword: throughout the centuries of the Demon Slayer Corps, almost no black-blade wielders have ever lived long enough for their true characteristics to be recorded, making it both exceptionally rare and historically omen-filled. Before Tanjiro can even process what this means, his Kasugai Crow swoops through the window, screeching orders in fluent human speech! The bird delivers his very first official assignment: in a town to the northwest, innocent young girls have been vanishing without a trace every single night, and Tanjiro must hunt down and exterminate the demon responsible. Urokodaki gifts Tanjiro the durable black uniform of the Corps, along with a custom light-resistant wooden box crafted from Kirin timber, allowing Nezuko to travel safely on his back during daytime. Donning his checkered haori and slinging the wooden box over his shoulders, Tanjiro takes his fateful first steps down the mountain—officially embarking on his journey to rid the world of demons!",
                 "cliffhanger": "Subscribe to Bhaloo Ji for Episode 6 — Tanjiro hunts the Swamp Demon!",
-                "time_range": [1207, 1370],
+                "time_range": [1175, 1285],
                 "beats": [
-                    {"start": 1210.0, "weight": 0.24, "desc": "Haganezuka comedic rage wrestling Tanjiro over black sword"},
-                    {"start": 1250.0, "weight": 0.26, "desc": "Urokodaki explains black blade mystery and historic omen of death"},
-                    {"start": 1290.0, "weight": 0.25, "desc": "Kasugai crow screeches first assignment in fluent human speech"},
-                    {"start": 1330.0, "weight": 0.25, "desc": "Tanjiro receives Demon Slayer uniform and wooden box for Nezuko"},
+                    {"start": 1180.0, "weight": 0.25, "desc": "Haganezuka comedic rage wrestling Tanjiro over black sword"},
+                    {"start": 1208.0, "weight": 0.25, "desc": "Urokodaki explains black blade mystery and historic omen of death"},
+                    {"start": 1235.0, "weight": 0.25, "desc": "Kasugai crow screeches first assignment in fluent human speech"},
+                    {"start": 1260.0, "weight": 0.25, "desc": "Tanjiro receives Demon Slayer uniform and wooden box for Nezuko"},
                 ],
-                "short_title": "The First Demon Slaying Mission Begins! 🦅 | Demon Slayer S1 Ep 5 Explanation Part 5 #shorts",
+                "short_title": "Tanjiro’s First Demon Slayer Mission! 🦅 | Demon Slayer Story Recap Explanation Part 5 #shorts",
             }
         ]
     },
