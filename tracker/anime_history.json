@@ -168,9 +168,18 @@
       "url": "https://youtube.com/shorts/2hMwPQRXDY0",
       "title": "Tanjiro’s First Demon Slayer Mission! 🦅 | Demon Slayer Story Recap Explanation Part 5 #shorts",
       "uploaded_at": "2026-10-15T11:19:30Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e06",
+      "part": null,
+      "is_full_video": true,
+      "video_id": "vvotV4Dgqn4",
+      "url": "https://youtu.be/vvotV4Dgqn4",
+      "title": "Demon Slayer: Kimetsu no Yaiba Story Recap Full Recap & Explanation | Swordsman with a Demon",
+      "uploaded_at": "2026-10-20T12:52:16Z"
     }
   ],
-  "last_updated": "2026-10-15T11:19:30Z",
+  "last_updated": "2026-10-20T12:52:16Z",
   "active_episode": {
     "episode_key": "demon-slayer-s01e06",
     "series_id": "demon-slayer",
@@ -178,7 +187,7 @@
     "filename": "Demon_Slayer_Kimetsu_no_Yaiba_480P_S01_E06.mp4",
     "gdrive_file_id": "1mmrxCHtJGSBVWHZdcXwlXt5kpMlQQP4l",
     "total_parts": 4,
-    "normal_video_uploaded": false,
+    "normal_video_uploaded": true,
     "uploaded_shorts": [],
     "script_package": {
       "series": "Demon Slayer: Kimetsu no Yaiba",
@@ -393,6 +402,15 @@
         ]
       }
     },
-    "started_at": "2026-10-16T09:29:08Z"
+    "started_at": "2026-10-16T09:29:08Z",
+    "normal_video": {
+      "episode_key": "demon-slayer-s01e06",
+      "part": null,
+      "is_full_video": true,
+      "video_id": "vvotV4Dgqn4",
+      "url": "https://youtu.be/vvotV4Dgqn4",
+      "title": "Demon Slayer: Kimetsu no Yaiba Story Recap Full Recap & Explanation | Swordsman with a Demon",
+      "uploaded_at": "2026-10-20T12:52:16Z"
+    }
   }
 }
