@@ -345,14 +345,24 @@ def run_daily_funnel(
             dry_run=dry_run,
         )
 
+        shield = MultiAgentCopyrightShield()
+        full_title_raw = script_package["full_video"]["title"]
+        clean_full_title, clean_full_desc = shield.remediate_metadata(
+            title=full_title_raw,
+            description=script_package["full_video"]["description"],
+            is_short=False,
+            display_name=target_ep["display_name"],
+        )
+
         full_meta = {
-            "title": script_package["full_video"]["title"],
+            "title": clean_full_title,
             "video_path": str(full_video_f),
             "chapters": script_package["full_video"]["chapters"],
-            "description": script_package["full_video"]["description"],
+            "description": clean_full_desc,
             "hashtags": script_package["full_video"]["hashtags"],
             "duration": total_master_dur,
             "status": "rendered" if master_ok else "failed",
+            "is_full_video": True,
         }
 
         # Initialize active episode in history (normal video ready to upload first)
@@ -465,13 +475,23 @@ def run_daily_funnel(
 
             stitch_full_episode_video(rendered_landscape, full_video_f, dry_run=dry_run)
 
+        shield = MultiAgentCopyrightShield()
+        full_title_raw = script_package.get("full_video", {}).get("title", f"{ep_key} Full Recap")
+        clean_full_title, clean_full_desc = shield.remediate_metadata(
+            title=full_title_raw,
+            description=script_package.get("full_video", {}).get("description", ""),
+            is_short=False,
+            display_name=active_ep.get("display_name", ep_key),
+        )
+
         full_meta = {
-            "title": script_package.get("full_video", {}).get("title", f"{ep_key} Full Recap"),
+            "title": clean_full_title,
             "video_path": str(full_video_f),
             "chapters": script_package.get("full_video", {}).get("chapters", []),
-            "description": script_package.get("full_video", {}).get("description", ""),
+            "description": clean_full_desc,
             "hashtags": script_package.get("full_video", {}).get("hashtags", ["anime", "bhalooji"]),
             "status": "rendered",
+            "is_full_video": True,
         }
 
         result = {

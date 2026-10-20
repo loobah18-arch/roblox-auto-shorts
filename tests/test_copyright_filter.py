@@ -155,6 +155,22 @@ class TestMultiAgentCopyrightShield(unittest.TestCase):
         self.assertIn("#shorts", clean_title)
         self.assertIn("Section 107", clean_desc)
 
+    def test_remediate_full_video_metadata(self):
+        bad_full_title = "Demon Slayer: Kimetsu no Yaiba Season 1 Episode 6 Full Recap & Explanation"
+        bad_full_desc = "Full episode breakdown."
+
+        clean_title, clean_desc = self.shield.remediate_metadata(
+            title=bad_full_title,
+            description=bad_full_desc,
+            is_short=False,
+        )
+        self.assertIn("Story Recap", clean_title)
+        self.assertNotIn("Season 1 Episode 6", clean_title)
+        self.assertNotIn("#shorts", clean_title)
+        self.assertIn("Section 107", clean_desc)
+        eval_res = self.shield.title_agent.evaluate_title(clean_title, is_short=False)
+        self.assertTrue(eval_res.passed)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -384,7 +384,13 @@ def verify_output_directory(output_dir: Path | str) -> bool:
             video_meta = data.get("full_video")
             is_short = False
         else:
-            is_short = True
+            action = data.get("action", "")
+            is_full = (
+                action == "normal_video"
+                or video_meta.get("is_full_video", False)
+                or Path(video_meta.get("video_path", "")).name.startswith("full_")
+            )
+            is_short = not is_full
 
         if not video_meta or not video_meta.get("video_path"):
             continue
@@ -394,16 +400,25 @@ def verify_output_directory(output_dir: Path | str) -> bool:
         desc = video_meta.get("description", "")
         tags = video_meta.get("hashtags", [])
 
-        res = shield.inspect_candidate(
-            video_path=v_path,
+        # Auto-remediate metadata if not yet clean
+        clean_title, clean_desc = shield.remediate_metadata(
             title=title,
             description=desc,
+            is_short=is_short,
+            part_num=data.get("part"),
+            display_name=data.get("display_name", ep_dir.name),
+        )
+
+        res = shield.inspect_candidate(
+            video_path=v_path,
+            title=clean_title,
+            description=clean_desc,
             is_short=is_short,
             hashtags=tags,
         )
 
         print(f"\n[copyright_filter] 🛡️ Inspecting: {v_path.name}")
-        print(f"[copyright_filter] Title: '{title}'")
+        print(f"[copyright_filter] Title: '{clean_title}'")
         print(f"[copyright_filter] Result: {res.summary}")
 
         if not res.passed:
