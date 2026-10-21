@@ -177,9 +177,18 @@
       "url": "https://youtu.be/vvotV4Dgqn4",
       "title": "Demon Slayer: Kimetsu no Yaiba Story Recap Full Recap & Explanation | Swordsman with a Demon",
       "uploaded_at": "2026-10-20T12:52:16Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e06",
+      "part": 1,
+      "is_full_video": false,
+      "video_id": "quWJ4wvBtF0",
+      "url": "https://youtube.com/shorts/quWJ4wvBtF0",
+      "title": "The Secret Omen of Tanjiro's Black Sword! ⚔️ | Demon Slayer Story Recap Explanation P #shorts",
+      "uploaded_at": "2026-10-21T09:49:24Z"
     }
   ],
-  "last_updated": "2026-10-20T12:52:16Z",
+  "last_updated": "2026-10-21T09:49:24Z",
   "active_episode": {
     "episode_key": "demon-slayer-s01e06",
     "series_id": "demon-slayer",
@@ -188,7 +197,9 @@
     "gdrive_file_id": "1mmrxCHtJGSBVWHZdcXwlXt5kpMlQQP4l",
     "total_parts": 4,
     "normal_video_uploaded": true,
-    "uploaded_shorts": [],
+    "uploaded_shorts": [
+      1
+    ],
     "script_package": {
       "series": "Demon Slayer: Kimetsu no Yaiba",
       "season": 1,
