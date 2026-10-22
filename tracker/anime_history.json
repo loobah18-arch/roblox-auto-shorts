@@ -186,9 +186,18 @@
       "url": "https://youtube.com/shorts/quWJ4wvBtF0",
       "title": "The Secret Omen of Tanjiro's Black Sword! ⚔️ | Demon Slayer Story Recap Explanation P #shorts",
       "uploaded_at": "2026-10-21T09:49:24Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e06",
+      "part": 2,
+      "is_full_video": false,
+      "video_id": "ZfskKSwxJxg",
+      "url": "https://youtube.com/shorts/ZfskKSwxJxg",
+      "title": "Girls Vanishing Into Thin Air! 😱 | Demon Slayer Story Recap Explanation Part 2 #shorts",
+      "uploaded_at": "2026-10-22T09:48:16Z"
     }
   ],
-  "last_updated": "2026-10-21T09:49:24Z",
+  "last_updated": "2026-10-22T09:48:16Z",
   "active_episode": {
     "episode_key": "demon-slayer-s01e06",
     "series_id": "demon-slayer",
@@ -198,7 +207,8 @@
     "total_parts": 4,
     "normal_video_uploaded": true,
     "uploaded_shorts": [
-      1
+      1,
+      2
     ],
     "script_package": {
       "series": "Demon Slayer: Kimetsu no Yaiba",
