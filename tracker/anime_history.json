@@ -195,9 +195,18 @@
       "url": "https://youtube.com/shorts/ZfskKSwxJxg",
       "title": "Girls Vanishing Into Thin Air! 😱 | Demon Slayer Story Recap Explanation Part 2 #shorts",
       "uploaded_at": "2026-10-22T09:48:16Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e06",
+      "part": 3,
+      "is_full_video": false,
+      "video_id": "GU75Z7_qM5Q",
+      "url": "https://youtube.com/shorts/GU75Z7_qM5Q",
+      "title": "Water Breathing Waterfall Basin LIVE! 🌊 | Demon Slayer Story Recap Explanation Part 3 #shorts",
+      "uploaded_at": "2026-10-23T09:43:37Z"
     }
   ],
-  "last_updated": "2026-10-22T09:48:16Z",
+  "last_updated": "2026-10-23T09:43:37Z",
   "active_episode": {
     "episode_key": "demon-slayer-s01e06",
     "series_id": "demon-slayer",
@@ -208,7 +217,8 @@
     "normal_video_uploaded": true,
     "uploaded_shorts": [
       1,
-      2
+      2,
+      3
     ],
     "script_package": {
       "series": "Demon Slayer: Kimetsu no Yaiba",
