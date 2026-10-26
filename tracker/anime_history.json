@@ -223,9 +223,18 @@
       "url": "https://youtu.be/LU2Vd2Ukw-Q",
       "title": "Demon Slayer: Kimetsu no Yaiba Story Recap Full Recap & Explanation | Muzan Kibutsuji",
       "uploaded_at": "2026-10-25T09:35:39Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e07",
+      "part": 1,
+      "is_full_video": false,
+      "video_id": "kTpX1JhTjLU",
+      "url": "https://youtube.com/shorts/kTpX1JhTjLU",
+      "title": "Water Breathing Sixth Form Whirlpool! 🌀 | Demon Slayer Story Recap Explanation Part 1 #shorts",
+      "uploaded_at": "2026-10-26T10:39:07Z"
     }
   ],
-  "last_updated": "2026-10-25T09:35:39Z",
+  "last_updated": "2026-10-26T10:39:07Z",
   "active_episode": {
     "episode_key": "demon-slayer-s01e07",
     "series_id": "demon-slayer",
@@ -234,7 +243,9 @@
     "gdrive_file_id": "1A1Lg_TI97b7LrNElsPzoA2Rf5u0gaB_5",
     "total_parts": 4,
     "normal_video_uploaded": true,
-    "uploaded_shorts": [],
+    "uploaded_shorts": [
+      1
+    ],
     "script_package": {
       "series": "Demon Slayer: Kimetsu no Yaiba",
       "season": 1,
