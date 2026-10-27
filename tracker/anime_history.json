@@ -232,9 +232,18 @@
       "url": "https://youtube.com/shorts/kTpX1JhTjLU",
       "title": "Water Breathing Sixth Form Whirlpool! 🌀 | Demon Slayer Story Recap Explanation Part 1 #shorts",
       "uploaded_at": "2026-10-26T10:39:07Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e07",
+      "part": 2,
+      "is_full_video": false,
+      "video_id": "6dntqpnUbHc",
+      "url": "https://youtube.com/shorts/6dntqpnUbHc",
+      "title": "The Demon Who Feared Muzan Kibutsuji! 😱 | Demon Slayer Story Recap Explanation Part 2 #shorts",
+      "uploaded_at": "2026-10-27T10:09:09Z"
     }
   ],
-  "last_updated": "2026-10-26T10:39:07Z",
+  "last_updated": "2026-10-27T10:09:09Z",
   "active_episode": {
     "episode_key": "demon-slayer-s01e07",
     "series_id": "demon-slayer",
@@ -244,7 +253,8 @@
     "total_parts": 4,
     "normal_video_uploaded": true,
     "uploaded_shorts": [
-      1
+      1,
+      2
     ],
     "script_package": {
       "series": "Demon Slayer: Kimetsu no Yaiba",
