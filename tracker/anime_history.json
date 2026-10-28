@@ -241,9 +241,18 @@
       "url": "https://youtube.com/shorts/6dntqpnUbHc",
       "title": "The Demon Who Feared Muzan Kibutsuji! 😱 | Demon Slayer Story Recap Explanation Part 2 #shorts",
       "uploaded_at": "2026-10-27T10:09:09Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e07",
+      "part": 3,
+      "is_full_video": false,
+      "video_id": "GManScvzRXI",
+      "url": "https://youtube.com/shorts/GManScvzRXI",
+      "title": "The Most Heartbreaking Farewell in Demon Slayer 😭 | Demon Slayer Story Recap Explanat #shorts",
+      "uploaded_at": "2026-10-28T10:55:52Z"
     }
   ],
-  "last_updated": "2026-10-27T10:09:09Z",
+  "last_updated": "2026-10-28T10:55:52Z",
   "active_episode": {
     "episode_key": "demon-slayer-s01e07",
     "series_id": "demon-slayer",
@@ -254,7 +263,8 @@
     "normal_video_uploaded": true,
     "uploaded_shorts": [
       1,
-      2
+      2,
+      3
     ],
     "script_package": {
       "series": "Demon Slayer: Kimetsu no Yaiba",
