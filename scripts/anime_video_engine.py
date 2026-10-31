@@ -124,20 +124,51 @@ def build_landscape_ffmpeg_filtergraph(
         return f"{filter_chain}[v]"
 
 
-def build_ffmpeg_filtergraph(
+def build_fullbleed_ffmpeg_filtergraph(
     has_subtitles: bool = True,
     ass_path: str = "",
     mirror: bool = True,
 ) -> str:
     """
-    Constructs the high-aesthetic anti-copyright FFmpeg filtergraph for 9:16 Shorts:
-    - 9:16 vertical canvas (1080x1920)
-    - Blurred motion background (duplicate of footage blurred 25px, darkened)
-    - Foreground card: 1040x584 centered with transformative glowing border
-    - Multi-layer anti-Content ID filters: horizontal flip, cinematic filmic color grade,
-      vignette corner darkening, unsharp mask, and temporal micro-noise
-    - Dynamic ASS subtitle burn
+    Constructs the high-impact Full-Bleed 9:16 vertical FFmpeg filtergraph (Narration Cinema style):
+    - 9:16 full-screen crop (1080x1920) filling the entire vertical screen (no blurred borders, no floating cards).
+    - Cinematic contrast (1.12), saturation boost (1.18), subtle vignette, unsharp mask, and temporal micro-noise.
+    - Anti-copyright horizontal flip.
+    - Centered dynamic subtitle burn in lower-middle safe zone.
     """
+    flip_filter = "hflip," if mirror else ""
+    filters = [
+        f"[0:v]{flip_filter}scale=1080:1920:force_original_aspect_ratio=increase,"
+        f"crop=1080:1920,setsar=1,"
+        f"eq=contrast=1.12:brightness=-0.02:saturation=1.18:gamma=0.96,"
+        f"vignette=PI/4.5,unsharp=5:5:0.8:5:5:0.4,noise=alls=5:allf=t[base]"
+    ]
+    if has_subtitles and ass_path:
+        escaped_ass = ass_path.replace(":", "\\:").replace("'", "\\'")
+        filters.append(f"[base]ass='{escaped_ass}'[v]")
+    else:
+        filters.append("[base]copy[v]")
+    return ";".join(filters)
+
+
+def build_ffmpeg_filtergraph(
+    has_subtitles: bool = True,
+    ass_path: str = "",
+    mirror: bool = True,
+    full_bleed: bool = False,
+) -> str:
+    """
+    Constructs the anti-copyright FFmpeg filtergraph for 9:16 Shorts:
+    - If full_bleed=True: Full-bleed 9:16 cinema presentation (Narration Cinema style).
+    - If full_bleed=False: 3-layer card canvas with blurred background and glowing border.
+    """
+    if full_bleed:
+        return build_fullbleed_ffmpeg_filtergraph(
+            has_subtitles=has_subtitles,
+            ass_path=ass_path,
+            mirror=mirror,
+        )
+
     filters = []
 
     # 1. Base input split with transformative color grade, vignette, and micro-noise
@@ -185,6 +216,7 @@ def assemble_short_part(
     dry_run: bool = False,
     beats: list[dict] | None = None,
     narration: str = "",
+    full_bleed: bool = True,
 ) -> bool:
     """
     Renders an individual part with comprehensive anti-copyright tactics & dynamic sentence-locking:
@@ -387,6 +419,7 @@ def assemble_short_part(
                 has_subtitles=ass_subs.exists(),
                 ass_path=str(ass_subs.resolve()),
                 mirror=True,
+                full_bleed=full_bleed,
             )
 
         # Default BGM fallback
@@ -747,11 +780,12 @@ def derive_short_from_master(
     end_time: float,
     badge_text: str = "",
     dry_run: bool = False,
+    full_bleed: bool = True,
 ) -> bool:
     """
     Derives a 9:16 vertical Short excerpt directly from the Master Normal Video.
     Cuts the exact segment [start_time, end_time], formats it to 9:16 vertical canvas
-    with blurred background and centered 1040x584 card, burning an excerpt top pill badge.
+    (clean full-bleed cinema view if full_bleed=True, or blurred-background card if full_bleed=False).
     """
     master_video = Path(master_video_path)
     output_short = Path(output_short_path)
@@ -767,8 +801,8 @@ def derive_short_from_master(
     badge_ass = temp_dir / "badge.ass"
 
     try:
-        # Create subtle top pill badge ASS file
-        if badge_text:
+        # Create subtle top pill badge ASS file (only if badge_text is provided and not full_bleed)
+        if badge_text and not full_bleed:
             badge_content = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -786,15 +820,21 @@ Dialogue: 1,0:00:00.00,9:59:59.00,CardHeader,,0,0,0,,{{\\an8\\bord3\\shad1\\c&H0
             with open(badge_ass, "w", encoding="utf-8") as f:
                 f.write(badge_content)
 
-        escaped_badge = str(badge_ass.resolve()).replace(":", "\\:").replace("'", "\\'") if badge_text else ""
-        badge_filter = f",ass='{escaped_badge}'[v]" if badge_text else "[v]"
+        escaped_badge = str(badge_ass.resolve()).replace(":", "\\:").replace("'", "\\'") if (badge_text and not full_bleed) else ""
+        badge_filter = f",ass='{escaped_badge}'[v]" if (badge_text and not full_bleed) else "[v]"
 
-        filters = [
-            "[0:v]split=2[raw_bg][raw_fg]",
-            "[raw_bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,boxblur=25:5,eq=brightness=-0.14[bg]",
-            "[raw_fg]hflip,scale=1040:584:force_original_aspect_ratio=decrease,pad=1040:584:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,drawbox=x=0:y=0:w=iw:h=ih:color=white@0.22:t=3[fg]",
-            f"[bg][fg]overlay=(W-w)/2:(H-h)/2-60{badge_filter}",
-        ]
+        if full_bleed:
+            filters = [
+                "[0:v]hflip,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,"
+                f"eq=contrast=1.12:brightness=-0.02:saturation=1.18:gamma=0.96,vignette=PI/4.5,unsharp=5:5:0.8:5:5:0.4{badge_filter}"
+            ]
+        else:
+            filters = [
+                "[0:v]split=2[raw_bg][raw_fg]",
+                "[raw_bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,boxblur=25:5,eq=brightness=-0.14[bg]",
+                "[raw_fg]hflip,scale=1040:584:force_original_aspect_ratio=decrease,pad=1040:584:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,drawbox=x=0:y=0:w=iw:h=ih:color=white@0.22:t=3[fg]",
+                f"[bg][fg]overlay=(W-w)/2:(H-h)/2-60{badge_filter}",
+            ]
         filtergraph = ";".join(filters)
 
         cmd = [

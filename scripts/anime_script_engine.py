@@ -556,11 +556,15 @@ def _format_script_package(episode_info: dict, ep_title: str, ep_summary: str, p
             "description": f"""{p.get('hook', '')}
 Part {i} of {total_parts} covering {series} Season {season} Episode {episode}.
 
+Watch until the end to find out what happens next!
+
+👍 Like the video, subscribe for more action-packed anime stories, and comment YES if you want the next episode!
+
 🎬 This is an excerpt from our FULL in-depth episode breakdown! Watch the complete video on our channel:
 https://youtube.com/@bhalooji
 
 {FAIR_USE_DISCLAIMER}
-#anime #{series_tag.lower()} #animerecap #shorts #bhalooji"""
+#AnimeExplained #AnimeRecap #ActionAnime #anime #{series_tag.lower()} #animerecap #shorts #bhalooji"""
         }
         enriched_parts.append(enriched_p)
 

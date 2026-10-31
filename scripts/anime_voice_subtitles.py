@@ -16,6 +16,7 @@ import edge_tts
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_VOICE = "en-US-ChristopherNeural"  # RecapKun signature articulate, confident anime storyteller voice
 DEFAULT_RATE = "+8%"                       # Fast-paced, engaging RecapKun cadence (~185-190 wpm)
+CINEMA_VOICE = "en-US-GuyNeural"           # Deep cinematic trailer baritone for cinema-style anime recaps
 
 
 def format_ass_time(seconds: float) -> str:
@@ -30,8 +31,8 @@ def format_ass_time(seconds: float) -> str:
     return f"{hours}:{minutes:02d}:{secs:02d}.{centis:02d}"
 
 
-def build_ass_header(font_name: str = "DejaVu Sans Bold", is_landscape: bool = False) -> str:
-    """Generate ASS header configured for 1080x1920 vertical canvas or 1920x1080 landscape canvas."""
+def build_ass_header(font_name: str = "DejaVu Sans Bold", is_landscape: bool = False, full_bleed: bool = False) -> str:
+    """Generate ASS header configured for 1080x1920 vertical canvas, full-bleed cinema 9:16, or 1920x1080 landscape canvas."""
     if is_landscape:
         # 16:9 Widescreen (1920x1080) for Full Episode Videos
         # Bottom-third placement (Alignment: 2, MarginV: 90, Fontsize: 52)
@@ -50,8 +51,26 @@ Style: CardHeader,{font_name},32,&H00FFFFFF,&H0000FFFF,&H00000000,&HB0000000,-1,
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
+    elif full_bleed:
+        # 9:16 Full-Bleed Cinema Vertical (1080x1920) modeling 'narration cinema' style:
+        # Lower-third placement (Alignment: 2, MarginV: 240, Fontsize: 64) for maximum immersion
+        return f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+ScaledBorderAndShadow: yes
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,{font_name},64,&H00FFFFFF,&H0000FFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,5.0,2.0,2,70,70,240,1
+Style: CardHeader,{font_name},36,&H00FFFFFF,&H0000FFFF,&H00000000,&HB0000000,-1,0,0,0,100,100,2,0,1,3.0,1.0,8,60,60,160,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
     else:
-        # 9:16 Vertical (1080x1920) for YouTube Shorts
+        # 9:16 Vertical (1080x1920) for YouTube Shorts (Card Canvas Layout)
         return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -69,15 +88,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
 
-def cues_to_ass(word_cues: list[dict], badge_text: str = "", is_landscape: bool = False) -> str:
+def cues_to_ass(word_cues: list[dict], badge_text: str = "", is_landscape: bool = False, full_bleed: bool = False) -> str:
     """
     Convert word-level timing cues into animated karaoke subtitle events.
     word_cues: list of {'word': str, 'start': float, 'end': float}
     """
-    ass_lines = [build_ass_header(is_landscape=is_landscape)]
+    ass_lines = [build_ass_header(is_landscape=is_landscape, full_bleed=full_bleed)]
 
-    # If badge text is provided and NOT in landscape, show permanent stylish top header
-    if badge_text and word_cues and not is_landscape:
+    # If badge text is provided and NOT in landscape and NOT in full_bleed cinema mode, show permanent stylish top header
+    if badge_text and word_cues and not is_landscape and not full_bleed:
         start_time = "0:00:00.00"
         end_time = format_ass_time(word_cues[-1]["end"] + 0.5)
         # Top pill badge
@@ -292,6 +311,7 @@ async def generate_voice_and_subtitles(
     voice: str = DEFAULT_VOICE,
     rate: str = DEFAULT_RATE,
     is_landscape: bool = False,
+    full_bleed: bool = False,
 ) -> dict:
     """
     Generate audio and word-aligned ASS subtitles with robust retry & gTTS fallback.
@@ -303,7 +323,7 @@ async def generate_voice_and_subtitles(
 
     word_cues = await _synthesize_speech_and_cues(text, output_audio_path, voice=voice, rate=rate)
 
-    ass_content = cues_to_ass(word_cues, badge_text=badge_text, is_landscape=is_landscape)
+    ass_content = cues_to_ass(word_cues, badge_text=badge_text, is_landscape=is_landscape, full_bleed=full_bleed)
     with open(output_ass_path, "w", encoding="utf-8") as f:
         f.write(ass_content)
 
@@ -325,6 +345,7 @@ def produce_part_audio_subtitles(
     voice: str = DEFAULT_VOICE,
     rate: str = DEFAULT_RATE,
     is_landscape: bool = False,
+    full_bleed: bool = False,
 ) -> dict:
     """Synchronous wrapper for generate_voice_and_subtitles."""
     return asyncio.run(
@@ -336,6 +357,7 @@ def produce_part_audio_subtitles(
             voice=voice,
             rate=rate,
             is_landscape=is_landscape,
+            full_bleed=full_bleed,
         )
     )
 

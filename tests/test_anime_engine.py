@@ -640,6 +640,48 @@ class TestContinuousMasterEngine(unittest.TestCase):
         self.assertEqual(cues[0]["start"], 0.0)
         self.assertAlmostEqual(cues[-1]["end"], 6.0, delta=0.1)
 
+    def test_cinema_style_fullbleed_filtergraph(self):
+        """Verify full-bleed cinema filtergraph (narration cinema style)."""
+        from anime_video_engine import build_fullbleed_ffmpeg_filtergraph, build_ffmpeg_filtergraph
+        fg_direct = build_fullbleed_ffmpeg_filtergraph(has_subtitles=True, ass_path="/tmp/cinema.ass")
+        self.assertIn("scale=1080:1920:force_original_aspect_ratio=increase", fg_direct)
+        self.assertIn("crop=1080:1920", fg_direct)
+        self.assertIn("vignette", fg_direct)
+        self.assertIn("ass='/tmp/cinema.ass'", fg_direct)
+        # Verify no card or blurred backdrop in full-bleed mode
+        self.assertNotIn("boxblur", fg_direct)
+        self.assertNotIn("drawbox", fg_direct)
+
+        # Verify build_ffmpeg_filtergraph with full_bleed=True returns the same
+        fg_param = build_ffmpeg_filtergraph(has_subtitles=True, ass_path="/tmp/cinema.ass", full_bleed=True)
+        self.assertIn("crop=1080:1920", fg_param)
+        self.assertNotIn("boxblur", fg_param)
+
+    def test_cinema_style_subtitles_and_cta(self):
+        """Verify cinema-style lower-third subtitle placement and comment-trap description CTA."""
+        from anime_voice_subtitles import cues_to_ass, CINEMA_VOICE
+        from anime_script_engine import _format_script_package
+
+        self.assertEqual(CINEMA_VOICE, "en-US-GuyNeural")
+
+        mock_cues = [
+            {"word": "Tanjiro", "start": 0.1, "end": 0.5},
+            {"word": "strikes", "start": 0.5, "end": 1.0},
+        ]
+        ass_str = cues_to_ass(mock_cues, badge_text="DEMON SLAYER", full_bleed=True)
+        # MarginV 240 for cinema safe area
+        self.assertIn("240,1", ass_str)
+        # No header badge line in full_bleed cinema mode
+        self.assertNotIn("CardHeader", ass_str.split("[Events]")[1])
+
+        # Verify description contains viral comment trap CTA
+        ep_info = {"series": "Demon Slayer", "season": 1, "episode": 1}
+        raw_parts = [{"part": 1, "narration": "Narration", "hook": "Hook sentence."}]
+        pkg = _format_script_package(ep_info, "Title", "Summary", raw_parts)
+        desc = pkg["parts"][0]["description"]
+        self.assertIn("Watch until the end to find out what happens next!", desc)
+        self.assertIn("comment YES if you want the next episode!", desc)
+
 
 if __name__ == "__main__":
     unittest.main()
