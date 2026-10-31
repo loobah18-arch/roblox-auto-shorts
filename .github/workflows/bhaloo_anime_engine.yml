@@ -2,7 +2,7 @@ name: "⚔️ Bhaloo Ji — Anime Explanation Engine"
 
 on:
   schedule:
-    # Runs daily at 05:00 UTC
+    # 24-hour gap between uploads: runs once daily at 05:00 UTC (10:30 AM IST)
     - cron: "0 5 * * *"
   workflow_dispatch:
     inputs:
