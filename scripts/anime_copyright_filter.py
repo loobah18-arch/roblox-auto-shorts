@@ -242,12 +242,23 @@ class TitleCopyrightAgent:
 
         t = re.sub(r'\s+', ' ', t).strip()
         if len(t) > 95:
-            # Trim before #shorts
-            if "#shorts" in t.lower():
-                base = re.sub(r'#shorts', '', t, flags=re.IGNORECASE).strip()
-                t = f"{base[:85].rstrip()} #shorts"
-            else:
-                t = t[:92].rstrip() + "..."
+            # Preserve trailing transformative tag and #shorts if present
+            trimmed = False
+            for tag in [" | Story Recap Explanation #shorts", " | Story Recap #shorts", " #shorts"]:
+                if t.lower().endswith(tag.lower()):
+                    suffix = t[-len(tag):]
+                    base = t[:-len(tag)].rstrip()
+                    max_base = 95 - len(suffix)
+                    if max_base > 10:
+                        t = f"{base[:max_base].rstrip()}{suffix}"
+                        trimmed = True
+                    break
+            if not trimmed:
+                if "#shorts" in t.lower():
+                    base = re.sub(r'#shorts', '', t, flags=re.IGNORECASE).strip()
+                    t = f"{base[:85].rstrip()} #shorts"
+                else:
+                    t = t[:92].rstrip() + "..."
         return t
 
 

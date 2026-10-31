@@ -682,6 +682,42 @@ class TestContinuousMasterEngine(unittest.TestCase):
         self.assertIn("Watch until the end to find out what happens next!", desc)
         self.assertIn("comment YES if you want the next episode!", desc)
 
+    def test_cinema_script_generation(self):
+        """Verify generate_cinema_script produces 3-minute standalone script without Part fragmentation."""
+        from anime_script_engine import generate_cinema_script
+        sample_ep = {
+            "series": "Demon Slayer: Kimetsu no Yaiba",
+            "series_id": "demon-slayer",
+            "season": 1,
+            "episode": 9,
+            "filename": "Demon_Slayer_Kimetsu_no_Yaiba_480P_S01_E09.mp4",
+            "episode_key": "demon-slayer-s01e09",
+            "display_name": "Demon Slayer: Kimetsu no Yaiba S01E09",
+        }
+        res = generate_cinema_script(sample_ep)
+        self.assertIn("Until", res["title"])
+        self.assertIn("Story Recap", res["title"])
+        self.assertIn("Explanation", res["title"])
+        self.assertIn("#shorts", res["title"])
+        self.assertNotIn("Part 1", res["title"])
+        self.assertNotIn("Part 2", res["title"])
+        self.assertTrue(res["narration"].endswith("To watch the next episode, comment yes."))
+        self.assertGreaterEqual(res["word_count"], 400)
+        self.assertIn("Watch until the end to find out what happens next!", res["description"])
+        self.assertIn("comment YES if you want the next episode!", res["description"])
+
+    def test_run_cinema_pipeline_dry_run(self):
+        """Verify run_cinema_pipeline executes standalone 3-minute Short in dry-run mode."""
+        from anime_pipeline import run_cinema_pipeline
+        res = run_cinema_pipeline(episode_key="demon-slayer-s01e09", dry_run=True)
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["mode"], "cinema")
+        self.assertEqual(res["action"], "short")
+        self.assertTrue(res["video_to_upload"]["is_cinema_short"])
+        self.assertNotIn("Part 1", res["video_to_upload"]["title"])
+        self.assertNotIn("Part 2", res["video_to_upload"]["title"])
+        self.assertIn("Story Recap Explanation #shorts", res["video_to_upload"]["title"])
+
 
 if __name__ == "__main__":
     unittest.main()

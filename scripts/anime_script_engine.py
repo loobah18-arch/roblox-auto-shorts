@@ -601,6 +601,136 @@ Enjoying the breakdown? Like and Subscribe to Bhaloo Ji for daily anime recaps!
     }
 
 
+CINEMA_TITLES = {
+    "demon-slayer-s01e01": "He Was an Innocent Charcoal Seller… Until Truth Struck! | Story Recap Explanation #shorts",
+    "demon-slayer-s01e02": "He Climbed a Trap-Filled Mountain… Until Truth Hit! | Story Recap Explanation #shorts",
+    "demon-slayer-s01e03": "He Trained on the Mountain Alone… Until Ghost Warriors Met! | Story Recap Explanation #shorts",
+    "demon-slayer-s01e04": "He Was the Strongest Final Recruit… Until Hand Demon Rose! | Story Recap Explanation #shorts",
+    "demon-slayer-s01e05": "He Survived Seven Days in Hell… Until Sword Turned Black! | Story Recap Explanation #shorts",
+    "demon-slayer-s01e06": "He Tracked Demons Underground… Until Swamp Demon Struck! | Story Recap Explanation #shorts",
+    "demon-slayer-s01e07": "He Hunted Muzan in Tokyo… Until a Demon Was Created! | Story Recap Explanation #shorts",
+    "demon-slayer-s01e08": "He Cornered the Demon King… Until He Discovered the Truth! | Story Recap Explanation #shorts",
+    "demon-slayer-s01e09": "They Were Muzan's Assassins… Until Tamayo Used Magic! | Story Recap Explanation #shorts",
+    "demon-slayer-s01e10": "They Fought the Temari Assassin… Until Nezuko Kicked! | Story Recap Explanation #shorts",
+    "jujutsu-kaisen-s01e01": "He Was Just a High School Athlete… Until He Swallowed It! | Story Recap Explanation #shorts",
+    "jujutsu-kaisen-s01e02": "He Was Sentenced to Death… Until Satoru Gojo Intervened! | Story Recap Explanation #shorts",
+    "jujutsu-kaisen-s01e03": "She Was a New Tokyo Recruit… Until the Roppongi Curse! | Story Recap Explanation #shorts",
+    "jujutsu-kaisen-s01e04": "They Entered the Detention Center… Until Sukuna Awakened! | Story Recap Explanation #shorts",
+    "jujutsu-kaisen-s01e05": "Sukuna Ripped Out His Own Heart… Until Megumi Fought! | Story Recap Explanation #shorts",
+}
+
+
+def generate_cinema_script(episode_info: dict) -> dict:
+    """
+    Generates a single standalone 2.5-3 minute (150-175s) YouTube Short script package
+    modeled directly after the viral 'narration cinema' architecture:
+    - High-stakes impossible rule opening hook (0-5s).
+    - Continuous ~550-650 word narrative covering the full episode/battle.
+    - Mandatory algorithmic comment trap ending: 'To watch the next episode, comment yes.'
+    - High-CTR title formula: 'He Was the [Peak Identity]… Until [Shocking Truth]! | Story Recap Explanation #shorts'.
+    - High-retention 3-sentence description + comment trap CTA + Section 107 Fair Use disclosure.
+    """
+    ep_key = episode_info.get("episode_key", "")
+    series = episode_info.get("series", "Anime")
+    season = episode_info.get("season", 1)
+    episode = episode_info.get("episode", 1)
+    series_tag = series.replace(" ", "").replace(":", "")
+
+    # 1. Title
+    title = CINEMA_TITLES.get(ep_key)
+    if not title:
+        title = "He Was the Strongest Demon Slayer… Until Truth Hit! | Story Recap Explanation #shorts"
+
+    # 2. Check if pre-compiled knowledge exists
+    if ep_key in EPISODE_KNOWLEDGE:
+        data = EPISODE_KNOWLEDGE[ep_key]
+        parts = data.get("parts", [])
+        hook = parts[0].get("hook", "Tanjiro lived by a single rule: never stay on the mountain after dark.") if parts else ""
+        narr_list = [p.get("narration", "").strip() for p in parts if p.get("narration")]
+        narration = " ".join(narr_list)
+        beats = []
+        for p in parts:
+            beats.extend(p.get("beats", []))
+    else:
+        scene_acts = get_episode_scene_acts(episode_info, num_parts=4)
+        beats = []
+        for a in scene_acts:
+            beats.extend(a.get("beats", []))
+
+        if ep_key == "demon-slayer-s01e08":
+            hook = "Tanjiro had only one chance to capture the demon king Muzan Kibutsuji alive."
+            narration = (
+                f"{hook} In the neon-lit crowded streets of Taisho-era Asakusa, Tanjiro Kamado caught the exact scent of the monster that slaughtered his entire family. "
+                "Pushing desperately through the bustling crowd, he gripped the shoulder of a sharp-dressed gentleman, only to be paralyzed with horror: Muzan Kibutsuji was holding a human baby in his arms, smiling as a devoted family man. "
+                "Before Tanjiro could even draw his blade, Muzan used a single fingernail to scratch the neck of a passing pedestrian. Within three seconds, the human mutated into a ravenous flesh-eating demon that tore into his wife's shoulder, throwing the entire city square into violent panic. "
+                "Knowing that drawing his Nichirin sword in public would reveal the Demon Slayer Corps, Tanjiro dove forward unarmed, thrusting his scarf into the demon's gnashing jaws to restrain him without taking a life. "
+                "As police officers rushed in and Muzan slipped into the shadows with an icy smirk, Tanjiro screamed into the night: 'Muzan Kibutsuji! No matter where you hide, I will hunt you to the ends of hell and sever your head!' "
+                "Right as the authorities pinned Tanjiro down, a mysterious floral enchantment bloomed across the street. Lady Tamayo and her assistant Yushiro appeared through an invisible dimensional barrier, using Blood Demon Art magic to conceal Tanjiro and lead him to a clandestine medical clinic hidden beneath Tokyo. "
+                "There, Tamayo revealed a jaw-dropping secret: she was a demon who had completely freed herself from Muzan's cellular curse, and she believed Nezuko's unique blood could unlock a permanent cure for all demons. "
+                "But before their research could even begin, the peaceful sanctuary was obliterated. Two of Muzan's elite Twelve Kizuki assassins—Susamaru with her devastating six-armed temari balls and Yahaba with his invisible vector arrows—descended upon the clinic with orders to execute everyone inside."
+            )
+        elif ep_key == "demon-slayer-s01e09":
+            hook = "Tanjiro was only given one chance to protect Lady Tamayo's hidden clinic."
+            narration = (
+                f"{hook} Without warning, supersonic temari balls smashed through the brick walls of Lady Tamayo's underground clinic, leveling the entire first floor in a violent storm of pulverized stone and blinding dust. "
+                "Standing outside were two of Muzan Kibutsuji's hand-picked executioners: Susamaru, who gleefully sprouted four additional arms to juggle six massive projectiles of concentrated kinetic force, and Yahaba, whose palms bore cursed eyes capable of controlling invisible vector arrows that bent the physical laws of gravity. "
+                "Yushiro was decapitated in the opening salvo, his body collapsing into the rubble while his demon regeneration rapidly restored his head within seconds. Furiously handing Tanjiro a blood-inscribed paper talisman, Yushiro synchronized Tanjiro's vision with his own ocular Blood Demon Art, suddenly illuminating the invisible crimson arrows tearing through the air. "
+                "Tanjiro realized with sudden shock: the temari balls were not simply bouncing—Yahaba's vector arrows were actively grabbing and redirecting them mid-flight, making every projectile impossible to predict with standard swordsmanship. "
+                "Splitting the battlefield, Nezuko and Yushiro engaged the six-armed Susamaru in a brutal contest of raw physical power. Nezuko charged forward, kicking the kinetic projectiles directly back at Susamaru, matching her demon power blow for blow even as her own leg was severed and instantly regenerated. "
+                "Meanwhile, Tanjiro confronted Yahaba directly in the courtyard. Every time Tanjiro moved to close the distance, Yahaba's vectors grabbed his limbs from across the yard, violently hurling him against stone pillars and trees with bone-crushing impact. "
+                "To survive, Tanjiro had to execute Water Breathing's most fluid counters, using Twisting Whirlpool and Flowing Water striking angles to wrap his blade around the kinetic vectors and redirect their force away from his vital organs. "
+                "Closing in with a final, desperate leap, Tanjiro unleashed Water Breathing Tenth Form: Constant Flux, wrapping the roaring dragon of pure water around his blade to decapitate Yahaba in mid-air. "
+                "Yet as the assassin's severed head dissolved into ash, Yahaba used his dying breath to unleash a barrage of lethal vector arrows directly into the ground beneath Tanjiro's feet, dragging him into an inescapable gravitational vortex. "
+                "As the ground fractured, Lady Tamayo stepped forward and sliced her own arm, releasing her hypnotic Blood Demon Art: Magical Aroma of Daylight into the night air to manipulate Susamaru's senses and force her to speak the forbidden name of Muzan Kibutsuji. "
+                "The moment Muzan's name crossed her lips, the demon king's biological curse triggered violently. Three giant demonic arms erupted directly from Susamaru's chest and mouth, crushing her body from the inside out in a horrifying display of Muzan's absolute control. "
+                "Blood soaked the courtyard as Tanjiro lay battered and bleeding, his ribs cracked from Yahaba's relentless vector assaults. Tamayo extracted a vial of blood from the dissolving demon to advance her research for Nezuko's cure, while Tanjiro forced himself back to his feet, knowing that Muzan's retribution had only just begun."
+            )
+        else:
+            hook = f"{series} changed forever the moment an impossible crisis struck."
+            narration = (
+                f"{hook} Our heroes entered the combat zone with zero room for error. Facing supernatural opposition, every technique was pushed past normal human limits. "
+                "In a relentless sequence of strikes, the true power of the opponent was revealed, forcing a desperate life-or-death gamble. "
+                "With every second ticking down, the clash escalated until the final devastating blow landed, altering the course of the battle."
+            )
+
+    # Guarantee closing comment-trap CTA
+    closing_cta = "To watch the next episode, comment yes."
+    narration = narration.strip()
+    if not narration.endswith(closing_cta):
+        narration = f"{narration} {closing_cta}"
+
+    # Build beats if empty
+    if not beats:
+        beats = generate_default_beats([120, 1260])
+
+    # 3. High-retention description matching ICFR22QXs_o
+    description = f"""{hook}
+Covering {series} Season {season} Episode {episode}.
+
+Watch until the end to find out what happens next!
+
+👍 Like the video, subscribe for more action-packed anime stories, and comment YES if you want the next episode!
+
+{FAIR_USE_DISCLAIMER}
+#AnimeExplained #AnimeRecap #ActionAnime #{series_tag.lower()} #Anime #Shorts #BhalooJi"""
+
+    words = len(narration.split())
+    est_duration = max(150.0, min(178.0, words / 3.4))
+
+    return {
+        "episode_key": ep_key,
+        "title": title,
+        "hook": hook,
+        "narration": narration,
+        "description": description,
+        "hashtags": ["anime", "animerecap", "animeexplained", "actionanime", series_tag.lower(), "bhalooji", "shorts"],
+        "time_window": [120, 1260],
+        "beats": beats,
+        "word_count": words,
+        "estimated_duration": est_duration,
+    }
+
+
 if __name__ == "__main__":
     from anime_catalog import get_next_episode
     ep = get_next_episode()

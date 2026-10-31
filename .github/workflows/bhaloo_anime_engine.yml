@@ -20,11 +20,12 @@ on:
           - "demon-slayer"
           - "jujutsu-kaisen"
       mode:
-        description: "Pipeline mode: 'daily' (1 video/day funnel: normal video first, then daily shorts) or 'full' (legacy all-in-one)"
+        description: "Pipeline mode: 'cinema' (3-minute standalone Narration Cinema Shorts) or 'daily' (legacy funnel)"
         required: false
-        default: "daily"
+        default: "cinema"
         type: choice
         options:
+          - "cinema"
           - "daily"
           - "full"
       upload_to_youtube:
@@ -102,7 +103,7 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          INPUT_MODE: ${{ inputs.mode || 'daily' }}
+          INPUT_MODE: ${{ inputs.mode || 'cinema' }}
           INPUT_EPISODE: ${{ inputs.episode }}
           INPUT_SERIES: ${{ inputs.series }}
         run: |

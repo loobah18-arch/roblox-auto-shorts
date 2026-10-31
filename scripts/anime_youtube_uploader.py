@@ -213,7 +213,14 @@ def upload_episode_package(
             uploaded_parts.append(record)
             history["uploaded_parts"] = uploaded_parts
 
-            if active and active.get("episode_key") == ep_key:
+            if summary.get("mode") == "cinema" or vid_to_upload.get("is_cinema_short"):
+                log(f"🎉 Standalone 3-Minute Cinema Short successfully uploaded: {upload_res.get('url')}!")
+                completed = history.get("completed_episodes", [])
+                if ep_key not in completed:
+                    completed.append(ep_key)
+                    history["completed_episodes"] = completed
+                history["active_episode"] = None
+            elif active and active.get("episode_key") == ep_key:
                 if action == "normal_video":
                     active["normal_video_uploaded"] = True
                     active["normal_video"] = record
@@ -237,7 +244,7 @@ def upload_episode_package(
             save_history(history)
             results = {
                 "status": "success",
-                "mode": "daily_funnel",
+                "mode": summary.get("mode", "daily_funnel"),
                 "action": action,
                 "episode_key": ep_key,
                 "uploaded_record": record,

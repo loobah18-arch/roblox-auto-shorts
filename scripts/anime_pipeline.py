@@ -19,9 +19,9 @@ import time
 from pathlib import Path
 
 from anime_catalog import get_next_episode, get_active_episode, load_catalog, load_history, save_history
-from anime_script_engine import generate_episode_script
+from anime_script_engine import generate_episode_script, generate_cinema_script
 from anime_subtitle_sync import get_episode_scene_acts
-from anime_voice_subtitles import produce_part_audio_subtitles, produce_master_audio_subtitles
+from anime_voice_subtitles import produce_part_audio_subtitles, produce_master_audio_subtitles, CINEMA_VOICE
 from anime_copyright_filter import MultiAgentCopyrightShield
 from anime_video_engine import (
     assemble_short_part,
@@ -259,6 +259,149 @@ def run_pipeline(
     log(f"Artifacts located at: {ep_work_dir}")
 
     return pipeline_result
+
+
+def run_cinema_pipeline(
+    episode_key: str | None = None,
+    series_filter: str | None = None,
+    dry_run: bool = False,
+    voice: str = CINEMA_VOICE,
+    bgm_path: str | Path | None = None,
+) -> dict:
+    """
+    Executes a single standalone 2.5 to 3 minute YouTube Short production
+    modeled directly after 'narration cinema' (ICFR22QXs_o):
+    - Single uninterrupted 150-175s Short per episode (zero multi-part fragmentation).
+    - Full-bleed 9:16 vertical canvas (1080x1920) with filmic grading and unsharp mask.
+    - Deep cinematic trailer baritone voice (en-US-GuyNeural) with lower-third dynamic captions.
+    - High-tension thriller action BGM.
+    - Viral title formula: 'He Was the [X]… Until He [Y]! | Story Recap Explanation #shorts'.
+    - High-retention comment trap CTA ending: 'To watch the next episode, comment yes.'
+    """
+    log("=== 🎬 Starting Bhaloo Ji Narration Cinema Engine (Standalone 3-Min Short) ===")
+    catalog = load_catalog()
+    episodes = catalog.get("episodes", [])
+    if not episodes:
+        log("No episodes in catalog. Run 'python3 scripts/anime_catalog.py --sync' first.")
+        return {"status": "error", "message": "empty catalog"}
+
+    target_ep = None
+    if episode_key:
+        for ep in episodes:
+            if ep["episode_key"] == episode_key:
+                target_ep = ep
+                break
+        if not target_ep:
+            log(f"Episode key '{episode_key}' not found in catalog.")
+            return {"status": "error", "message": "episode not found"}
+    else:
+        target_ep = get_next_episode(series_filter)
+        if not target_ep:
+            log("All episodes in catalog are complete! Nothing to process.")
+            return {"status": "complete", "message": "all episodes complete"}
+
+    ep_key = target_ep["episode_key"]
+    log(f"🎬 Producing Cinema Short for: {target_ep['display_name']} ({ep_key})")
+    ep_work_dir = OUTPUT_DIR / ep_key
+    ep_work_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. BGM selection (Action/Suspense)
+    if not bgm_path or not Path(bgm_path).exists():
+        bgm_path = pick_bgm_for_episode(series_id=target_ep.get("series_id"), mood="action")
+        log(f"Auto-selected cinematic suspense BGM: {bgm_path.name}")
+
+    # 2. Cinema Script Generation
+    log("Generating 3-minute Narration Cinema script with impossible rule hook & comment trap CTA...")
+    script = generate_cinema_script(target_ep)
+    with open(ep_work_dir / "cinema_script.json", "w", encoding="utf-8") as f:
+        json.dump(script, f, indent=2, ensure_ascii=False)
+    log(f"Title: {script['title']}")
+    log(f"Word count: {script['word_count']} words (~{script['estimated_duration']:.1f}s)")
+
+    # 3. Audio & Cinema Subtitles (en-US-GuyNeural baritone, lower-third safe zone, full_bleed=True)
+    audio_f = ep_work_dir / "voice.mp3"
+    ass_f = ep_work_dir / "subtitles.ass"
+    if dry_run:
+        actual_dur = script["estimated_duration"]
+        v_res = {"duration": actual_dur, "word_count": script["word_count"]}
+        log(f"[DRY-RUN] Simulating cinema voiceover: {actual_dur:.1f}s ({script['word_count']} words)")
+    else:
+        v_res = produce_part_audio_subtitles(
+            text=script["narration"],
+            output_audio_path=audio_f,
+            output_ass_path=ass_f,
+            badge_text="",
+            voice=voice or CINEMA_VOICE,
+            rate="+6%",
+            is_landscape=False,
+            full_bleed=True,
+        )
+        actual_dur = v_res["duration"]
+        log(f"Cinema voiceover synthesized: {actual_dur:.1f}s using {voice or CINEMA_VOICE}")
+
+    # 4. Source raw anime video
+    raw_video_path = CACHE_DIR / target_ep["filename"]
+    if not dry_run and not raw_video_path.exists():
+        ok = download_gdrive_episode(target_ep["gdrive_file_id"], raw_video_path, dry_run=dry_run)
+        if not ok:
+            log("Failed to download raw anime episode from Google Drive.")
+            return {"status": "error", "message": "gdrive download failed"}
+    elif dry_run:
+        download_gdrive_episode(target_ep["gdrive_file_id"], raw_video_path, dry_run=True)
+
+    # 5. Video Assembly (Full-Bleed 9:16 Vertical, 1080x1920)
+    vid_f = ep_work_dir / f"cinema_{ep_key}.mp4"
+    render_ok = assemble_short_part(
+        raw_video_path=raw_video_path,
+        voice_audio_path=audio_f,
+        ass_subtitle_path=ass_f,
+        output_video_path=vid_f,
+        time_window=tuple(script["time_window"]),
+        total_duration=actual_dur,
+        bgm_path=bgm_path,
+        is_landscape=False,
+        dry_run=dry_run,
+        beats=script.get("beats"),
+        narration=script["narration"],
+        full_bleed=True,
+    )
+
+    # 6. Anti-Copyright Shield Verification
+    shield = MultiAgentCopyrightShield()
+    clean_title, clean_desc = shield.remediate_metadata(
+        title=script["title"],
+        description=script["description"],
+        is_short=True,
+        part_num=None,
+        display_name=target_ep["display_name"],
+    )
+
+    short_meta = {
+        "title": clean_title,
+        "video_path": str(vid_f),
+        "description": clean_desc,
+        "hashtags": script["hashtags"],
+        "duration": actual_dur,
+        "status": "rendered" if render_ok else "failed",
+        "is_full_video": False,
+        "is_cinema_short": True,
+    }
+
+    result = {
+        "status": "success",
+        "mode": "cinema",
+        "action": "short",
+        "episode_key": ep_key,
+        "display_name": target_ep["display_name"],
+        "video_to_upload": short_meta,
+    }
+
+    with open(ep_work_dir / "pipeline_summary.json", "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2)
+
+    log(f"🎬 Standalone 3-Minute Cinema Short ready for {target_ep['display_name']}!")
+    log(f"Title: {clean_title}")
+    return result
 
 
 def run_daily_funnel(
@@ -592,8 +735,8 @@ def run_daily_funnel(
     teaser = f"\n🎬 Full episode explanation is live on our channel now: {normal_url}\n" if normal_url else "\n🎬 Full episode explanation is live on our channel now!\n"
 
     shield = MultiAgentCopyrightShield()
-    raw_title = part_info.get("short_title", f"{active_ep['display_name']} Part {next_p} #shorts")
-    raw_desc = f"{part_info.get('hook', '')}\nPart {next_p} of {total_parts} covering {active_ep['display_name']}.{teaser}\n#anime #animerecap #shorts #bhalooji"
+    raw_title = part_info.get("short_title", f"{active_ep['display_name']} Story Recap Explanation #shorts")
+    raw_desc = part_info.get("description") or f"{part_info.get('hook', '')}\nPart {next_p} of {total_parts} covering {active_ep['display_name']}.{teaser}\n#anime #animerecap #shorts #bhalooji"
 
     # Multi-Agent Anti-Copyright Filter & Remediation Retry Loop
     MAX_FILTER_RETRIES = 3
@@ -684,16 +827,24 @@ def run_daily_funnel(
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Run anime explanation pipeline")
-    parser.add_argument("--mode", default="daily", choices=["daily", "full"], help="Pipeline mode: 'daily' (1 video/day: normal video first, then daily shorts) or 'full' (legacy all-in-one)")
+    parser.add_argument("--mode", default="cinema", choices=["cinema", "daily", "full"], help="Pipeline mode: 'cinema' (3-minute standalone Narration Cinema Shorts) or 'daily' (legacy funnel)")
     parser.add_argument("--episode", default=None, help="Episode key (e.g. demon-slayer-s01e01)")
     parser.add_argument("--series", default=None, help="Series filter (e.g. demon-slayer, jujutsu-kaisen)")
     parser.add_argument("--dry-run", action="store_true", help="Simulate without heavy rendering")
-    parser.add_argument("--voice", default="en-US-ChristopherNeural", help="Edge-TTS voice (default: RecapKun ChristopherNeural)")
+    parser.add_argument("--voice", default="en-US-ChristopherNeural", help="Edge-TTS voice (default: cinema GuyNeural or ChristopherNeural)")
     parser.add_argument("--bgm", default=None, help="Optional background music path")
     parser.add_argument("--live", action="store_true", help="Live YouTube upload mode")
 
     args = parser.parse_args()
-    if args.mode == "daily" and not args.episode:
+    if args.mode == "cinema":
+        res = run_cinema_pipeline(
+            episode_key=args.episode,
+            series_filter=args.series,
+            dry_run=args.dry_run,
+            voice=args.voice if args.voice != "en-US-ChristopherNeural" else CINEMA_VOICE,
+            bgm_path=args.bgm,
+        )
+    elif args.mode == "daily" and not args.episode:
         res = run_daily_funnel(
             series_filter=args.series,
             dry_run=args.dry_run,
