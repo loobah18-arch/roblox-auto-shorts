@@ -162,17 +162,17 @@ def upload_episode_package(
     uploaded_parts = history.get("uploaded_parts", [])
     ep_key = summary.get("episode_key")
 
-    if summary.get("mode") == "daily_funnel":
-        action = summary.get("action")
+    if summary.get("mode") in ("daily_funnel", "cinema") or "video_to_upload" in summary:
+        action = summary.get("action", "short")
         vid_to_upload = summary.get("video_to_upload", {})
 
         if not live:
-            log(f"=== [PREVIEW MODE] Daily Funnel Action: '{action}' for {ep_key} ===")
+            log(f"=== [PREVIEW MODE] Funnel/Cinema Action: '{action}' for {ep_key} ===")
             log(f"Title: {vid_to_upload.get('title')}")
             log(f"File:  {vid_to_upload.get('video_path')}")
             res = {
                 "status": "preview",
-                "mode": "daily_funnel",
+                "mode": summary.get("mode", "daily_funnel"),
                 "action": action,
                 "episode_key": ep_key,
                 "video": vid_to_upload,

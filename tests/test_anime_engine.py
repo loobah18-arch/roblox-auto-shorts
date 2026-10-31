@@ -259,6 +259,35 @@ class TestAnimeUploader(unittest.TestCase):
             self.assertEqual(res["mode"], "daily_funnel")
             self.assertEqual(res["action"], "normal_video")
 
+    def test_uploader_cinema_mode_preview(self):
+        import tempfile
+        from anime_youtube_uploader import upload_episode_package
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            summary = {
+                "status": "success",
+                "mode": "cinema",
+                "action": "short",
+                "episode_key": "demon-slayer-s01e09",
+                "display_name": "Demon Slayer S01E09",
+                "video_to_upload": {
+                    "title": "They Were Muzan's Assassins… Until Tamayo Used Magic! | Story Recap Explanation #shorts",
+                    "video_path": str(td_path / "cinema_demon-slayer-s01e09.mp4"),
+                    "description": "Full 3-min cinema short",
+                    "hashtags": ["anime", "shorts"],
+                    "is_cinema_short": True,
+                }
+            }
+            with open(td_path / "pipeline_summary.json", "w") as f:
+                json.dump(summary, f)
+
+            res = upload_episode_package(episode_dir=td_path, live=False)
+            self.assertEqual(res["status"], "preview")
+            self.assertEqual(res["mode"], "cinema")
+            self.assertEqual(res["action"], "short")
+            self.assertTrue(res["video"]["is_cinema_short"])
+
 
 class TestRecapKunStyle(unittest.TestCase):
     def test_recapkun_voice_and_rate(self):
