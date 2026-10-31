@@ -103,6 +103,7 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           INPUT_MODE: ${{ inputs.mode || 'cinema' }}
           INPUT_EPISODE: ${{ inputs.episode }}
           INPUT_SERIES: ${{ inputs.series }}

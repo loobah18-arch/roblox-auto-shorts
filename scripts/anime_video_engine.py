@@ -440,12 +440,12 @@ def assemble_short_part(
         # Zero raw anime audio: only voiceover and royalty-free BGM
         if has_bgm:
             audio_filter = (
-                "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice_a];"
-                "[2:a]volume=0.15[bgm_a];"
-                "[voice_a][bgm_a]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                "[1:a]loudnorm=I=-14:TP=-1.5:LRA=11[voice_a];"
+                "[2:a]loudnorm=I=-24:TP=-2:LRA=7[bgm_a];"
+                "[voice_a][bgm_a]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
             )
         else:
-            audio_filter = "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[aout]"
+            audio_filter = "[1:a]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
 
         cmd.extend([
             "-filter_complex", f"{filtergraph};{audio_filter}",
@@ -727,12 +727,12 @@ def assemble_master_full_video(
 
         if has_bgm:
             audio_filter = (
-                "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice_a];"
-                "[2:a]volume=0.15[bgm_a];"
-                "[voice_a][bgm_a]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                "[1:a]loudnorm=I=-14:TP=-1.5:LRA=11[voice_a];"
+                "[2:a]loudnorm=I=-24:TP=-2:LRA=7[bgm_a];"
+                "[voice_a][bgm_a]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
             )
         else:
-            audio_filter = "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[aout]"
+            audio_filter = "[1:a]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
 
         cmd.extend([
             "-filter_complex", f"{filtergraph};{audio_filter}",

@@ -332,7 +332,7 @@ def run_cinema_pipeline(
             output_ass_path=ass_f,
             badge_text="",
             voice=voice or CINEMA_VOICE,
-            rate="+6%",
+            rate="+0%" if (voice == "adam" or voice == CINEMA_VOICE) else "+6%",
             is_landscape=False,
             full_bleed=True,
         )
@@ -831,7 +831,7 @@ if __name__ == "__main__":
     parser.add_argument("--episode", default=None, help="Episode key (e.g. demon-slayer-s01e01)")
     parser.add_argument("--series", default=None, help="Series filter (e.g. demon-slayer, jujutsu-kaisen)")
     parser.add_argument("--dry-run", action="store_true", help="Simulate without heavy rendering")
-    parser.add_argument("--voice", default="en-US-ChristopherNeural", help="Edge-TTS voice (default: cinema GuyNeural or ChristopherNeural)")
+    parser.add_argument("--voice", default="default", help="Voice (default: adam for cinema, ChristopherNeural for daily)")
     parser.add_argument("--bgm", default=None, help="Optional background music path")
     parser.add_argument("--live", action="store_true", help="Live YouTube upload mode")
 
@@ -841,7 +841,7 @@ if __name__ == "__main__":
             episode_key=args.episode,
             series_filter=args.series,
             dry_run=args.dry_run,
-            voice=args.voice if args.voice != "en-US-ChristopherNeural" else CINEMA_VOICE,
+            voice=args.voice if args.voice != "default" else CINEMA_VOICE,
             bgm_path=args.bgm,
         )
     elif args.mode == "daily" and not args.episode:

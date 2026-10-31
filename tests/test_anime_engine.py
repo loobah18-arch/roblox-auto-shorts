@@ -691,15 +691,19 @@ class TestContinuousMasterEngine(unittest.TestCase):
         from anime_voice_subtitles import cues_to_ass, CINEMA_VOICE
         from anime_script_engine import _format_script_package
 
-        self.assertEqual(CINEMA_VOICE, "en-US-GuyNeural")
+        self.assertEqual(CINEMA_VOICE, "adam")
 
         mock_cues = [
             {"word": "Tanjiro", "start": 0.1, "end": 0.5},
             {"word": "strikes", "start": 0.5, "end": 1.0},
         ]
         ass_str = cues_to_ass(mock_cues, badge_text="DEMON SLAYER", full_bleed=True)
-        # MarginV 240 for cinema safe area
-        self.assertIn("240,1", ass_str)
+        # MarginV 640 for cinema safe area matching ICFR22QXs_o
+        self.assertIn("640,1", ass_str)
+        # Neon green highlight matching ICFR22QXs_o
+        self.assertIn("&H001EFF00&", ass_str)
+        # Sentence casing preserved (not all-caps)
+        self.assertIn("Tanjiro", ass_str)
         # No header badge line in full_bleed cinema mode
         self.assertNotIn("CardHeader", ass_str.split("[Events]")[1])
 

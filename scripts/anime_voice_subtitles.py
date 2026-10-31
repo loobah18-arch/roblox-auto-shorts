@@ -6,17 +6,23 @@ word-by-word animated ASS karaoke subtitles.
 """
 
 import asyncio
+import base64
+import json
 import os
 import re
 import subprocess
+import urllib.request
+import urllib.error
 from datetime import timedelta
 from pathlib import Path
 import edge_tts
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
+ELEVENLABS_ADAM_VOICE_ID = "pNInz6obpgDQGcFmaJgB"
 DEFAULT_VOICE = "en-US-ChristopherNeural"  # RecapKun signature articulate, confident anime storyteller voice
 DEFAULT_RATE = "+8%"                       # Fast-paced, engaging RecapKun cadence (~185-190 wpm)
-CINEMA_VOICE = "en-US-GuyNeural"           # Deep cinematic trailer baritone for cinema-style anime recaps
+CINEMA_VOICE = "adam"                      # Exact Narration Cinema voice: ElevenLabs Adam (pNInz6obpgDQGcFmaJgB)
+CINEMA_FALLBACK_VOICE = "en-US-AndrewNeural"  # 122 Hz warm baritone matching Adam when no key is set
 
 
 def format_ass_time(seconds: float) -> str:
@@ -52,8 +58,10 @@ Style: CardHeader,{font_name},32,&H00FFFFFF,&H0000FFFF,&H00000000,&HB0000000,-1,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     elif full_bleed:
-        # 9:16 Full-Bleed Cinema Vertical (1080x1920) modeling 'narration cinema' style:
-        # Lower-third placement (Alignment: 2, MarginV: 240, Fontsize: 64) for maximum immersion
+        # 9:16 Full-Bleed Cinema Vertical (1080x1920) modeling 'narration cinema' (ICFR22QXs_o) style:
+        # Lower-center placement (Alignment: 2, MarginV: 640, Fontsize: 62)
+        # PrimaryColour: &H00E8E8E8& (Warm White), SecondaryColour (Highlight): &H001EFF00& (Neon Green)
+        # Clean 3.5 outline, 1.5 shadow, tight letter spacing
         return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -63,8 +71,8 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},64,&H00FFFFFF,&H0000FFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,5.0,2.0,2,70,70,240,1
-Style: CardHeader,{font_name},36,&H00FFFFFF,&H0000FFFF,&H00000000,&HB0000000,-1,0,0,0,100,100,2,0,1,3.0,1.0,8,60,60,160,1
+Style: Default,{font_name},62,&H00E8E8E8,&H001EFF00,&H00000000,&H90000000,-1,0,0,0,100,100,1,0,1,3.5,1.5,2,80,80,640,1
+Style: CardHeader,{font_name},36,&H00E8E8E8,&H001EFF00,&H00000000,&HB0000000,-1,0,0,0,100,100,2,0,1,3.0,1.0,8,60,60,160,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -128,13 +136,17 @@ def cues_to_ass(word_cues: list[dict], badge_text: str = "", is_landscape: bool 
             # Build line text with active word highlighted
             words_formatted = []
             for j, cue in enumerate(chunk):
-                raw_word = cue["word"].strip().upper()
+                raw_word = cue["word"].strip() if full_bleed else cue["word"].strip().upper()
                 if j == idx:
-                    # Active word: Yellow-gold glow, pop-in scale
-                    scale_tag = "\\fscx108\\fscy108" if is_landscape else "\\fscx112\\fscy112"
-                    words_formatted.append(f"{{\\c&H0000FFFF&\\t(0,70,{scale_tag})}}{raw_word}{{\\rDefault}}")
+                    if full_bleed:
+                        # Exact Narration Cinema style: Neon Green active highlight
+                        words_formatted.append(f"{{\\c&H001EFF00&\\t(0,60,\\fscx108\\fscy108)}}{raw_word}{{\\rDefault}}")
+                    else:
+                        scale_tag = "\\fscx108\\fscy108" if is_landscape else "\\fscx112\\fscy112"
+                        words_formatted.append(f"{{\\c&H0000FFFF&\\t(0,70,{scale_tag})}}{raw_word}{{\\rDefault}}")
                 else:
-                    words_formatted.append(f"{{\\c&H00FFFFFF&}}{raw_word}")
+                    color_tag = "\\c&H00E8E8E8&" if full_bleed else "\\c&H00FFFFFF&"
+                    words_formatted.append(f"{{{color_tag}}}{raw_word}")
 
             line_text = " ".join(words_formatted)
             ass_lines.append(f"Dialogue: 0,{w_start},{w_end},Default,,0,0,0,,{line_text}")
@@ -185,6 +197,81 @@ def synthesize_word_cues(text: str, total_duration: float) -> list[dict]:
     return cues
 
 
+def synthesize_elevenlabs_adam(text: str, output_audio_path: Path, api_key: str | None = None) -> list[dict]:
+    """
+    Synthesizes speech using ElevenLabs 'Adam' (pNInz6obpgDQGcFmaJgB) with character-level
+    alignment and converts to word cues.
+    Returns word cues: list of {'word': str, 'start': float, 'end': float}.
+    """
+    key = api_key or os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    if not key:
+        raise ValueError("ELEVENLABS_API_KEY not set")
+
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_ADAM_VOICE_ID}/with-timestamps"
+    payload = {
+        "text": text,
+        "model_id": "eleven_flash_v2_5",
+        "voice_settings": {
+            "stability": 0.50,
+            "similarity_boost": 0.75,
+            "style": 0.0,
+            "use_speaker_boost": True
+        }
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "xi-api-key": key,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        },
+        method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    audio_bytes = base64.b64decode(data.get("audio_base64", ""))
+    with open(output_audio_path, "wb") as f:
+        f.write(audio_bytes)
+
+    alignment = data.get("alignment", {})
+    chars = alignment.get("characters", [])
+    starts = alignment.get("character_start_times_seconds", [])
+    ends = alignment.get("character_end_times_seconds", [])
+
+    word_cues = []
+    current_word = []
+    w_start = None
+    w_end = None
+
+    for ch, s, e in zip(chars, starts, ends):
+        if ch.isspace():
+            if current_word:
+                word_cues.append({
+                    "word": "".join(current_word),
+                    "start": round(w_start, 3) if w_start is not None else 0.0,
+                    "end": round(w_end, 3) if w_end is not None else 0.0,
+                })
+                current_word = []
+                w_start = None
+                w_end = None
+        else:
+            if w_start is None:
+                w_start = s
+            w_end = e
+            current_word.append(ch)
+
+    if current_word:
+        word_cues.append({
+            "word": "".join(current_word),
+            "start": round(w_start, 3) if w_start is not None else 0.0,
+            "end": round(w_end, 3) if w_end is not None else 0.0,
+        })
+
+    return word_cues
+
+
 async def _synthesize_speech_and_cues(
     text: str,
     output_audio_path: Path,
@@ -195,7 +282,17 @@ async def _synthesize_speech_and_cues(
     Synthesize audio and obtain word boundary cues with automated retries,
     sister-voice failover, and zero-dependency gTTS cloud fallback.
     """
-    voices_to_try = [voice, "en-US-ChristopherNeural", "en-US-GuyNeural", "en-US-EricNeural", "en-US-AndrewNeural"]
+    eleven_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    if eleven_key and (voice in ("adam", ELEVENLABS_ADAM_VOICE_ID, CINEMA_VOICE)):
+        try:
+            print(f"[anime_voice] 🎙️ Synthesizing with ElevenLabs Adam ({ELEVENLABS_ADAM_VOICE_ID})...", flush=True)
+            return synthesize_elevenlabs_adam(text, output_audio_path, api_key=eleven_key)
+        except Exception as ee:
+            print(f"[anime_voice] ⚠️ ElevenLabs Adam failed: {ee}. Falling back to neural TTS...", flush=True)
+
+    target_voice = CINEMA_FALLBACK_VOICE if voice in ("adam", CINEMA_VOICE) else voice
+    target_rate = "+0%" if voice in ("adam", CINEMA_VOICE) else rate
+    voices_to_try = [target_voice, "en-US-AndrewNeural", "en-US-BrianNeural", "en-US-ChristopherNeural", "en-US-GuyNeural"]
     voices_to_try = list(dict.fromkeys(voices_to_try))
 
     last_error = None
