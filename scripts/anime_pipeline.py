@@ -332,7 +332,7 @@ def run_cinema_pipeline(
             output_ass_path=ass_f,
             badge_text="",
             voice=voice or CINEMA_VOICE,
-            rate="+0%" if (voice == "adam" or voice == CINEMA_VOICE) else "+6%",
+            rate="+2%" if (voice == "adam" or voice == CINEMA_VOICE) else "+6%",
             is_landscape=False,
             full_bleed=False,
         )
@@ -357,7 +357,7 @@ def run_cinema_pipeline(
         ass_subtitle_path=ass_f,
         output_video_path=vid_f,
         time_window=tuple(script["time_window"]),
-        total_duration=actual_dur,
+        total_duration=min(178.0, actual_dur),
         bgm_path=bgm_path,
         is_landscape=False,
         dry_run=dry_run,
