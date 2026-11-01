@@ -670,20 +670,21 @@ def generate_cinema_script(episode_info: dict) -> dict:
                 "But before their research could even begin, the peaceful sanctuary was obliterated. Two of Muzan's elite Twelve Kizuki assassins—Susamaru with her devastating six-armed temari balls and Yahaba with his invisible vector arrows—descended upon the clinic with orders to execute everyone inside."
             )
         elif ep_key == "demon-slayer-s01e09":
-            hook = "Tanjiro was only given one chance to protect Lady Tamayo's hidden clinic."
+            hook = "Tanjiro was only given one chance to protect Lady Tamayo's hidden clinic from Muzan's deadly assassins."
             narration = (
-                f"{hook} Without warning, supersonic temari balls smashed through the brick walls of Lady Tamayo's underground clinic, leveling the entire first floor in a violent storm of pulverized stone and blinding dust. "
-                "Standing outside were two of Muzan Kibutsuji's hand-picked executioners: Susamaru, who gleefully sprouted four additional arms to juggle six massive projectiles of concentrated kinetic force, and Yahaba, whose palms bore cursed eyes capable of controlling invisible vector arrows that bent the physical laws of gravity. "
-                "Yushiro was decapitated in the opening salvo, his body collapsing into the rubble while his demon regeneration rapidly restored his head within seconds. Furiously handing Tanjiro a blood-inscribed paper talisman, Yushiro synchronized Tanjiro's vision with his own ocular Blood Demon Art, suddenly illuminating the invisible crimson arrows tearing through the air. "
-                "Tanjiro realized with sudden shock: the temari balls were not simply bouncing—Yahaba's vector arrows were actively grabbing and redirecting them mid-flight, making every projectile impossible to predict with standard swordsmanship. "
-                "Splitting the battlefield, Nezuko and Yushiro engaged the six-armed Susamaru in a brutal contest of raw physical power. Nezuko charged forward, kicking the kinetic projectiles directly back at Susamaru, matching her demon power blow for blow even as her own leg was severed and instantly regenerated. "
-                "Meanwhile, Tanjiro confronted Yahaba directly in the courtyard. Every time Tanjiro moved to close the distance, Yahaba's vectors grabbed his limbs from across the yard, violently hurling him against stone pillars and trees with bone-crushing impact. "
-                "To survive, Tanjiro had to execute Water Breathing's most fluid counters, using Twisting Whirlpool and Flowing Water striking angles to wrap his blade around the kinetic vectors and redirect their force away from his vital organs. "
-                "Closing in with a final, desperate leap, Tanjiro unleashed Water Breathing Tenth Form: Constant Flux, wrapping the roaring dragon of pure water around his blade to decapitate Yahaba in mid-air. "
-                "Yet as the assassin's severed head dissolved into ash, Yahaba used his dying breath to unleash a barrage of lethal vector arrows directly into the ground beneath Tanjiro's feet, dragging him into an inescapable gravitational vortex. "
-                "As the ground fractured, Lady Tamayo stepped forward and sliced her own arm, releasing her hypnotic Blood Demon Art: Magical Aroma of Daylight into the night air to manipulate Susamaru's senses and force her to speak the forbidden name of Muzan Kibutsuji. "
-                "The moment Muzan's name crossed her lips, the demon king's biological curse triggered violently. Three giant demonic arms erupted directly from Susamaru's chest and mouth, crushing her body from the inside out in a horrifying display of Muzan's absolute control. "
-                "Blood soaked the courtyard as Tanjiro lay battered and bleeding, his ribs cracked from Yahaba's relentless vector assaults. Tamayo extracted a vial of blood from the dissolving demon to advance her research for Nezuko's cure, while Tanjiro forced himself back to his feet, knowing that Muzan's retribution had only just begun."
+                f"{hook} Without warning, two supersonic temari balls smashed through the brick walls of the clinic, leveling the entire first floor in a violent storm of pulverized stone and blinding dust. "
+                "Standing outside were two of Muzan Kibutsuji's elite executioners: Susamaru, who gleefully sprouted four extra arms to juggle six massive projectiles of concentrated kinetic force, and Yahaba, whose palms bore cursed eyes controlling invisible vector arrows. "
+                "Yushiro was decapitated in the opening salvo, his body collapsing into the rubble before his demon regeneration rapidly restored his head within seconds. "
+                "Handing Tanjiro a blood-inscribed paper talisman, Yushiro synchronized their vision, suddenly illuminating the glowing crimson arrows tearing through the night sky. "
+                "Tanjiro realized in shock that the temari balls were not simply bouncing—Yahaba's vector arrows were actively grabbing and redirecting them mid-flight, making every projectile impossible to predict with standard swordsmanship. "
+                "Splitting the battlefield, Nezuko and Yushiro engaged the six-armed Susamaru in a brutal contest of raw power. Nezuko charged forward fearlessly, kicking the supersonic projectiles straight back at Susamaru, matching her demon strength blow for blow even as her leg was severely bruised. "
+                "Meanwhile, Tanjiro confronted Yahaba directly in the courtyard. Every time Tanjiro moved to close the distance, Yahaba's vectors seized his limbs, violently hurling him against stone pillars and trees with bone-crushing impact. "
+                "To survive the onslaught, Tanjiro executed Water Breathing Twisting Whirlpool, wrapping his blade around the kinetic vectors to divert their deadly force away from his vital organs. "
+                "Closing in with a final desperate leap, Tanjiro unleashed Tenth Form: Constant Flux, wrapping the roaring dragon of pure water around his blade to decapitate Yahaba in mid-air. "
+                "As the assassin dissolved into ash, Yahaba used his dying breath to unleash a barrage of lethal vector arrows into the ground, dragging Tanjiro into an inescapable gravitational vortex. "
+                "Lady Tamayo stepped forward and sliced her arm, releasing her hypnotic Blood Demon Art to force Susamaru to speak Muzan Kibutsuji's forbidden name. "
+                "The moment Muzan's name crossed her lips, the demon king's biological curse triggered violently, causing three demonic arms to erupt from Susamaru's chest, crushing her body from the inside out in horrifying agony. "
+                "Blood soaked the entire stone courtyard as Tanjiro lay battered and bleeding, while Tamayo extracted a vial of demon blood for Nezuko's cure."
             )
         else:
             hook = f"{series} changed forever the moment an impossible crisis struck."
@@ -698,6 +699,12 @@ def generate_cinema_script(episode_info: dict) -> dict:
     narration = narration.strip()
     if not narration.endswith(closing_cta):
         narration = f"{narration} {closing_cta}"
+
+    # Check curated act timelines for precise scene beats first
+    if not beats and ep_key in CURATED_ACT_TIMELINES:
+        c_acts = CURATED_ACT_TIMELINES[ep_key].get("acts", [])
+        if c_acts and c_acts[0].get("beats"):
+            beats = c_acts[0]["beats"]
 
     # Build beats if empty
     if not beats:

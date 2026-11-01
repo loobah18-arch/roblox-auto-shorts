@@ -752,6 +752,50 @@ class TestContinuousMasterEngine(unittest.TestCase):
         self.assertIn("Story Recap Explanation #shorts", res["video_to_upload"]["title"])
 
 
+class TestMotionTrackerAndEditors(unittest.TestCase):
+    """Verify Anidoc precise motion tracking and open source editor integrations."""
+
+    def test_motion_tracker_models_exist(self):
+        from motion_tracker import MODELS_DIR
+        anime_xml = MODELS_DIR / "lbpcascade_animeface.xml"
+        frontal_xml = MODELS_DIR / "haarcascade_frontalface_default.xml"
+        self.assertTrue(anime_xml.exists(), "Anime face cascade missing")
+        self.assertTrue(frontal_xml.exists(), "Frontal face cascade missing")
+
+    def test_motion_tracker_filter_generation(self):
+        from motion_tracker import build_precise_motion_tracking_filter
+        vf = build_precise_motion_tracking_filter(duration=2.5, video_width=1080, video_height=1920)
+        self.assertIn("crop=", vf)
+        self.assertIn("scale=1080:1920", vf)
+
+    def test_open_source_editor_spec_generation(self):
+        from open_source_editor import generate_editly_spec
+        from pathlib import Path
+        mock_clips = [Path("/tmp/c1.mp4"), Path("/tmp/c2.mp4")]
+        mock_segs = [{"duration": 1.5, "is_drop": False}, {"duration": 2.0, "is_drop": True}]
+        spec = generate_editly_spec(
+            clip_paths=mock_clips,
+            segments=mock_segs,
+            audio_path=Path("/tmp/a.mp3"),
+            output_path=Path("/tmp/out.mp4"),
+            width=1080,
+            height=1920,
+        )
+        self.assertEqual(spec["width"], 1080)
+        self.assertEqual(spec["height"], 1920)
+        self.assertEqual(len(spec["clips"]), 2)
+
+    def test_demon_slayer_s01e09_scene_sync_curated(self):
+        from anime_subtitle_sync import CURATED_ACT_TIMELINES
+        self.assertIn("demon-slayer-s01e09", CURATED_ACT_TIMELINES)
+        acts = CURATED_ACT_TIMELINES["demon-slayer-s01e09"]["acts"]
+        self.assertGreaterEqual(len(acts[0]["beats"]), 10)
+        # Verify timestamps cover the full fight from ~115s to ~1285s
+        beats = acts[0]["beats"]
+        self.assertLessEqual(beats[0]["start"], 150.0)
+        self.assertGreaterEqual(beats[-1]["start"], 1200.0)
+
+
 if __name__ == "__main__":
     unittest.main()
 

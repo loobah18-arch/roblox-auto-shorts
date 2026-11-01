@@ -357,9 +357,22 @@ def assemble_short_part(
                 h_s = int(1080 * zoom)
                 vf_slice = f"setpts={tempo:.3f}*PTS,fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
             else:
-                w_s = int(1280 * zoom)
-                h_s = int(720 * zoom)
-                vf_slice = f"setpts={tempo:.3f}*PTS,fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+                # Precise Motion Tracking & Character Centering (Anidoc standard)
+                try:
+                    from motion_tracker import build_precise_motion_tracking_filter
+                    track_filter = build_precise_motion_tracking_filter(
+                        clip_path=str(raw_video) if raw_video.exists() else None,
+                        duration=s_dur,
+                        video_width=1080,
+                        video_height=1920,
+                        camera_motion="push_in" if idx % 2 == 1 else "auto",
+                        start_time=s_start,
+                    )
+                    vf_slice = f"setpts={tempo:.3f}*PTS,fps=30,{track_filter}"
+                except Exception:
+                    w_s = int(1280 * zoom)
+                    h_s = int(720 * zoom)
+                    vf_slice = f"setpts={tempo:.3f}*PTS,fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
 
             cmd_slice = [
                 "ffmpeg", "-y",
