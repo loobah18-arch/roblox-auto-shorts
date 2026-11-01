@@ -303,7 +303,7 @@ async def _synthesize_speech_and_cues(
     for v in voices_to_try:
         for attempt in range(1, 3):
             try:
-                communicate = edge_tts.Communicate(text, voice=v, rate=rate)
+                communicate = edge_tts.Communicate(text, voice=v, rate=target_rate)
                 audio_data = bytearray()
                 word_cues = []
                 sentence_cues = []

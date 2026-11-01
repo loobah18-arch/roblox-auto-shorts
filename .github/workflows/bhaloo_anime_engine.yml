@@ -134,7 +134,7 @@ jobs:
           python3 scripts/anime_copyright_filter.py --verify-output output/
 
       - name: 📺 Upload to YouTube
-        if: ${{ inputs.upload_to_youtube != false || github.event_name == 'schedule' }}
+        if: ${{ (inputs.upload_to_youtube == true || inputs.upload_to_youtube == 'true') || (github.event_name == 'schedule' && inputs.upload_to_youtube != false && inputs.upload_to_youtube != 'false') }}
         env:
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
