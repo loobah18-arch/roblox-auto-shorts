@@ -254,7 +254,10 @@ def assemble_short_part(
         total_narr_words = sum(len(s.split()) for s in sents) if sents else 0
 
         weights = []
-        if total_narr_words > 0 and len(sents) >= len(beats):
+        if total_narr_words > 0 and len(sents) == len(beats):
+            # Perfect 1:1 sentence-to-beat locking: each scene plays exactly while that sentence is spoken
+            weights = [round(len(s.split()) / total_narr_words, 4) for s in sents]
+        elif total_narr_words > 0 and len(sents) > len(beats):
             s_per_beat = max(1, len(sents) // len(beats))
             for b_idx in range(len(beats)):
                 s_start_idx = b_idx * s_per_beat
@@ -356,8 +359,8 @@ def assemble_short_part(
                 w_s = int(1920 * zoom)
                 h_s = int(1080 * zoom)
                 vf_slice = f"setpts={tempo:.3f}*PTS,fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
-            else:
-                # Precise Motion Tracking & Character Centering (Anidoc standard)
+            elif full_bleed:
+                # Full-bleed 9:16 vertical crop
                 try:
                     from motion_tracker import build_precise_motion_tracking_filter
                     track_filter = build_precise_motion_tracking_filter(
@@ -370,9 +373,25 @@ def assemble_short_part(
                     )
                     vf_slice = f"setpts={tempo:.3f}*PTS,fps=30,{track_filter}"
                 except Exception:
-                    w_s = int(1280 * zoom)
-                    h_s = int(720 * zoom)
-                    vf_slice = f"setpts={tempo:.3f}*PTS,fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+                    vf_slice = f"setpts={tempo:.3f}*PTS,fps=30,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
+            else:
+                # AniDoc Standard: 16:9 widescreen slice preserving 100% horizontal action for dual-layer composition
+                # Character tracking anchors zoom punch on character's face / centroid
+                w_s = int(1280 * zoom)
+                h_s = int(720 * zoom)
+                crop_x = (w_s - 1280) // 2
+                crop_y = (h_s - 720) // 2
+                try:
+                    from motion_tracker import extract_motion_trajectory
+                    traj = extract_motion_trajectory(raw_video, duration=s_dur, start_time=s_start)
+                    if traj:
+                        cx = traj.get("cx_start", 0.5)
+                        cy = traj.get("cy_start", 0.5)
+                        crop_x = int(np.clip(cx * w_s - 640, 0, max(0, w_s - 1280)))
+                        crop_y = int(np.clip(cy * h_s - 360, 0, max(0, h_s - 720)))
+                except Exception:
+                    pass
+                vf_slice = f"setpts={tempo:.3f}*PTS,fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1280:720:{crop_x}:{crop_y},setsar=1"
 
             cmd_slice = [
                 "ffmpeg", "-y",

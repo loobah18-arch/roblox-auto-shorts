@@ -272,7 +272,7 @@ class TestAnimeUploader(unittest.TestCase):
                 "episode_key": "demon-slayer-s01e09",
                 "display_name": "Demon Slayer S01E09",
                 "video_to_upload": {
-                    "title": "They Were Muzan's Assassins… Until Tamayo Used Magic! | Story Recap Explanation #shorts",
+                    "title": "They Were Muzan's Deadliest Assassins… Until Tanjiro Saw the Arrows! | Story Recap Explanation #shorts",
                     "video_path": str(td_path / "cinema_demon-slayer-s01e09.mp4"),
                     "description": "Full 3-min cinema short",
                     "hashtags": ["anime", "shorts"],
@@ -789,11 +789,26 @@ class TestMotionTrackerAndEditors(unittest.TestCase):
         from anime_subtitle_sync import CURATED_ACT_TIMELINES
         self.assertIn("demon-slayer-s01e09", CURATED_ACT_TIMELINES)
         acts = CURATED_ACT_TIMELINES["demon-slayer-s01e09"]["acts"]
-        self.assertGreaterEqual(len(acts[0]["beats"]), 10)
-        # Verify timestamps cover the full fight from ~115s to ~1285s
+        self.assertEqual(len(acts[0]["beats"]), 11)
+        # Verify timestamps cover the post-OP fight from 195s to 1260s (before ED credits)
         beats = acts[0]["beats"]
-        self.assertLessEqual(beats[0]["start"], 150.0)
-        self.assertGreaterEqual(beats[-1]["start"], 1200.0)
+        self.assertGreaterEqual(beats[0]["start"], 180.0)
+        self.assertLessEqual(beats[-1]["start"], 1265.0)
+
+    def test_demon_slayer_s01e09_1to1_sentence_beat_lock(self):
+        """Verify demon-slayer-s01e09 has exact 1:1 sentence-to-beat locking with zero drift."""
+        import re
+        from anime_script_engine import generate_cinema_script
+        script = generate_cinema_script({"series": "Demon Slayer", "season": 1, "episode": 9, "episode_key": "demon-slayer-s01e09"})
+        narr = script["narration"]
+        beats = script["beats"]
+        sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', narr) if s.strip()]
+
+        self.assertEqual(len(beats), 11, f"Expected 11 beats, got {len(beats)}")
+        self.assertEqual(len(sents), 11, f"Expected 11 sentences, got {len(sents)}")
+        self.assertIn("Constant Flux", narr)
+        self.assertIn("To watch the next episode, comment yes.", narr)
+        self.assertIn("They Were Muzan's Deadliest Assassins… Until Tanjiro Saw the Arrows!", script["title"])
 
 
 if __name__ == "__main__":

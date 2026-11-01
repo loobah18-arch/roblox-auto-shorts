@@ -240,22 +240,20 @@ CURATED_ACT_TIMELINES = {
         "acts": [
             {
                 "part": 1,
-                "time_range": [115, 1285],
-                "theme": "Susamaru and Yahaba attack Lady Tamayo's clinic with supersonic temari balls and invisible vector arrows",
+                "time_range": [195, 1260],
+                "theme": "Susamaru and Yahaba attack Lady Tamayo's clinic; Tanjiro decodes invisible vector arrows to sever Yahaba's head with Tenth Form Constant Flux",
                 "beats": [
-                    {"start": 115.0, "weight": 0.07, "desc": "Supersonic temari balls crash through the brick walls of Lady Tamayo's clinic"},
-                    {"start": 235.0, "weight": 0.08, "desc": "Susamaru sprouts four extra arms juggling six projectiles; Yahaba reveals cursed eyes"},
-                    {"start": 345.0, "weight": 0.07, "desc": "Yushiro decapitated by temari ball, regenerates head instantly from rubble"},
-                    {"start": 420.0, "weight": 0.07, "desc": "Yushiro slaps paper talisman on Tanjiro's head, synchronizing ocular vision"},
-                    {"start": 495.0, "weight": 0.07, "desc": "Talisman reveals invisible glowing crimson vector arrows curving temari balls mid-air"},
-                    {"start": 580.0, "weight": 0.08, "desc": "Nezuko charges forward fearlessly, kicking supersonic projectiles straight back at Susamaru"},
-                    {"start": 710.0, "weight": 0.08, "desc": "Tanjiro confronts Yahaba in courtyard; vectors slam Tanjiro violently into stone pillars"},
-                    {"start": 820.0, "weight": 0.08, "desc": "Tanjiro spins into Water Breathing Twisting Whirlpool, wrapping his blade around vectors"},
-                    {"start": 935.0, "weight": 0.09, "desc": "Tanjiro unleashes Tenth Form Constant Flux, roaring water dragon decapitating Yahaba"},
-                    {"start": 1015.0, "weight": 0.08, "desc": "Yahaba dying rage unleashes gravitational vortex into ground as head turns to ash"},
-                    {"start": 1145.0, "weight": 0.08, "desc": "Lady Tamayo slices arm, releasing hypnotic Magical Aroma of Daylight to trap Susamaru"},
-                    {"start": 1225.0, "weight": 0.08, "desc": "Susamaru utters Muzan's name; biological curse erupts giant arms from her chest"},
-                    {"start": 1265.0, "weight": 0.08, "desc": "Tamayo extracts demon blood vial for Nezuko cure as Tanjiro rises to his feet"}
+                    {"start": 195.0, "weight": 0.10, "desc": "Supersonic temari balls crash through the brick walls of Lady Tamayo's clinic"},
+                    {"start": 330.0, "weight": 0.10, "desc": "Susamaru sprouts four extra arms juggling six projectiles; Yahaba controls battlefield"},
+                    {"start": 480.0, "weight": 0.10, "desc": "Yushiro decapitated by temari ball, regenerates head instantly from rubble"},
+                    {"start": 600.0, "weight": 0.10, "desc": "Yushiro slaps paper talisman on Tanjiro's forehead, synchronizing ocular vision"},
+                    {"start": 720.0, "weight": 0.10, "desc": "Talisman reveals invisible glowing crimson vector arrows curving temari balls mid-air"},
+                    {"start": 840.0, "weight": 0.10, "desc": "Nezuko charges forward fearlessly, kicking supersonic projectiles straight back at Susamaru"},
+                    {"start": 980.0, "weight": 0.10, "desc": "Tanjiro confronts Yahaba in courtyard; vectors slam Tanjiro violently into stone pillars"},
+                    {"start": 1080.0, "weight": 0.10, "desc": "Tanjiro spins into Water Breathing Twisting Whirlpool, wrapping his blade around vectors"},
+                    {"start": 1180.0, "weight": 0.10, "desc": "Tanjiro unleashes Tenth Form Constant Flux, roaring water dragon decapitating Yahaba"},
+                    {"start": 1245.0, "weight": 0.08, "desc": "Yahaba dying rage unleashes deadly vector trap as head turns to ash"},
+                    {"start": 1260.0, "weight": 0.02, "desc": "Tanjiro fights to survive gravitational vortex in dramatic battle cliffhanger"}
                 ]
             }
         ]
