@@ -305,10 +305,10 @@ def run_cinema_pipeline(
     ep_work_dir = OUTPUT_DIR / ep_key
     ep_work_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. BGM selection (Action/Suspense)
+    # 1. BGM selection (Default series recap track, e.g. AERØHEAD - Fragments)
     if not bgm_path or not Path(bgm_path).exists():
-        bgm_path = pick_bgm_for_episode(series_id=target_ep.get("series_id"), mood="action")
-        log(f"Auto-selected cinematic suspense BGM: {bgm_path.name}")
+        bgm_path = pick_bgm_for_episode(series_id=target_ep.get("series_id"))
+        log(f"Auto-selected BGM: {bgm_path.name}")
 
     # 2. Cinema Script Generation
     log("Generating 3-minute Narration Cinema script with impossible rule hook & comment trap CTA...")
