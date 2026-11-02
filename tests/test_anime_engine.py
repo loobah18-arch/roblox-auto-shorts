@@ -810,6 +810,31 @@ class TestMotionTrackerAndEditors(unittest.TestCase):
         self.assertIn("To watch the next episode, comment yes.", narr)
         self.assertIn("They Were Muzan's Deadliest Assassins… Until Tanjiro Saw the Arrows!", script["title"])
 
+    def test_opencut_engine_integration(self):
+        """Verify OpenCut-inspired FFmpeg transitions and speed ramp functions."""
+        from opencut_engine import build_xfade_concat, build_speed_ramp_filter, OPENCUT_TRANSITIONS
+        self.assertIn("circle", OPENCUT_TRANSITIONS)
+        self.assertIn("dissolve", OPENCUT_TRANSITIONS)
+        chain, total_dur = build_xfade_concat(n_clips=2, segment_durations=[2.0, 3.0], is_drop_flags=[False, True], xfade_duration=0.15)
+        self.assertIn("xfade=", chain)
+        self.assertAlmostEqual(total_dur, 4.85, places=2)
+        ramp = build_speed_ramp_filter(is_drop=True, seg_idx=1)
+        self.assertIn("setpts=", ramp)
+
+    def test_fullbleed_cinema_filtergraph_anidoc_ratio(self):
+        """Verify cinema short uses 1080x1920 AniDoc ratio with zero white borders."""
+        from anime_video_engine import build_fullbleed_ffmpeg_filtergraph, build_ffmpeg_filtergraph
+        fg_full = build_fullbleed_ffmpeg_filtergraph(has_subtitles=True, ass_path="/tmp/test.ass")
+        self.assertIn("scale=1080:1920", fg_full)
+        self.assertIn("crop=1080:1920", fg_full)
+        self.assertNotIn("drawbox", fg_full)  # Zero border boxes in full-bleed cinema
+        self.assertNotIn("scale=1020:574", fg_full)  # No floating letterbox card
+
+        # build_ffmpeg_filtergraph with full_bleed=True delegates to full-bleed
+        fg_delegated = build_ffmpeg_filtergraph(has_subtitles=True, ass_path="/tmp/test.ass", full_bleed=True)
+        self.assertIn("scale=1080:1920", fg_delegated)
+        self.assertNotIn("drawbox", fg_delegated)
+
 
 if __name__ == "__main__":
     unittest.main()

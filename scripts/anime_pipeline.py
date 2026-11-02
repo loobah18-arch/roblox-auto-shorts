@@ -334,7 +334,7 @@ def run_cinema_pipeline(
             voice=voice or CINEMA_VOICE,
             rate="+2%" if (voice == "adam" or voice == CINEMA_VOICE) else "+6%",
             is_landscape=False,
-            full_bleed=False,
+            full_bleed=True,
         )
         actual_dur = v_res["duration"]
         log(f"Cinema voiceover synthesized: {actual_dur:.1f}s using {voice or CINEMA_VOICE}")
@@ -349,7 +349,7 @@ def run_cinema_pipeline(
     elif dry_run:
         download_gdrive_episode(target_ep["gdrive_file_id"], raw_video_path, dry_run=True)
 
-    # 5. Video Assembly (AniDoc Dual-Layer 9:16 Vertical with Character Tracking, 1080x1920)
+    # 5. Video Assembly (AniDoc Full-Bleed 9:16 Vertical with Character Tracking, 1080x1920)
     vid_f = ep_work_dir / f"cinema_{ep_key}.mp4"
     render_ok = assemble_short_part(
         raw_video_path=raw_video_path,
@@ -363,7 +363,8 @@ def run_cinema_pipeline(
         dry_run=dry_run,
         beats=script.get("beats"),
         narration=script["narration"],
-        full_bleed=False,
+        full_bleed=True,
+        sentence_durations=v_res.get("sentence_durations"),
     )
 
     # 6. Anti-Copyright Shield Verification

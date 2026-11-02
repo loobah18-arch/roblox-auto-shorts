@@ -184,11 +184,10 @@ def build_ffmpeg_filtergraph(
         "crop=1080:1920,setsar=1,boxblur=28:6,eq=brightness=-0.14:contrast=1.06[bg]"
     )
 
-    # 3. Foreground: crisp card centered (1020x574) with subtle glowing border
+    # 3. Foreground: crisp card centered (1020x574)
     filters.append(
         "[raw_fg]scale=1020:574:force_original_aspect_ratio=decrease,"
-        "pad=1020:574:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,"
-        "drawbox=x=0:y=0:w=iw:h=ih:color=white@0.22:t=3[fg]"
+        "pad=1020:574:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[fg]"
     )
 
     # 4. Overlay foreground on background (shifted slightly up to make room for captions)
@@ -217,6 +216,7 @@ def assemble_short_part(
     beats: list[dict] | None = None,
     narration: str = "",
     full_bleed: bool = True,
+    sentence_durations: list[float] | None = None,
 ) -> bool:
     """
     Renders an individual part with comprehensive anti-copyright tactics & dynamic sentence-locking:
@@ -250,34 +250,62 @@ def assemble_short_part(
     # 2. Dynamic Sentence-Locked Scene Allocation
     shots = []
     if beats and len(beats) > 0:
-        sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', narration) if s.strip()] if narration else []
-        total_narr_words = sum(len(s.split()) for s in sents) if sents else 0
+        # Check for exact TTS-derived sentence durations
+        json_timing = voice_audio.parent / f"{voice_audio.stem}_sentences.json"
+        actual_sentence_durations = None
+        if sentence_durations and len(sentence_durations) == len(beats):
+            actual_sentence_durations = sentence_durations
+        elif json_timing.exists():
+            try:
+                with open(json_timing, "r", encoding="utf-8") as f:
+                    tdata = json.load(f)
+                    if "sentence_durations" in tdata and len(tdata["sentence_durations"]) == len(beats):
+                        actual_sentence_durations = tdata["sentence_durations"]
+            except Exception:
+                pass
 
-        weights = []
-        if total_narr_words > 0 and len(sents) == len(beats):
-            # Perfect 1:1 sentence-to-beat locking: each scene plays exactly while that sentence is spoken
-            weights = [round(len(s.split()) / total_narr_words, 4) for s in sents]
-        elif total_narr_words > 0 and len(sents) > len(beats):
-            s_per_beat = max(1, len(sents) // len(beats))
-            for b_idx in range(len(beats)):
-                s_start_idx = b_idx * s_per_beat
-                s_end_idx = len(sents) if (b_idx == len(beats) - 1) else min(len(sents), (b_idx + 1) * s_per_beat)
-                group_words = sum(len(sents[j].split()) for j in range(s_start_idx, s_end_idx))
-                weights.append(round(group_words / total_narr_words, 3))
+        if actual_sentence_durations:
+            accum_dur = 0.0
+            sum_durs = sum(actual_sentence_durations)
+            scale_factor = total_duration / sum_durs if sum_durs > 0 else 1.0
+            for b_idx, b in enumerate(beats):
+                raw_b_start = float(b.get("start", safe_start))
+                b_start = max(safe_start, min(safe_end - 5.0, raw_b_start))
+                if b_idx == len(beats) - 1:
+                    b_dur = max(0.5, total_duration - accum_dur)
+                else:
+                    b_dur = round(actual_sentence_durations[b_idx] * scale_factor, 2)
+                    accum_dur += b_dur
+                shots.append((b_start, b_dur))
         else:
-            weights = [float(b.get("weight", 1.0 / len(beats))) for b in beats]
+            sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', narration) if s.strip()] if narration else []
+            total_narr_words = sum(len(s.split()) for s in sents) if sents else 0
 
-        accum_dur = 0.0
-        for b_idx, b in enumerate(beats):
-            raw_b_start = float(b.get("start", safe_start))
-            b_start = max(safe_start, min(safe_end - 5.0, raw_b_start))
-            if b_idx == len(beats) - 1:
-                b_dur = max(0.5, total_duration - accum_dur)
+            weights = []
+            if total_narr_words > 0 and len(sents) == len(beats):
+                # Perfect 1:1 sentence-to-beat locking: each scene plays exactly while that sentence is spoken
+                weights = [round(len(s.split()) / total_narr_words, 4) for s in sents]
+            elif total_narr_words > 0 and len(sents) > len(beats):
+                s_per_beat = max(1, len(sents) // len(beats))
+                for b_idx in range(len(beats)):
+                    s_start_idx = b_idx * s_per_beat
+                    s_end_idx = len(sents) if (b_idx == len(beats) - 1) else min(len(sents), (b_idx + 1) * s_per_beat)
+                    group_words = sum(len(sents[j].split()) for j in range(s_start_idx, s_end_idx))
+                    weights.append(round(group_words / total_narr_words, 3))
             else:
-                w = weights[b_idx] if b_idx < len(weights) else (1.0 / len(beats))
-                b_dur = round(total_duration * w, 2)
-                accum_dur += b_dur
-            shots.append((b_start, b_dur))
+                weights = [float(b.get("weight", 1.0 / len(beats))) for b in beats]
+
+            accum_dur = 0.0
+            for b_idx, b in enumerate(beats):
+                raw_b_start = float(b.get("start", safe_start))
+                b_start = max(safe_start, min(safe_end - 5.0, raw_b_start))
+                if b_idx == len(beats) - 1:
+                    b_dur = max(0.5, total_duration - accum_dur)
+                else:
+                    w = weights[b_idx] if b_idx < len(weights) else (1.0 / len(beats))
+                    b_dur = round(total_duration * w, 2)
+                    accum_dur += b_dur
+                shots.append((b_start, b_dur))
     else:
         # Fallback if no explicit beats: 4 narrative cuts with sentence word weights
         num_cuts = max(3, min(5, int(total_duration / 15.0)))

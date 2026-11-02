@@ -426,11 +426,53 @@ async def generate_voice_and_subtitles(
 
     duration = word_cues[-1]["end"] if word_cues else 0.0
 
+    # Exact sentence boundaries and durations from word cues for 1:1 video scene locking
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+    sentence_timings = []
+    sentence_durations = []
+    if sentences and word_cues:
+        cue_idx = 0
+        total_cues = len(word_cues)
+        prev_end = 0.0
+        for s_idx, sent in enumerate(sentences):
+            sent_words = sent.split()
+            w_count = len(sent_words)
+            s_start = prev_end
+            if cue_idx < total_cues:
+                s_start = word_cues[cue_idx]["start"]
+
+            end_cue_idx = min(total_cues - 1, cue_idx + w_count - 1)
+            if s_idx == len(sentences) - 1:
+                end_cue_idx = total_cues - 1
+
+            s_end = word_cues[end_cue_idx]["end"] if end_cue_idx >= 0 else s_start
+            s_dur = max(0.5, round(s_end - s_start, 3))
+
+            sentence_timings.append({
+                "index": s_idx,
+                "text": sent,
+                "start": round(s_start, 3),
+                "end": round(s_end, 3),
+                "duration": s_dur,
+            })
+            sentence_durations.append(s_dur)
+            cue_idx += w_count
+            prev_end = s_end
+
+        timing_file = output_audio_path.parent / f"{output_audio_path.stem}_sentences.json"
+        try:
+            with open(timing_file, "w", encoding="utf-8") as f:
+                json.dump({"sentence_durations": sentence_durations, "sentences": sentence_timings}, f, indent=2)
+        except Exception:
+            pass
+
     return {
         "audio_path": str(output_audio_path),
         "ass_path": str(output_ass_path),
         "duration": duration,
         "word_count": len(word_cues),
+        "sentence_durations": sentence_durations,
+        "sentence_timings": sentence_timings,
     }
 
 
