@@ -208,8 +208,8 @@ def assemble_short_part(
     voice_audio_path: str | Path,
     ass_subtitle_path: str | Path,
     output_video_path: str | Path,
-    time_window: tuple[float, float],
-    total_duration: float,
+    time_window: tuple[float, float] = (120.0, 480.0),
+    total_duration: float = 60.0,
     bgm_path: str | Path | None = None,
     is_landscape: bool = False,
     dry_run: bool = False,
@@ -217,6 +217,7 @@ def assemble_short_part(
     narration: str = "",
     full_bleed: bool = True,
     sentence_durations: list[float] | None = None,
+    remove_copyrighted_clip: bool = False,
 ) -> bool:
     """
     Renders an individual part with comprehensive anti-copyright tactics & dynamic sentence-locking:
@@ -370,6 +371,15 @@ def assemble_short_part(
             curr_offset += c_dur
             remaining_dur = round(remaining_dur - c_dur, 2)
             chunk_idx += 1
+
+    # Anti-Copyright Remediation: Drop or shift copyrighted shot
+    if remove_copyrighted_clip and expanded_shots:
+        if len(expanded_shots) > 1:
+            dropped = expanded_shots.pop(0)
+            log(f"✂️ [AnimeEngine] Dropped copyrighted cut (start={dropped[0]:.2f}s, dur={dropped[1]:.2f}s) from shot sequence (remaining: {len(expanded_shots)})")
+        else:
+            safe_start += 15.0
+            log(f"✂️ [AnimeEngine] Shifted safe_start to {safe_start:.2f}s to exclude copyrighted scene section")
 
     temp_dir = output_video.parent / f"temp_slices_{output_video.stem}"
     temp_dir.mkdir(parents=True, exist_ok=True)

@@ -48,6 +48,9 @@ def run_pipeline(
     voice: str = "en-US-ChristopherNeural",
     bgm_path: str | Path | None = None,
     upload_live: bool = False,
+    full_bleed: bool = False,
+    bgm_mood: str | None = None,
+    remove_copyrighted_clip: bool = False,
 ) -> dict:
     """Run full episodic production."""
     log("=== Starting Bhaloo Ji Anime Explanation Pipeline ===")
@@ -267,6 +270,9 @@ def run_cinema_pipeline(
     dry_run: bool = False,
     voice: str = CINEMA_VOICE,
     bgm_path: str | Path | None = None,
+    full_bleed: bool = True,
+    bgm_mood: str | None = None,
+    remove_copyrighted_clip: bool = False,
 ) -> dict:
     """
     Executes a single standalone 2.5 to 3 minute YouTube Short production
@@ -305,9 +311,9 @@ def run_cinema_pipeline(
     ep_work_dir = OUTPUT_DIR / ep_key
     ep_work_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. BGM selection (Default series recap track, e.g. AERØHEAD - Fragments)
+    # 1. BGM selection (Default series recap track, e.g. AERØHEAD - Fragments, or explicit mood)
     if not bgm_path or not Path(bgm_path).exists():
-        bgm_path = pick_bgm_for_episode(series_id=target_ep.get("series_id"))
+        bgm_path = pick_bgm_for_episode(series_id=target_ep.get("series_id"), mood=bgm_mood)
         log(f"Auto-selected BGM: {bgm_path.name}")
 
     # 2. Cinema Script Generation
@@ -334,7 +340,7 @@ def run_cinema_pipeline(
             voice=voice or CINEMA_VOICE,
             rate="+2%" if (voice == "adam" or voice == CINEMA_VOICE) else "+6%",
             is_landscape=False,
-            full_bleed=True,
+            full_bleed=full_bleed,
         )
         actual_dur = v_res["duration"]
         log(f"Cinema voiceover synthesized: {actual_dur:.1f}s using {voice or CINEMA_VOICE}")
@@ -363,8 +369,9 @@ def run_cinema_pipeline(
         dry_run=dry_run,
         beats=script.get("beats"),
         narration=script["narration"],
-        full_bleed=True,
+        full_bleed=full_bleed,
         sentence_durations=v_res.get("sentence_durations"),
+        remove_copyrighted_clip=remove_copyrighted_clip,
     )
 
     # 6. Anti-Copyright Shield Verification
@@ -394,6 +401,9 @@ def run_cinema_pipeline(
         "action": "short",
         "episode_key": ep_key,
         "display_name": target_ep["display_name"],
+        "full_bleed": full_bleed,
+        "presentation_style": "full_bleed" if full_bleed else "card_blur",
+        "bgm_mood": bgm_mood,
         "video_to_upload": short_meta,
     }
 
@@ -410,6 +420,8 @@ def run_daily_funnel(
     dry_run: bool = False,
     voice: str = "en-US-ChristopherNeural",
     bgm_path: str | Path | None = None,
+    full_bleed: bool = False,
+    remove_copyrighted_clip: bool = False,
 ) -> dict:
     """
     Executes exactly ONE step of the daily anime funnel (RecapKun Style):
@@ -729,6 +741,8 @@ def run_daily_funnel(
         dry_run=dry_run,
         beats=part_beats,
         narration=part_info.get("narration", ""),
+        full_bleed=full_bleed,
+        remove_copyrighted_clip=remove_copyrighted_clip,
     )
 
     normal_vid_info = active_ep.get("normal_video", {})

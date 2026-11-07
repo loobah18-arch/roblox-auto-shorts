@@ -836,6 +836,239 @@ class TestMotionTrackerAndEditors(unittest.TestCase):
         self.assertNotIn("drawbox", fg_delegated)
 
 
+    def test_youtube_block_detection_and_deletion(self):
+        """Verify check_youtube_video_status detects copyright blocks and deletes blocked uploads."""
+        from unittest.mock import MagicMock
+        from anime_youtube_uploader import check_youtube_video_status, delete_video
+
+        mock_yt = MagicMock()
+        mock_yt.videos().list().execute.return_value = {
+            "items": [
+                {
+                    "status": {"uploadStatus": "rejected", "rejectionReason": "copyright"},
+                    "processingDetails": {},
+                    "contentDetails": {},
+                }
+            ]
+        }
+        is_blocked, reason, _ = check_youtube_video_status(mock_yt, "blocked_test_1", timeout_sec=0.0)
+        self.assertTrue(is_blocked)
+        self.assertEqual(reason, "copyright")
+
+        ok = delete_video(mock_yt, "blocked_test_1")
+        self.assertTrue(ok)
+        mock_yt.videos().delete.assert_called_once_with(id="blocked_test_1")
+
+    def test_upload_video_file_retry_and_exhaustion(self):
+        """Verify upload_video_file deletes blocked video and retries, returning status='blocked' on exhaustion."""
+        import tempfile
+        import os
+        from unittest.mock import MagicMock
+        from anime_youtube_uploader import upload_video_file
+
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(b"0" * (60 * 1024))
+            temp_path = f.name
+
+        try:
+            mock_yt = MagicMock()
+            mock_req_1 = MagicMock()
+            mock_req_1.next_chunk.return_value = (None, {"id": "blocked_1"})
+            mock_req_2 = MagicMock()
+            mock_req_2.next_chunk.return_value = (None, {"id": "blocked_2"})
+            mock_yt.videos().insert.side_effect = [mock_req_1, mock_req_2]
+
+            mock_yt.videos().list().execute.return_value = {
+                "items": [
+                    {
+                        "status": {"uploadStatus": "rejected", "rejectionReason": "copyright"},
+                        "processingDetails": {},
+                        "contentDetails": {},
+                    }
+                ]
+            }
+
+            res = upload_video_file(
+                youtube=mock_yt,
+                video_path=temp_path,
+                title="Test Title",
+                description="Test Desc",
+                tags=["test"],
+                max_retries=1,
+                verify_timeout_sec=0.0,
+                media_upload_cls=MagicMock(),
+            )
+            self.assertEqual(res["status"], "blocked")
+            self.assertEqual(res["rejection_reason"], "copyright")
+            self.assertIn("block_type", res)
+            self.assertEqual(res["attempts"], 2)
+            self.assertEqual(mock_yt.videos().delete.call_count, 2)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def test_classify_block_reason_anime(self):
+        from anime_youtube_uploader import classify_block_reason
+        self.assertEqual(
+            classify_block_reason("copyright", {"details": "audio_fingerprint match"}, bgm_path="ost.mp3"),
+            "audio"
+        )
+        self.assertEqual(
+            classify_block_reason("videomatch detected", {}, bgm_path="ost.mp3"),
+            "clip"
+        )
+        self.assertEqual(
+            classify_block_reason("copyright", {}, bgm_path="assets/bgm/cradles.mp3"),
+            "clip"
+        )
+        self.assertEqual(
+            classify_block_reason("videomatch and audio_fingerprint match", {}, bgm_path="ost.mp3"),
+            "both"
+        )
+
+    def test_assemble_short_part_remove_copyrighted_clip(self):
+        from anime_video_engine import assemble_short_part
+        ok = assemble_short_part(
+            raw_video_path="fake_raw.mp4",
+            voice_audio_path="fake_voice.mp3",
+            ass_subtitle_path="fake_sub.ass",
+            output_video_path="fake_short.mp4",
+            dry_run=True,
+            remove_copyrighted_clip=True,
+        )
+        self.assertTrue(ok)
+
+
+class TestUploadCadence(unittest.TestCase):
+    def test_parse_iso_datetime(self):
+        from anime_youtube_uploader import parse_iso_datetime
+        from datetime import timezone
+
+        dt = parse_iso_datetime("2026-11-06T12:00:00Z")
+        self.assertIsNotNone(dt)
+        self.assertEqual(dt.year, 2026)
+        self.assertEqual(dt.month, 11)
+        self.assertEqual(dt.day, 6)
+        self.assertEqual(dt.tzinfo, timezone.utc)
+
+        self.assertIsNone(parse_iso_datetime(None))
+        self.assertIsNone(parse_iso_datetime("not-a-date"))
+
+    def test_get_latest_upload_time(self):
+        from anime_youtube_uploader import get_latest_upload_time
+        history = {
+            "uploaded_parts": [
+                {"uploaded_at": "2026-10-30T10:00:00Z"},
+                {"uploaded_at": "2026-10-31T14:52:15Z"},
+            ],
+            "last_updated": "2026-10-31T15:00:00Z",
+        }
+        latest = get_latest_upload_time(history)
+        self.assertIsNotNone(latest)
+        self.assertEqual(latest.day, 31)
+        self.assertEqual(latest.hour, 15)
+
+        self.assertIsNone(get_latest_upload_time({}))
+        self.assertIsNone(get_latest_upload_time(None))
+
+    def test_ensure_upload_cadence_allowed_over_24h(self):
+        from anime_youtube_uploader import ensure_upload_cadence
+        from datetime import datetime, timezone, timedelta
+
+        now = datetime(2026, 11, 7, 12, 0, 0, tzinfo=timezone.utc)
+        history = {
+            "uploaded_parts": [{"uploaded_at": "2026-11-06T11:00:00Z"}]  # 25h ago
+        }
+        can_proceed, next_t, rem = ensure_upload_cadence(history, cadence_hours=24.0, now=now)
+        self.assertTrue(can_proceed)
+        self.assertEqual(rem, 0.0)
+
+    def test_ensure_upload_cadence_deferred_under_24h(self):
+        from anime_youtube_uploader import ensure_upload_cadence
+        from datetime import datetime, timezone
+
+        now = datetime(2026, 11, 7, 12, 0, 0, tzinfo=timezone.utc)
+        history = {
+            "uploaded_parts": [{"uploaded_at": "2026-11-07T02:00:00Z"}]  # 10h ago (14h remaining)
+        }
+        can_proceed, next_t, rem = ensure_upload_cadence(history, cadence_hours=24.0, max_wait_seconds=1800.0, now=now)
+        self.assertFalse(can_proceed)
+        self.assertIsNotNone(next_t)
+        self.assertGreater(rem, 3600.0 * 13)
+
+    def test_ensure_upload_cadence_waits_within_max_wait(self):
+        from anime_youtube_uploader import ensure_upload_cadence
+        from datetime import datetime, timezone
+        from unittest.mock import patch
+
+        now = datetime(2026, 11, 7, 12, 0, 0, tzinfo=timezone.utc)
+        # Uploaded 23 hours and 50 minutes ago -> 10 minutes (600s) remaining
+        history = {
+            "uploaded_parts": [{"uploaded_at": "2026-11-06T12:10:00Z"}]
+        }
+        with patch("time.sleep") as mock_sleep:
+            can_proceed, next_t, rem = ensure_upload_cadence(
+                history,
+                cadence_hours=24.0,
+                max_wait_seconds=1800.0,
+                now=now,
+            )
+            self.assertTrue(can_proceed)
+            self.assertEqual(rem, 0.0)
+            self.assertTrue(mock_sleep.called)
+
+    def test_ensure_upload_cadence_override(self):
+        from anime_youtube_uploader import ensure_upload_cadence
+        from datetime import datetime, timezone
+        from unittest.mock import patch
+        import os
+
+        now = datetime(2026, 11, 7, 12, 0, 0, tzinfo=timezone.utc)
+        history = {
+            "uploaded_parts": [{"uploaded_at": "2026-11-07T11:00:00Z"}]  # 1h ago
+        }
+        # Override via parameter
+        can_proceed, _, _ = ensure_upload_cadence(history, allow_override=True, now=now)
+        self.assertTrue(can_proceed)
+
+        # Override via environment variable
+        with patch.dict(os.environ, {"ALLOW_CADENCE_OVERRIDE": "true"}):
+            can_proceed_env, _, _ = ensure_upload_cadence(history, allow_override=False, now=now)
+            self.assertTrue(can_proceed_env)
+
+    def test_upload_episode_package_defers_on_cadence_violation(self):
+        import tempfile
+        from unittest.mock import patch
+        from anime_youtube_uploader import upload_episode_package
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            summary = {
+                "status": "success",
+                "mode": "cinema",
+                "action": "short",
+                "episode_key": "demon-slayer-s01e09",
+                "video_to_upload": {
+                    "title": "Demon Slayer Cinema Short",
+                    "video_path": str(td_path / "test.mp4"),
+                    "description": "desc",
+                    "hashtags": ["anime"],
+                }
+            }
+            with open(td_path / "pipeline_summary.json", "w") as f:
+                json.dump(summary, f)
+
+            with patch("anime_youtube_uploader.ensure_upload_cadence") as mock_cadence:
+                from datetime import datetime, timezone
+                next_time = datetime(2026, 11, 8, 5, 0, 0, tzinfo=timezone.utc)
+                mock_cadence.return_value = (False, next_time, 7200.0)
+
+                res = upload_episode_package(episode_dir=td_path, live=True)
+                self.assertEqual(res["status"], "deferred_cadence")
+                self.assertIn("Upload deferred", res["message"])
+                self.assertEqual(res["remaining_seconds"], 7200.0)
+
+
 if __name__ == "__main__":
     unittest.main()
 

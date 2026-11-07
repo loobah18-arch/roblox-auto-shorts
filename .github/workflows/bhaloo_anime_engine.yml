@@ -46,6 +46,11 @@ on:
         description: "Optional: Video ID to delete from channel before running (e.g. G-zNVrRr82I)"
         required: false
         type: string
+      allow_cadence_override:
+        description: "Allow manual upload even if 24-hour cadence interval has not elapsed"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -139,17 +144,22 @@ jobs:
           python3 scripts/anime_copyright_filter.py --verify-output output/
 
       - name: 📺 Upload to YouTube
-        if: ${{ (inputs.upload_to_youtube == true || inputs.upload_to_youtube == 'true') || (github.event_name == 'schedule' && inputs.upload_to_youtube != false && inputs.upload_to_youtube != 'false') }}
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.upload_to_youtube == true || inputs.upload_to_youtube == 'true')) }}
         env:
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
           PRIVACY_STATUS: ${{ inputs.privacy || 'public' }}
+          ALLOW_CADENCE_OVERRIDE: ${{ inputs.allow_cadence_override || 'false' }}
         run: |
           echo "📺 Publishing Anime Shorts & Full Video to Bhaloo Ji YouTube channel..."
+          EXTRA_ARGS=()
+          if [ "${ALLOW_CADENCE_OVERRIDE:-false}" = "true" ]; then
+            EXTRA_ARGS+=(--allow-cadence-override)
+          fi
           for ep_dir in output/*; do
             if [ -d "$ep_dir" ] && [ -f "$ep_dir/pipeline_summary.json" ]; then
-              python3 scripts/anime_youtube_uploader.py --dir "$ep_dir" --live --privacy "$PRIVACY_STATUS"
+              python3 scripts/anime_youtube_uploader.py --dir "$ep_dir" --live --privacy "$PRIVACY_STATUS" "${EXTRA_ARGS[@]}"
             fi
           done
 
