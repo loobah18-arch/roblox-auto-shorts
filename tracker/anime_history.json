@@ -7,7 +7,8 @@
     "demon-slayer-s01e05",
     "demon-slayer-s01e06",
     "demon-slayer-s01e07",
-    "demon-slayer-s01e08"
+    "demon-slayer-s01e08",
+    "demon-slayer-s01e09"
   ],
   "uploaded_parts": [
     {
@@ -288,8 +289,17 @@
       "url": "https://youtube.com/shorts/R6ZmcxWRzao",
       "title": "Tanjiro's Vengeance | Demon Slayer: Kimetsu no Yaiba Story Recap Explanation Part 2 #shorts",
       "uploaded_at": "2026-10-31T14:52:15Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e09",
+      "part": null,
+      "is_full_video": false,
+      "video_id": "r-2uLfR4JMA",
+      "url": "https://youtube.com/shorts/r-2uLfR4JMA",
+      "title": "They Were Muzan's Deadliest Assassins… Until Tanjiro Saw the | Story Recap Explanation #shorts",
+      "uploaded_at": "2026-11-07T11:31:30Z"
     }
   ],
-  "last_updated": "2026-10-31T15:33:09Z",
+  "last_updated": "2026-11-07T11:31:30Z",
   "active_episode": null
 }
