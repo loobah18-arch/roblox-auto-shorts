@@ -162,6 +162,91 @@ def ensure_upload_cadence(
     return False, next_allowed, remaining
 
 
+VIEW_THRESHOLD_PER_HOUR = 2500  # 2k-3k views/hr midpoint protection
+
+
+def evaluate_view_velocity_gate(
+    youtube,
+    history: dict | None,
+    threshold_per_hour: int = VIEW_THRESHOLD_PER_HOUR,
+    early_views_threshold: int = 2000,
+    early_hours_window: float = 12.0,
+    allow_override: bool = False,
+) -> tuple[bool, str, dict]:
+    """Evaluates YouTube Data API view velocity on the channel's most recent upload.
+
+    Protects well-performing videos (>= 2k-3k views/hr or >= 2k in first 12h)
+    from being choked by too-frequent uploads.
+    """
+    if allow_override or os.environ.get("ALLOW_VELOCITY_OVERRIDE", "false").lower() == "true":
+        return True, "Override active; velocity check bypassed", {}
+
+    if not youtube:
+        return True, "No YouTube client provided; proceeding", {}
+
+    vid_id = None
+    if history and isinstance(history, dict):
+        uploaded_parts = history.get("uploaded_parts", [])
+        for item in reversed(uploaded_parts):
+            if isinstance(item, dict):
+                candidate_id = item.get("video_id")
+                if candidate_id and not str(candidate_id).startswith("dry_run"):
+                    vid_id = candidate_id
+                    break
+
+    if not vid_id:
+        return True, "No prior video ID found in history; initial upload cleared", {}
+
+    try:
+        videos_res = getattr(youtube, "videos", None)
+        if callable(videos_res):
+            videos_res = videos_res()
+        res = videos_res.list(id=vid_id, part="statistics,snippet").execute()
+        items = res.get("items", [])
+        if not items:
+            return True, f"Could not fetch stats for video {vid_id}; clearing upload", {}
+
+        stats = items[0].get("statistics", {})
+        snippet = items[0].get("snippet", {})
+        title = snippet.get("title", f"Video {vid_id}")
+        total_views = int(stats.get("viewCount", 0))
+        pub_str = snippet.get("publishedAt", "")
+        if not pub_str:
+            return True, "No publishedAt found; clearing upload", {}
+
+        pub_dt = parse_iso_datetime(pub_str)
+        now_utc = datetime.now(timezone.utc)
+        elapsed_hours = max((now_utc - pub_dt).total_seconds() / 3600.0, 0.1) if pub_dt else 24.0
+        hourly_velocity = int(total_views / elapsed_hours)
+
+        # 1. Early momentum check (>= 2,000 views in first 12h)
+        if elapsed_hours <= early_hours_window and total_views >= early_views_threshold:
+            msg = (
+                f"🚀 [VelocityGate] Early momentum detected! Active video '{title}' has reached "
+                f"{total_views:,} views in {elapsed_hours:.1f}h (>= {early_views_threshold:,} in {early_hours_window:.0f}h). "
+                f"Pausing upload to let early algorithmic traction perform."
+            )
+            log(msg)
+            return False, msg, {"total_views": total_views, "velocity": hourly_velocity, "elapsed_hours": elapsed_hours}
+
+        # 2. Viral velocity check (>= 2,500 views/hr)
+        if elapsed_hours <= 48 and hourly_velocity >= threshold_per_hour:
+            msg = (
+                f"🔥 [VelocityGate] Active video '{title}' is performing well ({hourly_velocity:,} views/hr >= {threshold_per_hour:,}/hr)! "
+                f"Pausing upload to let it perform on the algorithm before uploading another."
+            )
+            log(msg)
+            return False, msg, {"total_views": total_views, "velocity": hourly_velocity, "elapsed_hours": elapsed_hours}
+
+        msg = f"✅ [VelocityGate] Active video velocity ({hourly_velocity:,} views/hr, total: {total_views:,}) is below {threshold_per_hour:,}/hr threshold. Upload cleared."
+        log(msg)
+        return True, msg, {"total_views": total_views, "velocity": hourly_velocity, "elapsed_hours": elapsed_hours}
+
+    except Exception as e:
+        log(f"⚠️ [VelocityGate] Check failed ({e}); granting clearance as safe fallback.")
+        return True, f"Check failed: {e}", {}
+
+
 def check_youtube_video_status(
     youtube,
     video_id: str,
@@ -465,6 +550,24 @@ def upload_episode_package(
                 "message": f"Upload deferred: 24h cadence window not met ({rem_h:.2f}h remaining)",
                 "next_allowed": next_iso,
                 "remaining_seconds": remaining_sec,
+            }
+            with open(ep_dir / "upload_result.json", "w", encoding="utf-8") as f:
+                json.dump(res, f, indent=2)
+            return res
+
+        # Velocity Gate check: protect well-performing videos (>= 2k-3k views/hr or >= 2k in first 12h)
+        youtube = get_youtube_service()
+        can_upload_vel, vel_msg, vel_data = evaluate_view_velocity_gate(
+            youtube=youtube,
+            history=history,
+            allow_override=allow_cadence_override,
+        )
+        if not can_upload_vel:
+            log(f"🛑 [VelocityGate] Upload deferred: {vel_msg}")
+            res = {
+                "status": "deferred_velocity_gate",
+                "message": vel_msg,
+                "velocity_data": vel_data,
             }
             with open(ep_dir / "upload_result.json", "w", encoding="utf-8") as f:
                 json.dump(res, f, indent=2)
