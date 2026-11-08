@@ -8,7 +8,8 @@
     "demon-slayer-s01e06",
     "demon-slayer-s01e07",
     "demon-slayer-s01e08",
-    "demon-slayer-s01e09"
+    "demon-slayer-s01e09",
+    "demon-slayer-s01e10"
   ],
   "uploaded_parts": [
     {
@@ -298,8 +299,17 @@
       "url": "https://youtube.com/shorts/r-2uLfR4JMA",
       "title": "They Were Muzan's Deadliest Assassins… Until Tanjiro Saw the | Story Recap Explanation #shorts",
       "uploaded_at": "2026-11-07T11:31:30Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e10",
+      "part": null,
+      "is_full_video": false,
+      "video_id": "d5exBzMIbag",
+      "url": "https://youtube.com/shorts/d5exBzMIbag",
+      "title": "They Fought the Temari Assassin… Until Nezuko Kicked! | Story Recap Explanation #shorts",
+      "uploaded_at": "2026-11-08T11:40:33Z"
     }
   ],
-  "last_updated": "2026-11-07T11:31:30Z",
+  "last_updated": "2026-11-08T11:40:33Z",
   "active_episode": null
 }
