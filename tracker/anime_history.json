@@ -9,7 +9,8 @@
     "demon-slayer-s01e07",
     "demon-slayer-s01e08",
     "demon-slayer-s01e09",
-    "demon-slayer-s01e10"
+    "demon-slayer-s01e10",
+    "demon-slayer-s01e11"
   ],
   "uploaded_parts": [
     {
@@ -308,8 +309,17 @@
       "url": "https://youtube.com/shorts/d5exBzMIbag",
       "title": "They Fought the Temari Assassin… Until Nezuko Kicked! | Story Recap Explanation #shorts",
       "uploaded_at": "2026-11-08T11:40:33Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e11",
+      "part": null,
+      "is_full_video": false,
+      "video_id": "lJHPXepLYdI",
+      "url": "https://youtube.com/shorts/lJHPXepLYdI",
+      "title": "He Was the Strongest Demon Slayer… Until Truth Hit! | Story Recap Explanation #shorts",
+      "uploaded_at": "2026-11-09T13:30:53Z"
     }
   ],
-  "last_updated": "2026-11-08T11:40:33Z",
+  "last_updated": "2026-11-09T13:30:53Z",
   "active_episode": null
 }
