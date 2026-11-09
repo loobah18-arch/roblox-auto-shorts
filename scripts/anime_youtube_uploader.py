@@ -195,7 +195,24 @@ def evaluate_view_velocity_gate(
                     break
 
     if not vid_id:
-        return True, "No prior video ID found in history; initial upload cleared", {}
+        try:
+            channels_call = getattr(youtube, "channels", None)
+            if callable(channels_call):
+                c_res = channels_call().list(mine=True, part="contentDetails").execute()
+                items = c_res.get("items", [])
+                if items:
+                    uploads_id = items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+                    pl_call = getattr(youtube, "playlistItems", None)
+                    if callable(pl_call):
+                        pl_res = pl_call().list(playlistId=uploads_id, part="snippet", maxResults=1).execute()
+                        pl_items = pl_res.get("items", [])
+                        if pl_items:
+                            vid_id = pl_items[0]["snippet"]["resourceId"]["videoId"]
+        except Exception:
+            pass
+
+    if not vid_id:
+        return True, "No prior video ID found in history or channel; initial upload cleared", {}
 
     try:
         videos_res = getattr(youtube, "videos", None)
@@ -217,7 +234,27 @@ def evaluate_view_velocity_gate(
         pub_dt = parse_iso_datetime(pub_str)
         now_utc = datetime.now(timezone.utc)
         elapsed_hours = max((now_utc - pub_dt).total_seconds() / 3600.0, 0.1) if pub_dt else 24.0
-        hourly_velocity = int(total_views / elapsed_hours)
+
+        # Calculate recent hourly velocity delta if a prior snapshot exists
+        prev_snap = history.get("last_velocity_snapshot", {}) if isinstance(history, dict) else {}
+        if prev_snap.get("video_id") == vid_id and prev_snap.get("timestamp"):
+            prev_dt = parse_iso_datetime(prev_snap["timestamp"])
+            prev_v = prev_snap.get("total_views", 0)
+            if prev_dt:
+                delta_h = max((now_utc - prev_dt).total_seconds() / 3600.0, 0.1)
+                hourly_velocity = max(int((total_views - prev_v) / delta_h), 0)
+            else:
+                hourly_velocity = int(total_views / elapsed_hours)
+        else:
+            hourly_velocity = int(total_views / elapsed_hours)
+
+        if isinstance(history, dict):
+            history["last_velocity_snapshot"] = {
+                "video_id": vid_id,
+                "total_views": total_views,
+                "timestamp": now_utc.isoformat(),
+                "hourly_velocity": hourly_velocity,
+            }
 
         # 1. Early momentum check (>= 2,000 views in first 24h)
         if elapsed_hours <= early_hours_window and total_views >= early_views_threshold:
