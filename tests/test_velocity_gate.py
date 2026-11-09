@@ -40,10 +40,10 @@ class TestVelocityGate(unittest.TestCase):
                 {
                     "snippet": {
                         "title": "Demon Slayer Ep 09",
-                        "publishedAt": "2026-11-07T20:00:00Z",  # ~23h ago (past 12h early window)
+                        "publishedAt": "2026-11-07T10:00:00Z",  # ~30h ago (past 24h early window)
                     },
                     "statistics": {
-                        "viewCount": "80000",  # ~3,500 views/hr over ~23 hours
+                        "viewCount": "120000",  # ~4,000 views/hr over ~30 hours
                     },
                 }
             ]
@@ -107,7 +107,7 @@ class TestVelocityGate(unittest.TestCase):
             youtube=mock_youtube,
             history=self.mock_history,
             early_views_threshold=2000,
-            early_hours_window=12.0,
+            early_hours_window=24.0,
             allow_override=False,
         )
         self.assertFalse(can_upload)

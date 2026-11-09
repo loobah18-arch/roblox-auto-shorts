@@ -170,12 +170,12 @@ def evaluate_view_velocity_gate(
     history: dict | None,
     threshold_per_hour: int = VIEW_THRESHOLD_PER_HOUR,
     early_views_threshold: int = 2000,
-    early_hours_window: float = 12.0,
+    early_hours_window: float = 24.0,
     allow_override: bool = False,
 ) -> tuple[bool, str, dict]:
     """Evaluates YouTube Data API view velocity on the channel's most recent upload.
 
-    Protects well-performing videos (>= 2k-3k views/hr or >= 2k in first 12h)
+    Protects well-performing videos (>= 2k-3k views/hr or >= 2k in first 24h)
     from being choked by too-frequent uploads.
     """
     if allow_override or os.environ.get("ALLOW_VELOCITY_OVERRIDE", "false").lower() == "true":
@@ -219,7 +219,7 @@ def evaluate_view_velocity_gate(
         elapsed_hours = max((now_utc - pub_dt).total_seconds() / 3600.0, 0.1) if pub_dt else 24.0
         hourly_velocity = int(total_views / elapsed_hours)
 
-        # 1. Early momentum check (>= 2,000 views in first 12h)
+        # 1. Early momentum check (>= 2,000 views in first 24h)
         if elapsed_hours <= early_hours_window and total_views >= early_views_threshold:
             msg = (
                 f"🚀 [VelocityGate] Early momentum detected! Active video '{title}' has reached "
