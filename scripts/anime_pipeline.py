@@ -120,14 +120,37 @@ def run_pipeline(
 
     # Generate single continuous voiceover audio and landscape karaoke subtitles
     chapter_texts = [p["narration"] for p in script_package["parts"]]
-    master_audio_res = produce_master_audio_subtitles(
-        chapter_texts=chapter_texts,
-        output_audio_path=full_audio_file,
-        output_ass_path=full_ass_file,
-        voice=voice,
-        is_landscape=True,
-    )
-    total_master_duration = master_audio_res["duration"]
+    if dry_run:
+        total_master_duration = sum(len(t.split()) / 3.0 for t in chapter_texts)
+        chapter_segments = []
+        curr_start = 0.0
+        for idx, text in enumerate(chapter_texts):
+            dur = len(text.split()) / 3.0
+            chapter_segments.append({
+                "chapter_index": idx + 1,
+                "title": f"Chapter {idx + 1}",
+                "start_time": curr_start,
+                "end_time": curr_start + dur,
+                "duration": dur,
+                "narration": text,
+            })
+            curr_start += dur
+        master_audio_res = {
+            "duration": total_master_duration,
+            "word_count": sum(len(t.split()) for t in chapter_texts),
+            "chapter_segments": chapter_segments,
+        }
+        log(f"[DRY-RUN] Simulating master voiceover: {total_master_duration:.1f}s ({len(chapter_texts)} chapters)")
+    else:
+        master_audio_res = produce_master_audio_subtitles(
+            chapter_texts=chapter_texts,
+            output_audio_path=full_audio_file,
+            output_ass_path=full_ass_file,
+            voice=voice,
+            is_landscape=True,
+        )
+        total_master_duration = master_audio_res["duration"]
+        chapter_segments = master_audio_res.get("chapter_segments", [])
     log(f"Master continuous voiceover duration: {total_master_duration:.2f}s ({master_audio_res['word_count']} words)")
 
     # Build chapter segments mapping with exact time_ranges and beats from script package
@@ -472,16 +495,32 @@ def run_daily_funnel(
         full_ass_f = ep_work_dir / "full_subtitles.ass"
 
         chapter_texts = [p["narration"] for p in script_package["parts"]]
-        master_audio_res = produce_master_audio_subtitles(
-            chapter_texts=chapter_texts,
-            output_audio_path=full_audio_f,
-            output_ass_path=full_ass_f,
-            voice=voice,
-            is_landscape=True,
-        )
-        total_master_dur = master_audio_res["duration"]
-
-        chapter_segments = master_audio_res.get("chapter_segments", [])
+        if dry_run:
+            total_master_dur = sum(len(t.split()) / 3.0 for t in chapter_texts)
+            chapter_segments = []
+            curr_start = 0.0
+            for idx, text in enumerate(chapter_texts):
+                dur = len(text.split()) / 3.0
+                chapter_segments.append({
+                    "chapter_index": idx + 1,
+                    "title": f"Chapter {idx + 1}",
+                    "start_time": curr_start,
+                    "end_time": curr_start + dur,
+                    "duration": dur,
+                    "narration": text,
+                })
+                curr_start += dur
+            log(f"[DRY-RUN] Simulating master voiceover: {total_master_dur:.1f}s ({len(chapter_texts)} chapters)")
+        else:
+            master_audio_res = produce_master_audio_subtitles(
+                chapter_texts=chapter_texts,
+                output_audio_path=full_audio_f,
+                output_ass_path=full_ass_f,
+                voice=voice,
+                is_landscape=True,
+            )
+            total_master_dur = master_audio_res["duration"]
+            chapter_segments = master_audio_res.get("chapter_segments", [])
         for idx, chap in enumerate(chapter_segments):
             if idx < len(script_package["parts"]):
                 part_p = script_package["parts"][idx]
@@ -598,14 +637,18 @@ def run_daily_funnel(
                 ass_f = p_dir / "subtitles_landscape.ass"
                 vid_f = p_dir / f"landscape_{ep_key}_part{p_num}.mp4"
 
-                v_res = produce_part_audio_subtitles(
-                    text=part_info["narration"],
-                    output_audio_path=audio_f,
-                    output_ass_path=ass_f,
-                    badge_text="",
-                    voice=voice,
-                    is_landscape=True,
-                )
+                if dry_run:
+                    v_res = {"duration": len(part_info.get("narration", "").split()) / 3.0}
+                    log(f"[DRY-RUN] Simulating landscape voiceover: {v_res['duration']:.1f}s (Part {p_num})")
+                else:
+                    v_res = produce_part_audio_subtitles(
+                        text=part_info["narration"],
+                        output_audio_path=audio_f,
+                        output_ass_path=ass_f,
+                        badge_text="",
+                        voice=voice,
+                        is_landscape=True,
+                    )
                 part_beats = part_info.get("beats")
                 if not part_beats:
                     acts = get_episode_scene_acts({"episode_key": ep_key}, num_parts=len(script_package.get("parts", [])), raw_video_path=raw_video_path)
@@ -714,13 +757,18 @@ def run_daily_funnel(
     elif dry_run:
         download_gdrive_episode(active_ep.get("gdrive_file_id", ""), raw_video_path, dry_run=True)
 
-    v_res = produce_part_audio_subtitles(
-        text=part_info["narration"],
-        output_audio_path=audio_f,
-        output_ass_path=ass_f,
-        badge_text=part_info.get("badge", f"PART {next_p}/{total_parts}"),
-        voice=voice,
-    )
+    if dry_run:
+        actual_dur = len(part_info.get("narration", "").split()) / 3.0
+        v_res = {"duration": actual_dur, "word_count": len(part_info.get("narration", "").split())}
+        log(f"[DRY-RUN] Simulating Short Part {next_p} voiceover: {actual_dur:.1f}s")
+    else:
+        v_res = produce_part_audio_subtitles(
+            text=part_info["narration"],
+            output_audio_path=audio_f,
+            output_ass_path=ass_f,
+            badge_text=part_info.get("badge", f"PART {next_p}/{total_parts}"),
+            voice=voice,
+        )
     part_beats = part_info.get("beats")
     if not part_beats:
         acts = get_episode_scene_acts({"episode_key": ep_key}, num_parts=total_parts, raw_video_path=raw_video_path)

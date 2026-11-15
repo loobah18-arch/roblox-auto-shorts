@@ -172,6 +172,7 @@ def evaluate_view_velocity_gate(
     early_views_threshold: int = 2000,
     early_hours_window: float = 24.0,
     allow_override: bool = False,
+    now: datetime | None = None,
 ) -> tuple[bool, str, dict]:
     """Evaluates YouTube Data API view velocity on the channel's most recent upload.
 
@@ -232,7 +233,7 @@ def evaluate_view_velocity_gate(
             return True, "No publishedAt found; clearing upload", {}
 
         pub_dt = parse_iso_datetime(pub_str)
-        now_utc = datetime.now(timezone.utc)
+        now_utc = now if now is not None else datetime.now(timezone.utc)
         elapsed_hours = max((now_utc - pub_dt).total_seconds() / 3600.0, 0.1) if pub_dt else 24.0
 
         # Calculate recent hourly velocity delta if a prior snapshot exists

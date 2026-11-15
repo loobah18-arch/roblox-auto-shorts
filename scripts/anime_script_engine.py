@@ -296,9 +296,8 @@ def call_llm(prompt: str, system_prompt: str) -> str | None:
     # 1. Try OpenRouter free tier models
     if openrouter_key:
         models = [
-            "nvidia/nemotron-3-super-120b-a12b:free",
             "nvidia/nemotron-3.5-lightning:free",
-            "meta-llama/llama-3.3-70b-instruct:free",
+            "nvidia/nemotron-3.5-super-vl:free",
         ]
         for model in models:
             try:
@@ -330,30 +329,32 @@ def call_llm(prompt: str, system_prompt: str) -> str | None:
 
     # 2. Try Groq
     if groq_key:
-        try:
-            req_data = {
-                "model": "openai/gpt-oss-120b",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.7,
-            }
-            req = urllib.request.Request(
-                "https://api.groq.com/openai/v1/chat/completions",
-                data=json.dumps(req_data).encode("utf-8"),
-                headers={
-                    "Authorization": f"Bearer {groq_key}",
-                    "Content-Type": "application/json",
+        groq_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+        for g_model in groq_models:
+            try:
+                req_data = {
+                    "model": g_model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.7,
                 }
-            )
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                res = json.loads(resp.read().decode("utf-8"))
-                content = res["choices"][0]["message"]["content"]
-                if content:
-                    return content
-        except Exception:
-            pass
+                req = urllib.request.Request(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    data=json.dumps(req_data).encode("utf-8"),
+                    headers={
+                        "Authorization": f"Bearer {groq_key}",
+                        "Content-Type": "application/json",
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    res = json.loads(resp.read().decode("utf-8"))
+                    content = res["choices"][0]["message"]["content"]
+                    if content:
+                        return content
+            except Exception:
+                continue
 
     return None
 

@@ -213,9 +213,26 @@ def review_rendered_episode(ep_dir: Path) -> dict:
         summary = json.load(f)
 
     script_pkg_f = ep_dir / "script_package.json"
+    cinema_script_f = ep_dir / "cinema_script.json"
     if script_pkg_f.exists():
         with open(script_pkg_f, "r", encoding="utf-8") as f:
             script_package = json.load(f)
+    elif cinema_script_f.exists():
+        with open(cinema_script_f, "r", encoding="utf-8") as f:
+            cinema_script = json.load(f)
+        script_package = {
+            "episode_title": cinema_script.get("title", ep_dir.name),
+            "parts": [
+                {
+                    "part": 1,
+                    "short_title": cinema_script.get("title", ep_dir.name),
+                    "narration": cinema_script.get("narration", ""),
+                    "hook": cinema_script.get("hook", ""),
+                    "beats": cinema_script.get("beats", []),
+                    "estimated_duration": float(cinema_script.get("estimated_duration", 150.0)),
+                }
+            ],
+        }
     else:
         script_package = summary.get("script_package", {})
 
@@ -260,6 +277,8 @@ def review_rendered_episode(ep_dir: Path) -> dict:
             candidates = [
                 p_dir / f"landscape_{ep_dir.name}_part{p_num}.mp4",
                 p_dir / f"short_{ep_dir.name}_part{p_num}.mp4",
+                ep_dir / f"cinema_{ep_dir.name}.mp4",
+                ep_dir / f"short_{ep_dir.name}.mp4",
             ]
             vid_f = next((c for c in candidates if c.exists()), None)
 

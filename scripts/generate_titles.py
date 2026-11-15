@@ -35,6 +35,8 @@ DEFAULT_TAGS = [
 
 
 def load_metadata():
+    if not os.path.exists(META_PATH):
+        return {"videos": []}
     with open(META_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 

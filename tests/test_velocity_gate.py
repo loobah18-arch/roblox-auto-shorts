@@ -5,7 +5,7 @@ Unit tests for View Velocity Gate in roblox-auto-shorts (Bhaloo Ji).
 
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -35,12 +35,13 @@ class TestVelocityGate(unittest.TestCase):
 
     def test_viral_velocity_blocks_upload(self):
         mock_youtube = MagicMock()
+        pub_time = (datetime.now(timezone.utc) - timedelta(hours=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
         mock_resp = {
             "items": [
                 {
                     "snippet": {
                         "title": "Demon Slayer Ep 09",
-                        "publishedAt": "2026-11-07T10:00:00Z",  # ~30h ago (past 24h early window)
+                        "publishedAt": pub_time,  # ~30h ago (past 24h early window, within 48h viral window)
                     },
                     "statistics": {
                         "viewCount": "120000",  # ~4,000 views/hr over ~30 hours
@@ -61,15 +62,16 @@ class TestVelocityGate(unittest.TestCase):
 
     def test_sub_threshold_velocity_clears_upload(self):
         mock_youtube = MagicMock()
+        pub_time = (datetime.now(timezone.utc) - timedelta(hours=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
         mock_resp = {
             "items": [
                 {
                     "snippet": {
                         "title": "Demon Slayer Ep 09",
-                        "publishedAt": "2026-11-07T10:00:00Z",
+                        "publishedAt": pub_time,
                     },
                     "statistics": {
-                        "viewCount": "800",  # ~24h elapsed, ~33 views/hr
+                        "viewCount": "800",  # ~30h elapsed, ~26 views/hr
                     },
                 }
             ]
@@ -112,6 +114,34 @@ class TestVelocityGate(unittest.TestCase):
         )
         self.assertFalse(can_upload)
         self.assertIn("Early momentum detected", msg)
+
+    def test_velocity_gate_with_mock_now(self):
+        mock_youtube = MagicMock()
+        mock_now = datetime(2026, 11, 7, 12, 0, 0, tzinfo=timezone.utc)
+        mock_resp = {
+            "items": [
+                {
+                    "snippet": {
+                        "title": "Demon Slayer Ep 09",
+                        "publishedAt": "2026-11-06T06:00:00Z",  # 30h before mock_now
+                    },
+                    "statistics": {
+                        "viewCount": "120000",
+                    },
+                }
+            ]
+        }
+        mock_youtube.videos().list().execute.return_value = mock_resp
+
+        can_upload, msg, data = evaluate_view_velocity_gate(
+            youtube=mock_youtube,
+            history=self.mock_history,
+            threshold_per_hour=2500,
+            allow_override=False,
+            now=mock_now,
+        )
+        self.assertFalse(can_upload)
+        self.assertIn("performing well", msg)
 
 
 if __name__ == "__main__":

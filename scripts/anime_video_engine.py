@@ -425,8 +425,8 @@ def assemble_short_part(
                     if traj:
                         cx = traj.get("cx_start", 0.5)
                         cy = traj.get("cy_start", 0.5)
-                        crop_x = int(np.clip(cx * w_s - 640, 0, max(0, w_s - 1280)))
-                        crop_y = int(np.clip(cy * h_s - 360, 0, max(0, h_s - 720)))
+                        crop_x = int(max(0, min(w_s - 1280, cx * w_s - 640)))
+                        crop_y = int(max(0, min(h_s - 720, cy * h_s - 360)))
                 except Exception:
                     pass
                 vf_slice = f"setpts={tempo:.3f}*PTS,fps=30,scale={w_s}:{h_s}:force_original_aspect_ratio=increase,crop=1280:720:{crop_x}:{crop_y},setsar=1"
