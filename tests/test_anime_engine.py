@@ -1153,6 +1153,39 @@ class TestRecapKunLongFormAndNoDuplicates(unittest.TestCase):
             self.assertEqual(res["action"], "normal_video")
             self.assertEqual(res["mode"], "recapkun")
 
+    def test_recapkun_longform_documentary_spec(self):
+        """Verify long-form video engine produces genuine 8-18 min (>1,400 words) RecapKun-style documentary."""
+        from anime_script_engine import generate_episode_script
+        sample_ep = {
+            "series": "Demon Slayer: Kimetsu no Yaiba",
+            "series_id": "demon-slayer",
+            "season": 1,
+            "episode": 16,
+            "filename": "Demon_Slayer_Kimetsu_no_Yaiba_480P_S01_E16.mp4",
+            "episode_key": "demon-slayer-s01e16",
+            "display_name": "Demon Slayer: Kimetsu no Yaiba S01E16",
+        }
+        res = generate_episode_script(sample_ep)
+        full = res["full_video"]
+        script_words = len(full["script"].split())
+
+        # 1. Genuine long-form runtime requirement (>1,400 words ~ 8-15 minutes)
+        self.assertGreaterEqual(script_words, 1400, f"Long-form script too brief: {script_words} words")
+
+        # 2. Minimum 5 distinct narrative chapters
+        self.assertGreaterEqual(len(full["chapters"]), 5)
+        self.assertIn("00:00", full["chapters"][0])
+
+        # 3. Chapters have descriptive titles, not generic parts
+        self.assertTrue(any("Marionettes" in c or "Forest" in c for c in full["chapters"]))
+        self.assertTrue(any("Blessed Rain" in c or "Fifth Form" in c for c in full["chapters"]))
+
+        # 4. Zero mid-video cliffhangers in master narration
+        for p in res["parts"]:
+            narr = p["narration"].lower()
+            self.assertNotIn("watch part 2", narr)
+            self.assertNotIn("find out in part 3", narr)
+
 
 if __name__ == "__main__":
     unittest.main()
