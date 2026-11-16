@@ -722,11 +722,34 @@ def assemble_master_full_video(
                 s2_start = max(safe_start + s1_dur, s2_start)
                 shots = [(s1_start, s1_dur), (s2_start, s2_dur)]
 
+            # RecapKun signature editing: fast scene cuts (2.4s - 4.2s per cut)
+            # Never hold a single shot longer than 4.2s to maintain maximum viewer retention
+            MAX_SHOT_DUR = 4.2
+            refined_shots = []
+            for s_start, s_dur in shots:
+                if s_dur <= MAX_SHOT_DUR:
+                    refined_shots.append((s_start, s_dur))
+                else:
+                    num_sub = max(2, int(round(s_dur / 3.4)))
+                    sub_dur = round(s_dur / num_sub, 2)
+                    sub_accum = 0.0
+                    for s_i in range(num_sub):
+                        this_dur = (s_dur - sub_accum) if (s_i == num_sub - 1) else sub_dur
+                        sub_start = min(safe_end - this_dur, s_start + (s_i * 3.6))
+                        sub_start = max(safe_start, sub_start)
+                        refined_shots.append((round(sub_start, 2), round(this_dur, 2)))
+                        sub_accum += this_dur
+            shots = refined_shots
+
             for s_start, s_dur in shots:
                 if s_dur <= 0.5:
                     continue
                 seg_file = temp_dir / f"slice_{slice_idx:03d}.mp4"
-                vf_slice = "fps=30,scale=2150:1210:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                alt_zoom = (slice_idx % 2 == 1)
+                if alt_zoom:
+                    vf_slice = "fps=30,scale=2050:1153:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                else:
+                    vf_slice = "fps=30,scale=2150:1210:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
                 cmd_slice = [
                     "ffmpeg", "-y",
                     "-ss", f"{s_start:.2f}",

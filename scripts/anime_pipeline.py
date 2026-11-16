@@ -182,6 +182,7 @@ def run_pipeline(
         "hashtags": script_package["full_video"]["hashtags"],
         "duration": total_master_duration,
         "status": "rendered" if master_render_success else "failed",
+        "is_full_video": True,
     }
     with open(ep_work_dir / "full_video_meta.json", "w", encoding="utf-8") as f:
         json.dump(full_video_meta, f, indent=2)
@@ -270,8 +271,11 @@ def run_pipeline(
 
     pipeline_result = {
         "status": "success",
+        "mode": "recapkun",
+        "action": "normal_video",
         "episode_key": target_ep["episode_key"],
         "display_name": target_ep["display_name"],
+        "video_to_upload": full_video_meta,
         "parts": parts_meta,
         "full_video": full_video_meta,
     }
@@ -890,11 +894,11 @@ def run_daily_funnel(
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Run anime explanation pipeline")
-    parser.add_argument("--mode", default="cinema", choices=["cinema", "daily", "full"], help="Pipeline mode: 'cinema' (3-minute standalone Narration Cinema Shorts) or 'daily' (legacy funnel)")
+    parser.add_argument("--mode", default="recapkun", choices=["recapkun", "cinema", "daily", "full"], help="Pipeline mode: 'recapkun' (Master Long-Form RecapKun Video + Shorts), 'daily' (funnel), 'cinema' (3-minute shorts), or 'full'")
     parser.add_argument("--episode", default=None, help="Episode key (e.g. demon-slayer-s01e01)")
     parser.add_argument("--series", default=None, help="Series filter (e.g. demon-slayer, jujutsu-kaisen)")
     parser.add_argument("--dry-run", action="store_true", help="Simulate without heavy rendering")
-    parser.add_argument("--voice", default="default", help="Voice (default: adam for cinema, ChristopherNeural for daily)")
+    parser.add_argument("--voice", default="default", help="Voice (default: adam for cinema, ChristopherNeural for daily/recapkun)")
     parser.add_argument("--bgm", default=None, help="Optional background music path")
     parser.add_argument("--live", action="store_true", help="Live YouTube upload mode")
 
@@ -911,15 +915,16 @@ if __name__ == "__main__":
         res = run_daily_funnel(
             series_filter=args.series,
             dry_run=args.dry_run,
-            voice=args.voice,
+            voice=args.voice if args.voice != "default" else "en-US-ChristopherNeural",
             bgm_path=args.bgm,
         )
     else:
+        # 'recapkun' or 'full': produces Master Long-Form 16:9 Video and derived Shorts
         res = run_pipeline(
             episode_key=args.episode,
             series_filter=args.series,
             dry_run=args.dry_run,
-            voice=args.voice,
+            voice=args.voice if args.voice != "default" else "en-US-ChristopherNeural",
             bgm_path=args.bgm,
             upload_live=args.live,
         )

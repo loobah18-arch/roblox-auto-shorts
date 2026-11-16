@@ -611,8 +611,8 @@ def upload_episode_package(
                 json.dump(res, f, indent=2)
             return res
 
-    if summary.get("mode") in ("daily_funnel", "cinema") or "video_to_upload" in summary:
-        action = summary.get("action", "short")
+    if summary.get("mode") in ("daily_funnel", "cinema", "recapkun", "full") or "video_to_upload" in summary:
+        action = summary.get("action", "normal_video" if summary.get("mode") in ("recapkun", "full") else "short")
         vid_to_upload = summary.get("video_to_upload", {})
 
         if not live:
@@ -744,8 +744,11 @@ def upload_episode_package(
             uploaded_parts.append(record)
             history["uploaded_parts"] = uploaded_parts
 
-            if summary.get("mode") == "cinema" or vid_to_upload.get("is_cinema_short"):
-                log(f"🎉 Standalone 3-Minute Cinema Short successfully uploaded: {upload_res.get('url')}!")
+            if summary.get("mode") in ("cinema", "recapkun", "full") or vid_to_upload.get("is_cinema_short"):
+                if action == "normal_video" or summary.get("mode") in ("recapkun", "full"):
+                    log(f"🎉 RecapKun Master Long-Form Video successfully uploaded: {upload_res.get('url')}!")
+                else:
+                    log(f"🎉 Standalone 3-Minute Cinema Short successfully uploaded: {upload_res.get('url')}!")
                 completed = history.get("completed_episodes", [])
                 if ep_key not in completed:
                     completed.append(ep_key)

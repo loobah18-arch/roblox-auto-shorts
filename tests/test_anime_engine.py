@@ -1069,6 +1069,91 @@ class TestUploadCadence(unittest.TestCase):
                 self.assertEqual(res["remaining_seconds"], 7200.0)
 
 
+class TestRecapKunLongFormAndNoDuplicates(unittest.TestCase):
+    def test_no_duplicate_titles_or_narrations_for_episodes_11_to_16(self):
+        """Verify episodes 11 through 16 generate distinct titles and narrations without generic fallback."""
+        from anime_script_engine import generate_cinema_script
+        titles = set()
+        narrations = set()
+        for ep_n in [11, 12, 13, 14, 15, 16]:
+            sample_ep = {
+                "series": "Demon Slayer: Kimetsu no Yaiba",
+                "series_id": "demon-slayer",
+                "season": 1,
+                "episode": ep_n,
+                "filename": f"Demon_Slayer_Kimetsu_no_Yaiba_480P_S01_E{ep_n:02d}.mp4",
+                "episode_key": f"demon-slayer-s01e{ep_n:02d}",
+                "display_name": f"Demon Slayer: Kimetsu no Yaiba S01E{ep_n:02d}",
+            }
+            res = generate_cinema_script(sample_ep)
+            self.assertNotIn("He Was the Strongest Demon Slayer… Until Truth Hit!", res["title"])
+            self.assertGreaterEqual(res["word_count"], 400)
+            self.assertIn("To watch the next episode, comment yes.", res["narration"])
+            titles.add(res["title"])
+            narrations.add(res["narration"])
+
+        self.assertEqual(len(titles), 6, "Every episode must have a unique title!")
+        self.assertEqual(len(narrations), 6, "Every episode must have a unique narration!")
+
+    def test_recapkun_full_video_script_generation(self):
+        """Verify generate_episode_script produces full video metadata with chapters and RecapKun title."""
+        from anime_script_engine import generate_episode_script
+        sample_ep = {
+            "series": "Demon Slayer: Kimetsu no Yaiba",
+            "series_id": "demon-slayer",
+            "season": 1,
+            "episode": 16,
+            "filename": "Demon_Slayer_Kimetsu_no_Yaiba_480P_S01_E16.mp4",
+            "episode_key": "demon-slayer-s01e16",
+            "display_name": "Demon Slayer: Kimetsu no Yaiba S01E16",
+        }
+        res = generate_episode_script(sample_ep)
+        self.assertIn("full_video", res)
+        full = res["full_video"]
+        self.assertIn("Full Recap & Explanation", full["title"])
+        self.assertIn("Letting Someone Else Go First", full["title"])
+        self.assertGreaterEqual(len(full["chapters"]), 3)
+        self.assertIn("00:00", full["chapters"][0])
+
+    def test_recapkun_pipeline_dry_run_produces_full_and_shorts(self):
+        """Verify run_pipeline produces both master full video and derived shorts with mode=recapkun."""
+        from anime_pipeline import run_pipeline
+        res = run_pipeline(episode_key="demon-slayer-s01e16", dry_run=True)
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["mode"], "recapkun")
+        self.assertEqual(res["action"], "normal_video")
+        self.assertTrue(res["video_to_upload"]["is_full_video"])
+        self.assertIn("full_video", res)
+        self.assertGreaterEqual(len(res["parts"]), 3)
+
+    def test_uploader_recapkun_mode_preview(self):
+        """Verify uploader processes recapkun mode master normal video."""
+        import tempfile
+        from anime_youtube_uploader import upload_episode_package
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            summary = {
+                "status": "success",
+                "mode": "recapkun",
+                "action": "normal_video",
+                "episode_key": "demon-slayer-s01e16",
+                "video_to_upload": {
+                    "title": "Demon Slayer Season 1 Episode 16 Full Recap & Explanation",
+                    "video_path": str(td_path / "full_demon-slayer-s01e16.mp4"),
+                    "description": "Full RecapKun breakdown",
+                    "hashtags": ["anime", "bhalooji"],
+                    "is_full_video": True,
+                }
+            }
+            with open(td_path / "pipeline_summary.json", "w") as f:
+                json.dump(summary, f)
+
+            res = upload_episode_package(episode_dir=td_path, live=False)
+            self.assertEqual(res["status"], "preview")
+            self.assertEqual(res["action"], "normal_video")
+            self.assertEqual(res["mode"], "recapkun")
+
+
 if __name__ == "__main__":
     unittest.main()
 
