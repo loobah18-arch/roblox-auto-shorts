@@ -1117,8 +1117,10 @@ class TestRecapKunLongFormAndNoDuplicates(unittest.TestCase):
 
     def test_recapkun_pipeline_dry_run_produces_full_and_shorts(self):
         """Verify run_pipeline produces both master full video and derived shorts with mode=recapkun."""
+        from unittest.mock import patch
         from anime_pipeline import run_pipeline
-        res = run_pipeline(episode_key="demon-slayer-s01e16", dry_run=True)
+        with patch("anime_pipeline.save_history"):
+            res = run_pipeline(episode_key="demon-slayer-s01e16", dry_run=True)
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["mode"], "recapkun")
         self.assertEqual(res["action"], "normal_video")
@@ -1185,6 +1187,128 @@ class TestRecapKunLongFormAndNoDuplicates(unittest.TestCase):
             narr = p["narration"].lower()
             self.assertNotIn("watch part 2", narr)
             self.assertNotIn("find out in part 3", narr)
+
+
+class TestAnimeArcEngine(unittest.TestCase):
+    def test_arc_catalog_and_registry(self):
+        """Verify arc registry defines all Demon Slayer and Jujutsu Kaisen arcs and detects next pending arc."""
+        from anime_catalog import get_story_arcs, get_arc, get_arc_for_episode, get_next_arc
+        ds_arcs = get_story_arcs("demon-slayer")
+        self.assertEqual(len(ds_arcs), 10)
+        jjk_arcs = get_story_arcs("jujutsu-kaisen")
+        self.assertEqual(len(jjk_arcs), 6)
+
+        arc = get_arc("demon-slayer-mount-natagumo")
+        self.assertIsNotNone(arc)
+        self.assertEqual(arc["arc_name"], "Mount Natagumo Arc")
+        self.assertEqual(len(arc["episode_keys"]), 7)
+        self.assertEqual(arc["episode_keys"][0], "demon-slayer-s01e15")
+        self.assertEqual(arc["episode_keys"][-1], "demon-slayer-s01e21")
+
+        arc_for_ep = get_arc_for_episode("demon-slayer-s01e16")
+        self.assertIsNotNone(arc_for_ep)
+        self.assertEqual(arc_for_ep["arc_key"], "demon-slayer-mount-natagumo")
+
+        # Previous 4 arcs (episodes 1-14) are marked complete in anime_history.json
+        next_arc = get_next_arc("demon-slayer")
+        self.assertIsNotNone(next_arc)
+        self.assertEqual(next_arc["arc_key"], "demon-slayer-mount-natagumo")
+
+    def test_arc_script_under_1hour_no_split(self):
+        """Verify arc with duration <= 3600s produces 1 single complete video without splitting."""
+        from anime_catalog import get_arc
+        from anime_script_engine import generate_arc_script
+
+        arc = get_arc("demon-slayer-mount-natagumo")
+        script_pkg = generate_arc_script(arc, part=1, max_duration=3600.0)
+
+        # 1. Total duration must be <= 3600.0s and must NOT split
+        self.assertFalse(script_pkg["is_split"])
+        self.assertEqual(script_pkg["total_parts"], 1)
+        self.assertEqual(script_pkg["part"], 1)
+        self.assertLessEqual(script_pkg["part_duration"], 3600.0)
+        self.assertGreater(script_pkg["word_count"], 3000)
+
+        # 2. Minimum chapters covering all episodes in the arc
+        self.assertGreaterEqual(len(script_pkg["chapters"]), 7)
+        self.assertTrue(script_pkg["chapter_timestamps"][0].startswith("00:00"))
+
+        # 3. No Part 1 or cliffhanger in title when unsplit
+        self.assertNotIn("Part 1", script_pkg["full_video"]["title"])
+        self.assertIn("Mount Natagumo Arc", script_pkg["full_video"]["title"])
+
+    def test_arc_script_over_1hour_splits(self):
+        """Verify arc exceeding 3600s strictly splits into Part 1/2 and Part 2/2 each <= max_duration."""
+        from anime_catalog import get_arc
+        from anime_script_engine import generate_arc_script
+
+        arc = get_arc("demon-slayer-mount-natagumo")
+        # Test split rule threshold by setting max_duration=1500.0s (less than the ~1972s total)
+        pkg_part1 = generate_arc_script(arc, part=1, max_duration=1500.0)
+        self.assertTrue(pkg_part1["is_split"])
+        self.assertEqual(pkg_part1["total_parts"], 2)
+        self.assertEqual(pkg_part1["part"], 1)
+        self.assertIn("Part 1/2", pkg_part1["full_video"]["title"])
+        self.assertLessEqual(pkg_part1["part_duration"], 1500.0)
+
+        pkg_part2 = generate_arc_script(arc, part=2, max_duration=1500.0)
+        self.assertTrue(pkg_part2["is_split"])
+        self.assertEqual(pkg_part2["total_parts"], 2)
+        self.assertEqual(pkg_part2["part"], 2)
+        self.assertIn("Part 2/2", pkg_part2["full_video"]["title"])
+        self.assertLessEqual(pkg_part2["part_duration"], 1500.0)
+
+    def test_arc_pipeline_dry_run(self):
+        """Verify full arc pipeline runs dry-run without errors and produces expected summary schema."""
+        from anime_pipeline import run_arc_pipeline
+
+        res = run_arc_pipeline(
+            arc_key="demon-slayer-mount-natagumo",
+            dry_run=True,
+            part=1,
+            upload_live=False,
+        )
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["mode"], "arc")
+        self.assertTrue(res["is_arc"])
+        self.assertEqual(res["arc_key"], "demon-slayer-mount-natagumo")
+        self.assertIn("video_to_upload", res)
+        self.assertTrue(res["video_to_upload"]["is_arc"])
+        self.assertGreaterEqual(len(res["parts"]), 1)
+
+    def test_arc_uploader_completion(self):
+        """Verify uploader properly handles arc packages and updates history tracking."""
+        import tempfile
+        from anime_youtube_uploader import upload_episode_package
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            summary = {
+                "status": "success",
+                "mode": "arc",
+                "action": "normal_video",
+                "is_arc": True,
+                "arc_key": "demon-slayer-mount-natagumo",
+                "display_name": "Demon Slayer: Kimetsu no Yaiba — Mount Natagumo Arc",
+                "video_to_upload": {
+                    "is_arc": True,
+                    "part": 1,
+                    "total_parts": 1,
+                    "title": "Demon Slayer Mount Natagumo Arc Full Story",
+                    "video_path": str(td_path / "full_mount_natagumo.mp4"),
+                    "description": "Full story recap",
+                    "hashtags": ["anime", "bhalooji"],
+                    "is_full_video": True,
+                },
+                "parts": [],
+            }
+            with open(td_path / "pipeline_summary.json", "w") as f:
+                json.dump(summary, f)
+
+            res = upload_episode_package(episode_dir=td_path, live=False)
+            self.assertEqual(res["status"], "preview")
+            self.assertEqual(res["action"], "normal_video")
+            self.assertEqual(res["mode"], "arc")
 
 
 if __name__ == "__main__":

@@ -611,8 +611,8 @@ def upload_episode_package(
                 json.dump(res, f, indent=2)
             return res
 
-    if summary.get("mode") in ("daily_funnel", "cinema", "recapkun", "full") or "video_to_upload" in summary:
-        action = summary.get("action", "normal_video" if summary.get("mode") in ("recapkun", "full") else "short")
+    if summary.get("mode") in ("daily_funnel", "cinema", "recapkun", "full", "arc") or "video_to_upload" in summary:
+        action = summary.get("action", "normal_video" if summary.get("mode") in ("recapkun", "full", "arc") else "short")
         vid_to_upload = summary.get("video_to_upload", {})
 
         if not live:
@@ -744,16 +744,41 @@ def upload_episode_package(
             uploaded_parts.append(record)
             history["uploaded_parts"] = uploaded_parts
 
-            if summary.get("mode") in ("cinema", "recapkun", "full") or vid_to_upload.get("is_cinema_short"):
-                if action == "normal_video" or summary.get("mode") in ("recapkun", "full"):
-                    log(f"🎉 RecapKun Master Long-Form Video successfully uploaded: {upload_res.get('url')}!")
+            if summary.get("mode") in ("cinema", "recapkun", "full", "arc") or vid_to_upload.get("is_cinema_short") or vid_to_upload.get("is_arc"):
+                if action == "normal_video" or summary.get("mode") in ("recapkun", "full", "arc") or vid_to_upload.get("is_arc"):
+                    if summary.get("mode") == "arc" or vid_to_upload.get("is_arc"):
+                        log(f"🎉 Story Arc Master Video successfully uploaded: {upload_res.get('url')}!")
+                        total_parts = vid_to_upload.get("total_parts", 1)
+                        curr_part = vid_to_upload.get("part", 1)
+                        arc_k = summary.get("arc_key") or ep_key
+                        if curr_part >= total_parts:
+                            completed_arcs = history.setdefault("completed_arcs", [])
+                            if arc_k not in completed_arcs:
+                                completed_arcs.append(arc_k)
+                            from anime_catalog import get_arc
+                            arc_obj = get_arc(arc_k)
+                            if arc_obj:
+                                c_eps = history.setdefault("completed_episodes", [])
+                                for ek in arc_obj.get("episode_keys", []):
+                                    if ek not in c_eps:
+                                        c_eps.append(ek)
+                            history["active_arc"] = None
+                        else:
+                            history["active_arc"] = {"arc_key": arc_k, "part": curr_part + 1, "total_parts": total_parts}
+                    else:
+                        log(f"🎉 RecapKun Master Long-Form Video successfully uploaded: {upload_res.get('url')}!")
+                        completed = history.get("completed_episodes", [])
+                        if ep_key not in completed:
+                            completed.append(ep_key)
+                            history["completed_episodes"] = completed
+                        history["active_episode"] = None
                 else:
                     log(f"🎉 Standalone 3-Minute Cinema Short successfully uploaded: {upload_res.get('url')}!")
-                completed = history.get("completed_episodes", [])
-                if ep_key not in completed:
-                    completed.append(ep_key)
-                    history["completed_episodes"] = completed
-                history["active_episode"] = None
+                    completed = history.get("completed_episodes", [])
+                    if ep_key not in completed:
+                        completed.append(ep_key)
+                        history["completed_episodes"] = completed
+                    history["active_episode"] = None
             elif active and active.get("episode_key") == ep_key:
                 if action == "normal_video":
                     active["normal_video_uploaded"] = True

@@ -462,6 +462,140 @@ Enjoying the breakdown? Like and Subscribe to Bhaloo Ji for daily anime recaps!
     }
 
 
+def generate_arc_script(arc_info: dict, part: int = 1, max_duration: float = 3600.0, catalog: dict = None) -> dict:
+    """
+    Generates a master feature-length anime recap documentary script for an entire Story Arc.
+    Rule: If total arc duration exceeds 1 hour (3600s), splits into Part 1 and Part 2 (each <= 1 hour).
+    If duration <= 1 hour, produces 1 complete arc recap.
+    """
+    from anime_catalog import load_catalog
+    if catalog is None:
+        catalog = load_catalog()
+
+    ep_map = {e["episode_key"]: e for e in catalog.get("episodes", [])}
+    series = arc_info.get("series", "Anime")
+    series_id = arc_info.get("series_id", "anime")
+    season = arc_info.get("season", 1)
+    arc_name = arc_info.get("arc_name", "Story Arc")
+    arc_key = arc_info.get("arc_key", f"{series_id}-arc")
+    series_tag = series.replace(" ", "").replace(":", "")
+
+    # Gather chapters across all episodes in the arc
+    all_chapters = []
+    ep_keys = arc_info.get("episode_keys", [])
+
+    for ep_key in ep_keys:
+        ep_info = ep_map.get(ep_key)
+        if not ep_info:
+            ep_info = {
+                "series": series,
+                "series_id": series_id,
+                "season": season,
+                "episode": int(ep_key.split("e")[-1]) if "e" in ep_key else (len(all_chapters) + 1),
+                "episode_key": ep_key,
+                "filename": f"{ep_key}.mp4",
+                "display_name": f"{series} {ep_key}",
+            }
+        ep_script = generate_episode_script(ep_info)
+        for p in ep_script.get("parts", []):
+            p_copy = dict(p)
+            p_copy["episode_key"] = ep_key
+            p_copy["episode"] = ep_info.get("episode", 1)
+            p_copy["series"] = series
+            all_chapters.append(p_copy)
+
+    total_words = sum(len(c["narration"].split()) for c in all_chapters)
+    total_arc_duration = total_words / 2.8  # ~170 WPM at +8% pace
+
+    # Apply the 1-Hour Rule: If arc exceeds 3600s (60 mins), split into Part 1 & Part 2
+    is_split = (total_arc_duration > max_duration)
+    total_parts = 2 if is_split else 1
+    current_part = min(max(1, part), total_parts)
+
+    if is_split:
+        target_half = total_arc_duration / 2.0
+        accum = 0.0
+        split_idx = len(all_chapters) // 2
+        for idx, c in enumerate(all_chapters):
+            accum += len(c["narration"].split()) / 2.8
+            if accum >= target_half and idx > 0:
+                split_idx = idx
+                break
+
+        if current_part == 1:
+            active_chapters = all_chapters[:split_idx]
+            part_label = "Part 1/2"
+            ep_range = f"Episodes {active_chapters[0]['episode']}-{active_chapters[-1]['episode']}"
+            full_title = f"{series} - {arc_name} Full Story Recap ({part_label}) | {ep_range}"
+        else:
+            active_chapters = all_chapters[split_idx:]
+            part_label = "Part 2/2"
+            ep_range = f"Episodes {active_chapters[0]['episode']}-{active_chapters[-1]['episode']}"
+            full_title = f"{series} - {arc_name} Full Story Recap ({part_label}) | {ep_range}"
+    else:
+        active_chapters = all_chapters
+        full_title = f"{series} - {arc_name} Full Story Recap & Explanation | The Complete Arc"
+
+    if len(full_title) > 100:
+        full_title = full_title[:97] + "..."
+
+    # Format continuous chapter timestamps starting at 00:00
+    chapters = []
+    full_script_paragraphs = []
+    current_time = 0.0
+
+    for i, c in enumerate(active_chapters, 1):
+        c_words = len(c["narration"].split())
+        c_dur = max(30.0, c_words / 2.8)
+        mins = int(current_time // 60)
+        secs = int(current_time % 60)
+        c_title = c.get("chapter_title") or c.get("theme") or f"Act {i}"
+        ep_num = c.get("episode", "")
+        ep_suffix = f" (Ep {ep_num})" if ep_num else ""
+        chapters.append(f"{mins:02d}:{secs:02d} Chapter {i}: {c_title}{ep_suffix}")
+        current_time += c_dur
+        full_script_paragraphs.append(c["narration"])
+
+    part_words = sum(len(p.split()) for p in full_script_paragraphs)
+
+    full_desc = f"""Complete Story Arc recap and explanation of {series}: {arc_name}.
+
+Overview:
+An epic, continuous feature-length anime documentary breakdown of the entire {arc_name} across {len(active_chapters)} in-depth narrative chapters.
+
+Arc Chapters:
+{chr(10).join(chapters)}
+
+Enjoying the breakdown? Like and Subscribe to Bhaloo Ji for complete anime arc recaps!
+
+{FAIR_USE_DISCLAIMER}
+#anime #{series_tag.lower()} #animerecap #animeexplained #bhalooji #fullarc"""
+
+    return {
+        "is_arc": True,
+        "arc_key": arc_key,
+        "arc_name": arc_name,
+        "series": series,
+        "season": season,
+        "total_parts": total_parts,
+        "part": current_part,
+        "is_split": is_split,
+        "total_arc_duration": total_arc_duration,
+        "part_duration": current_time,
+        "word_count": part_words,
+        "chapters": active_chapters,
+        "chapter_timestamps": chapters,
+        "full_video": {
+            "title": full_title[:100],
+            "script": " ".join(full_script_paragraphs),
+            "chapters": chapters,
+            "description": full_desc,
+            "duration": current_time,
+            "hashtags": ["anime", "animerecap", "animeexplained", series_tag.lower(), "bhalooji", "fullarc"]
+        }
+    }
+
+
 def generate_cinema_script(episode_info: dict) -> dict:
     """
     Generates a single standalone 2.5-3 minute (150-175s) YouTube Short script package

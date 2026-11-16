@@ -18,8 +18,8 @@ import sys
 import time
 from pathlib import Path
 
-from anime_catalog import get_next_episode, get_active_episode, load_catalog, load_history, save_history
-from anime_script_engine import generate_episode_script, generate_cinema_script
+from anime_catalog import get_next_episode, get_active_episode, load_catalog, load_history, save_history, get_next_arc, get_arc, get_story_arcs
+from anime_script_engine import generate_episode_script, generate_cinema_script, generate_arc_script
 from anime_subtitle_sync import get_episode_scene_acts
 from anime_voice_subtitles import produce_part_audio_subtitles, produce_master_audio_subtitles, CINEMA_VOICE
 from anime_copyright_filter import MultiAgentCopyrightShield
@@ -29,6 +29,7 @@ from anime_video_engine import (
     stitch_full_episode_video,
     pick_bgm_for_episode,
     assemble_master_full_video,
+    assemble_arc_master_video,
     derive_short_from_master,
 )
 
@@ -891,19 +892,254 @@ def run_daily_funnel(
     return result
 
 
+def run_arc_pipeline(
+    arc_key: str | None = None,
+    series_filter: str | None = None,
+    dry_run: bool = False,
+    voice: str = "en-US-ChristopherNeural",
+    bgm_path: str | Path | None = None,
+    part: int = 1,
+    upload_live: bool = False,
+) -> dict:
+    """
+    Run full story arc video production (1 complete video per arc, split into Part 1/2 if > 1 hour).
+    """
+    log("=== ⚔️ Starting Bhaloo Ji Story Arc Explanation Pipeline ===")
+
+    # 1. Select Arc
+    target_arc = None
+    if arc_key:
+        target_arc = get_arc(arc_key)
+        if not target_arc:
+            log(f"Story Arc '{arc_key}' not found.")
+            return {"status": "error", "message": "arc not found"}
+    else:
+        target_arc = get_next_arc(series_filter)
+        if not target_arc:
+            log("No pending story arcs found in catalog.")
+            return {"status": "complete", "message": "all arcs completed"}
+
+    log(f"Target Story Arc: {target_arc['display_name']} (Key: {target_arc['arc_key']})")
+    log(f"Episodes in Arc ({len(target_arc['episode_keys'])}): {', '.join(target_arc['episode_keys'])}")
+
+    arc_work_dir = OUTPUT_DIR / target_arc["arc_key"]
+    arc_work_dir.mkdir(parents=True, exist_ok=True)
+
+    if not bgm_path:
+        bgm_path = pick_bgm_for_episode(series_id=target_arc.get("series_id"))
+        log(f"Auto-selected royalty-free BGM: {bgm_path.name}")
+    elif not Path(bgm_path).exists():
+        bgm_path = pick_bgm_for_episode(series_id=target_arc.get("series_id"))
+
+    # 2. Generate Arc Script Package with 1-hour split rule
+    catalog = load_catalog()
+    ep_map = {e["episode_key"]: e for e in catalog.get("episodes", [])}
+
+    log("Generating comprehensive Story Arc script & chapters...")
+    arc_script = generate_arc_script(target_arc, part=part, max_duration=3600.0, catalog=catalog)
+
+    part_suffix = f"_part{arc_script['part']}" if arc_script.get("is_split") else ""
+    script_file = arc_work_dir / f"arc_script{part_suffix}.json"
+    with open(script_file, "w", encoding="utf-8") as f:
+        json.dump(arc_script, f, indent=2, ensure_ascii=False)
+
+    log(f"Arc Script ready: {arc_script['full_video']['title']} ({arc_script['word_count']} words, est {arc_script['part_duration']:.1f}s / {arc_script['part_duration']/60:.1f} min)")
+
+    # 3. Source Raw Anime Videos for all episodes in the arc
+    raw_episode_map = {}
+    for ep_k in target_arc["episode_keys"]:
+        ep_obj = ep_map.get(ep_k, {})
+        fn = ep_obj.get("filename", f"{ep_k}.mp4")
+        raw_path = CACHE_DIR / fn
+        if not dry_run and not raw_path.exists():
+            fid = ep_obj.get("gdrive_file_id", "")
+            if fid:
+                ok = download_gdrive_episode(fid, raw_path, dry_run=dry_run)
+                if not ok:
+                    log(f"Warning: Failed to download episode {ep_k}.")
+        elif dry_run:
+            fid = ep_obj.get("gdrive_file_id", "")
+            download_gdrive_episode(fid, raw_path, dry_run=True)
+        raw_episode_map[ep_k] = raw_path
+
+    # 4. Produce Master Arc Video (16:9 Landscape)
+    log(f"\n=== 🎬 Producing Master Arc Video (16:9 Landscape) [{part_suffix.strip('_') or 'Full Complete Arc'}] ===")
+    arc_video_file = arc_work_dir / f"full_{target_arc['arc_key']}{part_suffix}.mp4"
+    arc_audio_file = arc_work_dir / f"arc_voice{part_suffix}.mp3"
+    arc_ass_file = arc_work_dir / f"arc_subtitles{part_suffix}.ass"
+
+    chapter_texts = [c["narration"] for c in arc_script["chapters"]]
+
+    if dry_run:
+        total_master_duration = sum(len(t.split()) / 3.0 for t in chapter_texts)
+        chapter_segments = []
+        curr_start = 0.0
+        for idx, (c_obj, text) in enumerate(zip(arc_script["chapters"], chapter_texts), 1):
+            dur = len(text.split()) / 3.0
+            chapter_segments.append({
+                "part": idx,
+                "chapter_index": idx,
+                "episode_key": c_obj.get("episode_key", ""),
+                "title": c_obj.get("chapter_title", f"Chapter {idx}"),
+                "time_range": c_obj.get("time_range", [120, 500]),
+                "beats": c_obj.get("beats", []),
+                "start_time": curr_start,
+                "end_time": curr_start + dur,
+                "duration": dur,
+                "narration": text,
+            })
+            curr_start += dur
+        master_audio_res = {
+            "duration": total_master_duration,
+            "word_count": sum(len(t.split()) for t in chapter_texts),
+            "chapter_segments": chapter_segments,
+        }
+        log(f"[DRY-RUN] Simulating arc master voiceover: {total_master_duration:.1f}s ({len(chapter_texts)} chapters across {len(target_arc['episode_keys'])} episodes)")
+    else:
+        master_audio_res = produce_master_audio_subtitles(
+            chapter_texts=chapter_texts,
+            output_audio_path=arc_audio_file,
+            output_ass_path=arc_ass_file,
+            voice=voice,
+            is_landscape=True,
+        )
+        total_master_duration = master_audio_res["duration"]
+        chapter_segments = master_audio_res.get("chapter_segments", [])
+        for idx, chap in enumerate(chapter_segments):
+            if idx < len(arc_script["chapters"]):
+                c_obj = arc_script["chapters"][idx]
+                chap["episode_key"] = c_obj.get("episode_key", "")
+                chap["time_range"] = c_obj.get("time_range", [120, 500])
+                chap["narration"] = c_obj.get("narration", "")
+                chap["beats"] = c_obj.get("beats", [])
+
+    master_render_success = assemble_arc_master_video(
+        raw_episode_map=raw_episode_map,
+        voice_audio_path=arc_audio_file,
+        ass_subtitle_path=arc_ass_file,
+        output_video_path=arc_video_file,
+        chapter_segments=chapter_segments,
+        total_duration=total_master_duration,
+        bgm_path=bgm_path,
+        dry_run=dry_run,
+    )
+
+    arc_video_meta = {
+        "title": arc_script["full_video"]["title"],
+        "video_path": str(arc_video_file),
+        "chapters": arc_script["full_video"]["chapters"],
+        "description": arc_script["full_video"]["description"],
+        "hashtags": arc_script["full_video"]["hashtags"],
+        "duration": total_master_duration,
+        "status": "rendered" if master_render_success else "failed",
+        "is_full_video": True,
+        "is_arc": True,
+        "arc_key": target_arc["arc_key"],
+        "part": arc_script["part"],
+        "total_parts": arc_script["total_parts"],
+        "is_split": arc_script["is_split"],
+    }
+
+    with open(arc_work_dir / f"arc_video_meta{part_suffix}.json", "w", encoding="utf-8") as f:
+        json.dump(arc_video_meta, f, indent=2)
+
+    if not master_render_success:
+        log("❌ Failed to produce Master Arc Video.")
+        return {
+            "status": "error",
+            "message": "arc video rendering failed",
+            "arc_key": target_arc["arc_key"],
+        }
+
+    log(f"🎬 Master Arc Video successfully produced: {arc_video_file.name}")
+
+    # 5. Derive Climax Shorts from key acts of the Arc
+    log("\n=== 📱 Deriving Daily Shorts Excerpts from Master Arc Video ===")
+    parts_meta = []
+    step = max(1, len(chapter_segments) // 4)
+    climax_indices = [i * step for i in range(min(4, len(chapter_segments)))]
+
+    for p_order, idx in enumerate(climax_indices, 1):
+        c_seg = chapter_segments[idx]
+        c_start = c_seg.get("start_time", 0.0)
+        c_dur = min(58.0, c_seg.get("duration", 45.0))
+        c_end = c_start + c_dur
+
+        part_dir = arc_work_dir / f"short_{p_order:02d}"
+        part_dir.mkdir(parents=True, exist_ok=True)
+        short_file = part_dir / f"short_{target_arc['arc_key']}_p{arc_script['part']}_{p_order}.mp4"
+
+        derive_ok = derive_short_from_master(
+            master_video_path=arc_video_file,
+            output_short_path=short_file,
+            start_time=c_start,
+            end_time=c_end,
+            badge_text=f"{target_arc['arc_name'].upper()} • CLIMAX {p_order}",
+            dry_run=dry_run,
+        )
+
+        part_meta = {
+            "part": p_order,
+            "title": f"{c_seg.get('title', 'Climax Strike')} | {target_arc['display_name']} #shorts",
+            "video_path": str(short_file),
+            "start_time": c_start,
+            "end_time": c_end,
+            "duration": c_dur,
+            "hashtags": ["anime", "animerecap", "shorts", target_arc["series_id"].replace("-", ""), "bhalooji"],
+            "description": f"{c_seg.get('title', '')} from {target_arc['display_name']}.\nWatch our FULL arc breakdown on channel!\n#anime #animerecap #shorts #bhalooji",
+            "status": "rendered" if derive_ok else "failed",
+        }
+        parts_meta.append(part_meta)
+        with open(part_dir / "meta.json", "w", encoding="utf-8") as f:
+            json.dump(part_meta, f, indent=2)
+
+    pipeline_result = {
+        "status": "success",
+        "mode": "arc",
+        "action": "normal_video",
+        "is_arc": True,
+        "arc_key": target_arc["arc_key"],
+        "display_name": target_arc["display_name"],
+        "video_to_upload": arc_video_meta,
+        "parts": parts_meta,
+        "full_video": arc_video_meta,
+    }
+
+    with open(arc_work_dir / "pipeline_summary.json", "w", encoding="utf-8") as f:
+        json.dump(pipeline_result, f, indent=2)
+
+    log(f"\n🎉 Story Arc Pipeline complete for {target_arc['display_name']}!")
+    log(f"Produced 1 Master Arc Video + {len(parts_meta)} derived Shorts.")
+    log(f"Artifacts located at: {arc_work_dir}")
+
+    return pipeline_result
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Run anime explanation pipeline")
-    parser.add_argument("--mode", default="recapkun", choices=["recapkun", "cinema", "daily", "full"], help="Pipeline mode: 'recapkun' (Master Long-Form RecapKun Video + Shorts), 'daily' (funnel), 'cinema' (3-minute shorts), or 'full'")
+    parser.add_argument("--mode", default="arc", choices=["arc", "recapkun", "cinema", "daily", "full"], help="Pipeline mode: 'arc' (Full Story Arc Recap Video <= 60 mins), 'recapkun' (Master Long-Form RecapKun Video + Shorts), 'daily' (funnel), 'cinema' (3-minute shorts), or 'full'")
+    parser.add_argument("--arc", default=None, help="Specific story arc key (e.g. demon-slayer-mount-natagumo)")
+    parser.add_argument("--part", type=int, default=1, help="Part number if arc is split (default: 1)")
     parser.add_argument("--episode", default=None, help="Episode key (e.g. demon-slayer-s01e01)")
     parser.add_argument("--series", default=None, help="Series filter (e.g. demon-slayer, jujutsu-kaisen)")
     parser.add_argument("--dry-run", action="store_true", help="Simulate without heavy rendering")
-    parser.add_argument("--voice", default="default", help="Voice (default: adam for cinema, ChristopherNeural for daily/recapkun)")
+    parser.add_argument("--voice", default="default", help="Voice (default: adam for cinema, ChristopherNeural for arc/recapkun)")
     parser.add_argument("--bgm", default=None, help="Optional background music path")
     parser.add_argument("--live", action="store_true", help="Live YouTube upload mode")
 
     args = parser.parse_args()
-    if args.mode == "cinema":
+    if args.mode == "arc":
+        res = run_arc_pipeline(
+            arc_key=args.arc,
+            series_filter=args.series,
+            dry_run=args.dry_run,
+            voice=args.voice if args.voice != "default" else "en-US-ChristopherNeural",
+            bgm_path=args.bgm,
+            part=args.part,
+            upload_live=args.live,
+        )
+    elif args.mode == "cinema":
         res = run_cinema_pipeline(
             episode_key=args.episode,
             series_filter=args.series,

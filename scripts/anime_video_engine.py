@@ -866,6 +866,217 @@ def assemble_master_full_video(
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def assemble_arc_master_video(
+    raw_episode_map: dict[str, str | Path],
+    voice_audio_path: str | Path,
+    ass_subtitle_path: str | Path,
+    output_video_path: str | Path,
+    chapter_segments: list[dict],
+    total_duration: float,
+    bgm_path: str | Path | None = None,
+    dry_run: bool = False,
+) -> bool:
+    """
+    Composes a feature-length 16:9 Landscape master video for an entire Story Arc.
+    Extracts continuous narrative scenes from each episode in the arc matching the chapter spoken timelines.
+    """
+    output_video = Path(output_video_path)
+    output_video.parent.mkdir(parents=True, exist_ok=True)
+    ass_subs = Path(ass_subtitle_path)
+    voice_audio = Path(voice_audio_path)
+
+    if dry_run:
+        log(f"[DRY-RUN] Simulating Master Arc Video render ({len(chapter_segments)} chapters, {total_duration:.1f}s across {len(raw_episode_map)} episodes) -> {output_video.name}")
+        return True
+
+    temp_dir = output_video.parent / f"temp_arc_{output_video.stem}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    slice_files = []
+
+    log(f"Composing Master Arc Video across {len(chapter_segments)} chapters and {len(raw_episode_map)} episodes...")
+
+    try:
+        slice_idx = 0
+        for chap in chapter_segments:
+            ep_key = chap.get("episode_key", "")
+            raw_video = Path(raw_episode_map.get(ep_key, ""))
+            if not raw_video.exists():
+                for r_p in raw_episode_map.values():
+                    if Path(r_p).exists():
+                        raw_video = Path(r_p)
+                        break
+
+            chap_dur = chap.get("duration", 60.0)
+            w_start, w_end = chap.get("time_range", [120, 500])
+            safe_start = max(60.0, float(w_start))
+            safe_end = max(safe_start + 30.0, float(w_end))
+            win_len = max(30.0, safe_end - safe_start)
+
+            beats = chap.get("beats")
+            if beats and len(beats) > 0:
+                shots = []
+                accum_dur = 0.0
+                weights = [float(b.get("weight", 1.0 / len(beats))) for b in beats]
+
+                for b_idx, b in enumerate(beats):
+                    b_start = max(0.0, float(b.get("start", safe_start)))
+                    if b_idx == len(beats) - 1:
+                        b_dur = max(0.5, chap_dur - accum_dur)
+                    else:
+                        w = weights[b_idx] if b_idx < len(weights) else (1.0 / len(beats))
+                        b_dur = round(chap_dur * w, 2)
+                        accum_dur += b_dur
+                    shots.append((b_start, b_dur))
+            elif chap_dur <= 35.0:
+                shots = [(safe_start, chap_dur)]
+            else:
+                s1_dur = chap_dur / 2.0
+                s2_dur = chap_dur - s1_dur
+                s1_start = safe_start
+                s2_start = min(safe_start + (win_len * 0.45), safe_end - s2_dur)
+                s2_start = max(safe_start + s1_dur, s2_start)
+                shots = [(s1_start, s1_dur), (s2_start, s2_dur)]
+
+            MAX_SHOT_DUR = 4.2
+            refined_shots = []
+            for s_start, s_dur in shots:
+                if s_dur <= MAX_SHOT_DUR:
+                    refined_shots.append((s_start, s_dur))
+                else:
+                    num_sub = max(2, int(round(s_dur / 3.4)))
+                    sub_dur = round(s_dur / num_sub, 2)
+                    sub_accum = 0.0
+                    for s_i in range(num_sub):
+                        this_dur = (s_dur - sub_accum) if (s_i == num_sub - 1) else sub_dur
+                        sub_start = min(safe_end - this_dur, s_start + (s_i * 3.6))
+                        sub_start = max(safe_start, sub_start)
+                        refined_shots.append((round(sub_start, 2), round(this_dur, 2)))
+                        sub_accum += this_dur
+            shots = refined_shots
+
+            for s_start, s_dur in shots:
+                if s_dur <= 0.5:
+                    continue
+                seg_file = temp_dir / f"slice_{slice_idx:04d}.mp4"
+                alt_zoom = (slice_idx % 2 == 1)
+                if alt_zoom:
+                    vf_slice = "fps=30,scale=2050:1153:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                else:
+                    vf_slice = "fps=30,scale=2150:1210:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+
+                cmd_slice = [
+                    "ffmpeg", "-y",
+                    "-ss", f"{s_start:.2f}",
+                    "-i", str(raw_video),
+                    "-t", f"{s_dur:.2f}",
+                    "-vf", vf_slice,
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",
+                    "-crf", "20",
+                    "-avoid_negative_ts", "make_zero",
+                    "-an",
+                    str(seg_file)
+                ]
+                res_slice = subprocess.run(cmd_slice, capture_output=True, text=True)
+                if res_slice.returncode == 0 and seg_file.exists() and seg_file.stat().st_size > 5000:
+                    slice_files.append(seg_file)
+                    slice_idx += 1
+
+        if not slice_files:
+            log("Failed to slice scenes for arc master video.")
+            return False
+
+        concat_txt = temp_dir / "slices.txt"
+        with open(concat_txt, "w", encoding="utf-8") as f:
+            for sf in slice_files:
+                f.write(f"file '{sf.resolve()}'\n")
+
+        spliced_video = temp_dir / "spliced_arc_visual.mp4"
+        cmd_concat = [
+            "ffmpeg", "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", str(concat_txt),
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "18",
+            "-pix_fmt", "yuv420p",
+            "-r", "30",
+            "-vsync", "cfr",
+            str(spliced_video)
+        ]
+        res_cat = subprocess.run(cmd_concat, capture_output=True, text=True)
+        if res_cat.returncode != 0 or not spliced_video.exists():
+            log(f"Visual concat failed: {res_cat.stderr[-300:]}")
+            return False
+
+        filtergraph = build_landscape_ffmpeg_filtergraph(
+            has_subtitles=ass_subs.exists(),
+            ass_path=str(ass_subs.resolve()),
+            mirror=True,
+        )
+
+        if not bgm_path or not Path(bgm_path).exists():
+            if DEFAULT_BGM_PATH.exists():
+                bgm_path = DEFAULT_BGM_PATH
+
+        has_bgm = bgm_path and Path(bgm_path).exists()
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(spliced_video),
+            "-i", str(voice_audio),
+        ]
+        if has_bgm:
+            cmd.extend(["-stream_loop", "-1", "-i", str(bgm_path)])
+
+        if has_bgm:
+            audio_filter = (
+                "[1:a]loudnorm=I=-14:TP=-1.5:LRA=11[voice_a];"
+                "[2:a]loudnorm=I=-24:TP=-2:LRA=7[bgm_a];"
+                "[voice_a][bgm_a]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
+            )
+        else:
+            audio_filter = "[1:a]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
+
+        cmd.extend([
+            "-filter_complex", f"{filtergraph};{audio_filter}",
+            "-map", "[v]",
+            "-map", "[aout]",
+            "-c:v", "libx264",
+            "-preset", "faster",
+            "-crf", "21",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-t", str(total_duration),
+            "-movflags", "+faststart",
+            str(output_video)
+        ])
+
+        log(f"Rendering Master Arc Video: {output_video.name}...")
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            log(f"FFmpeg arc render error: {res.stderr[-500:]}")
+            if output_video.exists():
+                output_video.unlink()
+            return False
+
+        if not output_video.exists() or output_video.stat().st_size < 1024 * 50:
+            log(f"Arc master render empty or too small: {output_video}")
+            if output_video.exists():
+                output_video.unlink()
+            return False
+
+        log(f"Master Arc Video successfully rendered: {output_video} ({output_video.stat().st_size} bytes)")
+        return True
+    except Exception as err:
+        log(f"Arc video rendering failed: {err}")
+        if output_video.exists():
+            output_video.unlink()
+        return False
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 def derive_short_from_master(
     master_video_path: str | Path,
     output_short_path: str | Path,
