@@ -14,7 +14,8 @@
     "demon-slayer-s01e12",
     "demon-slayer-s01e13",
     "demon-slayer-s01e14",
-    "demon-slayer-s01e15"
+    "demon-slayer-s01e15",
+    "demon-slayer-s01e16"
   ],
   "uploaded_parts": [
     {
@@ -358,8 +359,17 @@
       "url": "https://youtube.com/shorts/4QLUY-I5H_8",
       "title": "He Was the Strongest Demon Slayer… Until Truth Hit! | Story Recap Explanation #shorts",
       "uploaded_at": "2026-11-15T12:25:42Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e16",
+      "part": null,
+      "is_full_video": false,
+      "video_id": "JuC-1ZKlbPA",
+      "url": "https://youtube.com/shorts/JuC-1ZKlbPA",
+      "title": "He Was the Strongest Demon Slayer… Until Truth Hit! | Story Recap Explanation #shorts",
+      "uploaded_at": "2026-11-16T13:17:44Z"
     }
   ],
-  "last_updated": "2026-11-15T12:25:42Z",
+  "last_updated": "2026-11-16T13:17:44Z",
   "active_episode": null
 }
