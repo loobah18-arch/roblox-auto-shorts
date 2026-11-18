@@ -20,6 +20,8 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
@@ -113,7 +115,7 @@ def build_landscape_ffmpeg_filtergraph(
     flip_filter = "hflip," if mirror else ""
     filter_chain = (
         f"[0:v]{flip_filter}eq=contrast=1.12:brightness=-0.02:saturation=1.15:gamma=0.95,"
-        f"vignette=PI/4.8,unsharp=5:5:0.8:5:5:0.4,noise=alls=5:allf=t,"
+        f"vignette=PI/4.8,unsharp=5:5:0.8:5:5:0.4,"
         f"scale=1920:1080:force_original_aspect_ratio=decrease,"
         f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1"
     )
@@ -637,6 +639,33 @@ def stitch_full_episode_video(
         return False
 
 
+def _render_video_slice(task: tuple) -> tuple[int, bool, str]:
+    """Render single slice with FFmpeg in a worker thread."""
+    idx, s_start, s_dur, raw_video_str, seg_file_str, alt_zoom = task
+    if alt_zoom:
+        vf_slice = "fps=30,scale=2050:1153:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+    else:
+        vf_slice = "fps=30,scale=2150:1210:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+
+    cmd_slice = [
+        "ffmpeg", "-y",
+        "-ss", f"{s_start:.2f}",
+        "-i", raw_video_str,
+        "-t", f"{s_dur:.2f}",
+        "-vf", vf_slice,
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "22",
+        "-avoid_negative_ts", "make_zero",
+        "-an",
+        seg_file_str,
+    ]
+    res_slice = subprocess.run(cmd_slice, capture_output=True, text=True)
+    p = Path(seg_file_str)
+    ok = (res_slice.returncode == 0 and p.exists() and p.stat().st_size > 5000)
+    return idx, ok, seg_file_str
+
+
 def assemble_master_full_video(
     raw_video_path: str | Path,
     voice_audio_path: str | Path,
@@ -665,9 +694,9 @@ def assemble_master_full_video(
         log(f"[DRY-RUN] Simulating Master Full Normal Video render ({len(chapter_segments)} chapters, {total_duration:.1f}s) -> {output_video.name}")
         return True
 
-    temp_dir = output_video.parent / f"temp_master_{output_video.stem}"
+    temp_dir = Path(tempfile.gettempdir()) / f"temp_master_{output_video.stem}_{os.getpid()}"
     temp_dir.mkdir(parents=True, exist_ok=True)
-    slice_files = []
+    slice_tasks = []
 
     log(f"Composing Master Full Normal Video: extracting continuous narrative scenes across {len(chapter_segments)} chapters...")
 
@@ -686,8 +715,6 @@ def assemble_master_full_video(
                 shots = []
                 accum_dur = 0.0
 
-                # Dynamic Sentence-Locked Duration:
-                # Group sentences of narration across beats to lock scene cut to spoken words
                 sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', chap_narr) if s.strip()] if chap_narr else []
                 total_narr_words = sum(len(s.split()) for s in sents) if sents else 0
 
@@ -717,25 +744,22 @@ def assemble_master_full_video(
                 s1_dur = chap_dur / 2.0
                 s2_dur = chap_dur - s1_dur
                 s1_start = safe_start
-                # Scene 2 is chosen inside the scene window to show narrative climax
                 s2_start = min(safe_start + (win_len * 0.45), safe_end - s2_dur)
                 s2_start = max(safe_start + s1_dur, s2_start)
                 shots = [(s1_start, s1_dur), (s2_start, s2_dur)]
 
-            # RecapKun signature editing: fast scene cuts (2.4s - 4.2s per cut)
-            # Never hold a single shot longer than 4.2s to maintain maximum viewer retention
-            MAX_SHOT_DUR = 4.2
+            MAX_SHOT_DUR = 8.5
             refined_shots = []
             for s_start, s_dur in shots:
                 if s_dur <= MAX_SHOT_DUR:
                     refined_shots.append((s_start, s_dur))
                 else:
-                    num_sub = max(2, int(round(s_dur / 3.4)))
+                    num_sub = max(2, int(round(s_dur / 6.0)))
                     sub_dur = round(s_dur / num_sub, 2)
                     sub_accum = 0.0
                     for s_i in range(num_sub):
                         this_dur = (s_dur - sub_accum) if (s_i == num_sub - 1) else sub_dur
-                        sub_start = min(safe_end - this_dur, s_start + (s_i * 3.6))
+                        sub_start = min(safe_end - this_dur, s_start + (s_i * 4.5))
                         sub_start = max(safe_start, sub_start)
                         refined_shots.append((round(sub_start, 2), round(this_dur, 2)))
                         sub_accum += this_dur
@@ -746,30 +770,22 @@ def assemble_master_full_video(
                     continue
                 seg_file = temp_dir / f"slice_{slice_idx:03d}.mp4"
                 alt_zoom = (slice_idx % 2 == 1)
-                if alt_zoom:
-                    vf_slice = "fps=30,scale=2050:1153:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
-                else:
-                    vf_slice = "fps=30,scale=2150:1210:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
-                cmd_slice = [
-                    "ffmpeg", "-y",
-                    "-ss", f"{s_start:.2f}",
-                    "-i", str(raw_video),
-                    "-t", f"{s_dur:.2f}",
-                    "-vf", vf_slice,
-                    "-c:v", "libx264",
-                    "-preset", "ultrafast",
-                    "-crf", "20",
-                    "-avoid_negative_ts", "make_zero",
-                    "-an",
-                    str(seg_file)
-                ]
-                res_slice = subprocess.run(cmd_slice, capture_output=True, text=True)
-                if res_slice.returncode == 0 and seg_file.exists() and seg_file.stat().st_size > 5000:
-                    slice_files.append(seg_file)
-                    slice_idx += 1
+                slice_tasks.append((slice_idx, s_start, s_dur, str(raw_video), str(seg_file), alt_zoom))
+                slice_idx += 1
+
+        if not slice_tasks:
+            log("Failed to slice continuous scenes for master video.")
+            return False
+
+        log(f"Rendering {len(slice_tasks)} video slices in parallel with 4 threads...")
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            rendered = list(executor.map(_render_video_slice, slice_tasks))
+
+        rendered.sort(key=lambda x: x[0])
+        slice_files = [Path(r[2]) for r in rendered if r[1]]
 
         if not slice_files:
-            log("Failed to slice continuous scenes for master video.")
+            log("Failed to produce valid slices for master video.")
             return False
 
         # Concat visual slices into unified background video stream
@@ -779,23 +795,35 @@ def assemble_master_full_video(
                 f.write(f"file '{sf.resolve()}'\n")
 
         spliced_video = temp_dir / "spliced_master_visual.mp4"
-        cmd_concat = [
+        cmd_concat_copy = [
             "ffmpeg", "-y",
             "-f", "concat",
             "-safe", "0",
             "-i", str(concat_txt),
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-crf", "18",
-            "-pix_fmt", "yuv420p",
-            "-r", "30",
-            "-vsync", "cfr",
+            "-c", "copy",
+            "-movflags", "+faststart",
             str(spliced_video)
         ]
-        res_cat = subprocess.run(cmd_concat, capture_output=True, text=True)
-        if res_cat.returncode != 0 or not spliced_video.exists():
-            log(f"Visual concat failed: {res_cat.stderr[-300:]}")
-            return False
+        res_cat = subprocess.run(cmd_concat_copy, capture_output=True, text=True)
+        if res_cat.returncode != 0 or not spliced_video.exists() or spliced_video.stat().st_size < 1024 * 50:
+            log("Streamcopy concat failed, falling back to ultrafast re-encode...")
+            cmd_concat_fallback = [
+                "ffmpeg", "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(concat_txt),
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "20",
+                "-pix_fmt", "yuv420p",
+                "-r", "30",
+                "-vsync", "cfr",
+                str(spliced_video)
+            ]
+            res_cat = subprocess.run(cmd_concat_fallback, capture_output=True, text=True)
+            if res_cat.returncode != 0 or not spliced_video.exists():
+                log(f"Visual concat failed: {res_cat.stderr[-300:]}")
+                return False
 
         # Canvas Compositor (Landscape 16:9 fullscreen with ASS subtitles)
         filtergraph = build_landscape_ffmpeg_filtergraph(
@@ -832,8 +860,8 @@ def assemble_master_full_video(
             "-map", "[v]",
             "-map", "[aout]",
             "-c:v", "libx264",
-            "-preset", "faster",
-            "-crf", "21",
+            "-preset", "veryfast",
+            "-crf", "22",
             "-c:a", "aac",
             "-b:a", "192k",
             "-t", str(total_duration),
@@ -889,9 +917,9 @@ def assemble_arc_master_video(
         log(f"[DRY-RUN] Simulating Master Arc Video render ({len(chapter_segments)} chapters, {total_duration:.1f}s across {len(raw_episode_map)} episodes) -> {output_video.name}")
         return True
 
-    temp_dir = output_video.parent / f"temp_arc_{output_video.stem}"
+    temp_dir = Path(tempfile.gettempdir()) / f"temp_arc_{output_video.stem}_{os.getpid()}"
     temp_dir.mkdir(parents=True, exist_ok=True)
-    slice_files = []
+    slice_tasks = []
 
     log(f"Composing Master Arc Video across {len(chapter_segments)} chapters and {len(raw_episode_map)} episodes...")
 
@@ -937,18 +965,18 @@ def assemble_arc_master_video(
                 s2_start = max(safe_start + s1_dur, s2_start)
                 shots = [(s1_start, s1_dur), (s2_start, s2_dur)]
 
-            MAX_SHOT_DUR = 4.2
+            MAX_SHOT_DUR = 8.5
             refined_shots = []
             for s_start, s_dur in shots:
                 if s_dur <= MAX_SHOT_DUR:
                     refined_shots.append((s_start, s_dur))
                 else:
-                    num_sub = max(2, int(round(s_dur / 3.4)))
+                    num_sub = max(2, int(round(s_dur / 6.0)))
                     sub_dur = round(s_dur / num_sub, 2)
                     sub_accum = 0.0
                     for s_i in range(num_sub):
                         this_dur = (s_dur - sub_accum) if (s_i == num_sub - 1) else sub_dur
-                        sub_start = min(safe_end - this_dur, s_start + (s_i * 3.6))
+                        sub_start = min(safe_end - this_dur, s_start + (s_i * 4.5))
                         sub_start = max(safe_start, sub_start)
                         refined_shots.append((round(sub_start, 2), round(this_dur, 2)))
                         sub_accum += this_dur
@@ -959,31 +987,22 @@ def assemble_arc_master_video(
                     continue
                 seg_file = temp_dir / f"slice_{slice_idx:04d}.mp4"
                 alt_zoom = (slice_idx % 2 == 1)
-                if alt_zoom:
-                    vf_slice = "fps=30,scale=2050:1153:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
-                else:
-                    vf_slice = "fps=30,scale=2150:1210:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1"
+                slice_tasks.append((slice_idx, s_start, s_dur, str(raw_video), str(seg_file), alt_zoom))
+                slice_idx += 1
 
-                cmd_slice = [
-                    "ffmpeg", "-y",
-                    "-ss", f"{s_start:.2f}",
-                    "-i", str(raw_video),
-                    "-t", f"{s_dur:.2f}",
-                    "-vf", vf_slice,
-                    "-c:v", "libx264",
-                    "-preset", "ultrafast",
-                    "-crf", "20",
-                    "-avoid_negative_ts", "make_zero",
-                    "-an",
-                    str(seg_file)
-                ]
-                res_slice = subprocess.run(cmd_slice, capture_output=True, text=True)
-                if res_slice.returncode == 0 and seg_file.exists() and seg_file.stat().st_size > 5000:
-                    slice_files.append(seg_file)
-                    slice_idx += 1
+        if not slice_tasks:
+            log("Failed to slice scenes for arc master video.")
+            return False
+
+        log(f"Rendering {len(slice_tasks)} arc video slices in parallel with 4 threads...")
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            rendered = list(executor.map(_render_video_slice, slice_tasks))
+
+        rendered.sort(key=lambda x: x[0])
+        slice_files = [Path(r[2]) for r in rendered if r[1]]
 
         if not slice_files:
-            log("Failed to slice scenes for arc master video.")
+            log("Failed to produce valid slices for arc master video.")
             return False
 
         concat_txt = temp_dir / "slices.txt"
@@ -992,23 +1011,35 @@ def assemble_arc_master_video(
                 f.write(f"file '{sf.resolve()}'\n")
 
         spliced_video = temp_dir / "spliced_arc_visual.mp4"
-        cmd_concat = [
+        cmd_concat_copy = [
             "ffmpeg", "-y",
             "-f", "concat",
             "-safe", "0",
             "-i", str(concat_txt),
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-crf", "18",
-            "-pix_fmt", "yuv420p",
-            "-r", "30",
-            "-vsync", "cfr",
+            "-c", "copy",
+            "-movflags", "+faststart",
             str(spliced_video)
         ]
-        res_cat = subprocess.run(cmd_concat, capture_output=True, text=True)
-        if res_cat.returncode != 0 or not spliced_video.exists():
-            log(f"Visual concat failed: {res_cat.stderr[-300:]}")
-            return False
+        res_cat = subprocess.run(cmd_concat_copy, capture_output=True, text=True)
+        if res_cat.returncode != 0 or not spliced_video.exists() or spliced_video.stat().st_size < 1024 * 50:
+            log("Streamcopy concat failed, falling back to ultrafast re-encode...")
+            cmd_concat_fallback = [
+                "ffmpeg", "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(concat_txt),
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "20",
+                "-pix_fmt", "yuv420p",
+                "-r", "30",
+                "-vsync", "cfr",
+                str(spliced_video)
+            ]
+            res_cat = subprocess.run(cmd_concat_fallback, capture_output=True, text=True)
+            if res_cat.returncode != 0 or not spliced_video.exists():
+                log(f"Visual concat failed: {res_cat.stderr[-300:]}")
+                return False
 
         filtergraph = build_landscape_ffmpeg_filtergraph(
             has_subtitles=ass_subs.exists(),
@@ -1043,8 +1074,8 @@ def assemble_arc_master_video(
             "-map", "[v]",
             "-map", "[aout]",
             "-c:v", "libx264",
-            "-preset", "faster",
-            "-crf", "21",
+            "-preset", "veryfast",
+            "-crf", "22",
             "-c:a", "aac",
             "-b:a", "192k",
             "-t", str(total_duration),
@@ -1150,7 +1181,7 @@ Dialogue: 1,0:00:00.00,9:59:59.00,CardHeader,,0,0,0,,{{\\an8\\bord3\\shad1\\c&H0
             "-map", "[v]",
             "-map", "0:a?",
             "-c:v", "libx264",
-            "-preset", "faster",
+            "-preset", "veryfast",
             "-crf", "22",
             "-c:a", "aac",
             "-b:a", "192k",
