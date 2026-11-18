@@ -15,7 +15,12 @@
     "demon-slayer-s01e13",
     "demon-slayer-s01e14",
     "demon-slayer-s01e15",
-    "demon-slayer-s01e16"
+    "demon-slayer-s01e16",
+    "demon-slayer-s01e17",
+    "demon-slayer-s01e18",
+    "demon-slayer-s01e19",
+    "demon-slayer-s01e20",
+    "demon-slayer-s01e21"
   ],
   "uploaded_parts": [
     {
@@ -368,8 +373,21 @@
       "url": "https://youtube.com/shorts/JuC-1ZKlbPA",
       "title": "He Was the Strongest Demon Slayer… Until Truth Hit! | Story Recap Explanation #shorts",
       "uploaded_at": "2026-11-16T13:17:44Z"
+    },
+    {
+      "episode_key": null,
+      "part": null,
+      "is_full_video": true,
+      "video_id": "jTnSNnB-i5U",
+      "url": "https://youtu.be/jTnSNnB-i5U",
+      "title": "Demon Slayer - Mount Natagumo Arc Full Story Recap & Explanation | Complete Arc",
+      "uploaded_at": "2026-11-18T18:41:05Z"
     }
   ],
-  "last_updated": "2026-11-16T13:17:44Z",
-  "active_episode": null
+  "last_updated": "2026-11-18T18:41:05Z",
+  "active_episode": null,
+  "completed_arcs": [
+    "demon-slayer-mount-natagumo"
+  ],
+  "active_arc": null
 }
