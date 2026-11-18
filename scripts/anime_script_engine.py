@@ -522,19 +522,21 @@ def generate_arc_script(arc_info: dict, part: int = 1, max_duration: float = 360
                 split_idx = idx
                 break
 
+        short_series = "Demon Slayer" if "Demon Slayer" in series else ("Jujutsu Kaisen" if "Jujutsu Kaisen" in series else series.split(":")[0].strip())
         if current_part == 1:
             active_chapters = all_chapters[:split_idx]
             part_label = "Part 1/2"
             ep_range = f"Episodes {active_chapters[0]['episode']}-{active_chapters[-1]['episode']}"
-            full_title = f"{series} - {arc_name} Full Story Recap ({part_label}) | {ep_range}"
+            full_title = f"{short_series} - {arc_name} Full Story Recap ({part_label}) | {ep_range}"
         else:
             active_chapters = all_chapters[split_idx:]
             part_label = "Part 2/2"
             ep_range = f"Episodes {active_chapters[0]['episode']}-{active_chapters[-1]['episode']}"
-            full_title = f"{series} - {arc_name} Full Story Recap ({part_label}) | {ep_range}"
+            full_title = f"{short_series} - {arc_name} Full Story Recap ({part_label}) | {ep_range}"
     else:
+        short_series = "Demon Slayer" if "Demon Slayer" in series else ("Jujutsu Kaisen" if "Jujutsu Kaisen" in series else series.split(":")[0].strip())
         active_chapters = all_chapters
-        full_title = f"{series} - {arc_name} Full Story Recap & Explanation | The Complete Arc"
+        full_title = f"{short_series} - {arc_name} Full Story Recap & Explanation | Complete Arc"
 
     if len(full_title) > 100:
         full_title = full_title[:97] + "..."

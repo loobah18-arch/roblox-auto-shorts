@@ -657,9 +657,16 @@ def upload_episode_package(
             if not ncs_bgm.exists():
                 ncs_bgm = WORKSPACE_DIR / "assets" / "bgm" / "aerohead_fragments_recap.mp3"
 
-            from anime_pipeline import run_cinema_pipeline, run_pipeline
+            from anime_pipeline import run_cinema_pipeline, run_pipeline, run_arc_pipeline
 
-            if block_type == "audio":
+            if summary.get("mode") == "arc":
+                log("🔄 [Bhaloo Ji] Story Arc flagged. Re-rendering Arc with copyright recovery settings...")
+                re_res = run_arc_pipeline(
+                    arc_key=summary.get("arc_key"),
+                    bgm_path=ncs_bgm if block_type in ("audio", "both") else None,
+                    dry_run=False,
+                )
+            elif block_type == "audio":
                 log(f"🎵 [Bhaloo Ji] BGM audio flagged by Content ID. Swapping track to verified copyright-free NCS release ({ncs_bgm.name})...")
                 if summary.get("mode") == "cinema":
                     re_res = run_cinema_pipeline(
@@ -1065,7 +1072,8 @@ if __name__ == "__main__":
     if args.delete:
         yt = get_youtube_service()
         if yt:
-            delete_video(yt, args.delete)
+            for vid_id in [v.strip() for v in args.delete.split(",") if v.strip()]:
+                delete_video(yt, vid_id)
         sys.exit(0)
 
     if args.set_privacy:
