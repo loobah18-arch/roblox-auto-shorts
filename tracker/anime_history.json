@@ -20,7 +20,12 @@
     "demon-slayer-s01e18",
     "demon-slayer-s01e19",
     "demon-slayer-s01e20",
-    "demon-slayer-s01e21"
+    "demon-slayer-s01e21",
+    "demon-slayer-s01e22",
+    "demon-slayer-s01e23",
+    "demon-slayer-s01e24",
+    "demon-slayer-s01e25",
+    "demon-slayer-s01e26"
   ],
   "uploaded_parts": [
     {
@@ -382,12 +387,23 @@
       "url": "https://youtu.be/jTnSNnB-i5U",
       "title": "Demon Slayer - Mount Natagumo Arc Full Story Recap & Explanation | Complete Arc",
       "uploaded_at": "2026-11-18T18:41:05Z"
+    },
+    {
+      "episode_key": "demon-slayer-rehabilitation-training",
+      "arc_key": "demon-slayer-rehabilitation-training",
+      "part": 1,
+      "is_full_video": true,
+      "video_id": "58sKM5yHVXc",
+      "url": "https://youtu.be/58sKM5yHVXc",
+      "title": "Demon Slayer - Rehabilitation Training Arc Full Story Recap & Explanation | Complete Arc",
+      "uploaded_at": "2026-11-19T03:49:19Z"
     }
   ],
-  "last_updated": "2026-11-18T18:41:05Z",
+  "last_updated": "2026-11-19T03:49:19Z",
   "active_episode": null,
   "completed_arcs": [
-    "demon-slayer-mount-natagumo"
+    "demon-slayer-mount-natagumo",
+    "demon-slayer-rehabilitation-training"
   ],
   "active_arc": null
 }
