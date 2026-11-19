@@ -401,13 +401,20 @@ def get_arc_for_episode(episode_key: str) -> dict | None:
     return None
 
 
-def get_next_arc(series_id: str | None = None) -> dict | None:
+def get_next_arc(series_id: str | None = None, history: dict | None = None) -> dict | None:
     """Find next pending story arc where not all constituent episodes are completed."""
-    history = load_history()
+    if history is None:
+        history = load_history()
     completed_arcs = set(history.get("completed_arcs", []))
     completed_eps = set(history.get("completed_episodes", []))
     active_arc = history.get("active_arc")
     active_key = active_arc.get("arc_key") if active_arc else None
+
+    # If an arc is actively in progress (e.g. part 2 of a split arc), resume it immediately
+    if active_key:
+        active_obj = get_arc(active_key)
+        if active_obj:
+            return active_obj
 
     arcs = get_story_arcs(series_id)
     for arc in arcs:

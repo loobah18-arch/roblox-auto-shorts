@@ -571,7 +571,7 @@ def upload_episode_package(
 
     history = load_history()
     uploaded_parts = history.get("uploaded_parts", [])
-    ep_key = summary.get("episode_key")
+    ep_key = summary.get("episode_key") or summary.get("arc_key") or ep_dir.name
 
     if live:
         can_proceed, next_allowed, remaining_sec = ensure_upload_cadence(
@@ -740,7 +740,8 @@ def upload_episode_package(
             now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             record = {
                 "episode_key": ep_key,
-                "part": summary.get("part"),
+                "arc_key": summary.get("arc_key"),
+                "part": summary.get("part") or vid_to_upload.get("part"),
                 "is_full_video": (action == "normal_video"),
                 "video_id": upload_res.get("video_id"),
                 "url": upload_res.get("url"),

@@ -214,6 +214,8 @@ def review_rendered_episode(ep_dir: Path) -> dict:
 
     script_pkg_f = ep_dir / "script_package.json"
     cinema_script_f = ep_dir / "cinema_script.json"
+    arc_script_files = sorted(list(ep_dir.glob("arc_script*.json")))
+
     if script_pkg_f.exists():
         with open(script_pkg_f, "r", encoding="utf-8") as f:
             script_package = json.load(f)
@@ -233,6 +235,30 @@ def review_rendered_episode(ep_dir: Path) -> dict:
                 }
             ],
         }
+    elif arc_script_files:
+        with open(arc_script_files[0], "r", encoding="utf-8") as f:
+            arc_script = json.load(f)
+        chapters = arc_script.get("chapters", [])
+        script_package = {
+            "episode_title": arc_script.get("full_video", {}).get("title", arc_script.get("arc_name", ep_dir.name)),
+            "parts": [
+                {
+                    "part": ch.get("chapter", idx + 1),
+                    "short_title": ch.get("chapter_title", ch.get("title", f"Chapter {idx+1}")),
+                    "narration": ch.get("narration", ""),
+                    "hook": ch.get("chapter_title", ""),
+                    "beats": ch.get("beats", []),
+                    "time_range": ch.get("time_range", [120, 500]),
+                    "estimated_duration": float(ch.get("estimated_duration", 180.0)),
+                }
+                for idx, ch in enumerate(chapters)
+            ],
+        }
+    elif summary.get("parts"):
+        script_package = {
+            "episode_title": summary.get("display_name", ep_dir.name),
+            "parts": summary["parts"],
+        }
     else:
         script_package = summary.get("script_package", {})
 
@@ -245,10 +271,17 @@ def review_rendered_episode(ep_dir: Path) -> dict:
     frames_dir = ep_dir / "review_frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
-    log(f"🎬 Starting Visual Review for {ep_dir.name} ({len(parts)} parts)...")
-
-    master_vid = ep_dir / f"full_{ep_dir.name}.mp4"
-    use_master = master_vid.exists()
+    master_vid = None
+    vid_candidates = [
+        Path(summary.get("video_to_upload", {}).get("video_path", "")),
+        Path(summary.get("full_video", {}).get("video_path", "")),
+        ep_dir / f"full_{ep_dir.name}.mp4",
+    ] + list(ep_dir.glob("full_*.mp4"))
+    for cand in vid_candidates:
+        if cand and cand.exists() and cand.is_file() and cand.stat().st_size > 1024 * 50:
+            master_vid = cand
+            break
+    use_master = master_vid is not None and master_vid.exists()
 
     log(f"🎬 Starting Visual Review for {ep_dir.name} ({len(parts)} parts, master_mode={use_master})...")
 
@@ -311,6 +344,12 @@ def review_rendered_episode(ep_dir: Path) -> dict:
                 b_accum += b_dur
         else:
             sample_times = [est_dur * 0.25, est_dur * 0.50, est_dur * 0.75]
+
+        # For long multi-chapter arc videos, cap samples to 2 per chapter to stay fast & within API limits
+        if len(parts) > 5:
+            sample_times = sample_times[:2]
+        else:
+            sample_times = sample_times[:3]
 
         part_evals = []
         log(f"🔍 Part {p_num} ({vid_f.name}): Evaluating {len(sample_times)} beat frames...")

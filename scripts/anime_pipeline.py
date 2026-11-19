@@ -900,13 +900,21 @@ def run_arc_pipeline(
     bgm_path: str | Path | None = None,
     part: int = 1,
     upload_live: bool = False,
+    max_duration: float = 3600.0,
 ) -> dict:
     """
     Run full story arc video production (1 complete video per arc, split into Part 1/2 if > 1 hour).
     """
     log("=== ⚔️ Starting Bhaloo Ji Story Arc Explanation Pipeline ===")
 
-    # 1. Select Arc
+    # 1. Select Arc (resume active in-progress arc or pick next pending)
+    history = load_history()
+    active_arc = history.get("active_arc")
+    if not arc_key and active_arc:
+        arc_key = active_arc.get("arc_key")
+        if part == 1 and active_arc.get("part"):
+            part = active_arc.get("part")
+
     target_arc = None
     if arc_key:
         target_arc = get_arc(arc_key)
@@ -936,7 +944,7 @@ def run_arc_pipeline(
     ep_map = {e["episode_key"]: e for e in catalog.get("episodes", [])}
 
     log("Generating comprehensive Story Arc script & chapters...")
-    arc_script = generate_arc_script(target_arc, part=part, max_duration=3600.0, catalog=catalog)
+    arc_script = generate_arc_script(target_arc, part=part, max_duration=max_duration, catalog=catalog)
 
     part_suffix = f"_part{arc_script['part']}" if arc_script.get("is_split") else ""
     script_file = arc_work_dir / f"arc_script{part_suffix}.json"
@@ -945,9 +953,10 @@ def run_arc_pipeline(
 
     log(f"Arc Script ready: {arc_script['full_video']['title']} ({arc_script['word_count']} words, est {arc_script['part_duration']:.1f}s / {arc_script['part_duration']/60:.1f} min)")
 
-    # 3. Source Raw Anime Videos for all episodes in the arc
+    # 3. Source Raw Anime Videos for chapters in this part (saves bandwidth & runner disk)
+    needed_ep_keys = list(dict.fromkeys(c.get("episode_key") for c in arc_script["chapters"] if c.get("episode_key"))) or target_arc["episode_keys"]
     raw_episode_map = {}
-    for ep_k in target_arc["episode_keys"]:
+    for ep_k in needed_ep_keys:
         ep_obj = ep_map.get(ep_k, {})
         fn = ep_obj.get("filename", f"{ep_k}.mp4")
         raw_path = CACHE_DIR / fn
@@ -1012,6 +1021,27 @@ def run_arc_pipeline(
                 chap["time_range"] = c_obj.get("time_range", [120, 500])
                 chap["narration"] = c_obj.get("narration", "")
                 chap["beats"] = c_obj.get("beats", [])
+
+    # Update chapters in description with exact audio start timestamps
+    if chapter_segments and len(chapter_segments) == len(arc_script["chapters"]):
+        exact_chapters = []
+        for idx, chap in enumerate(chapter_segments, 1):
+            c_obj = arc_script["chapters"][idx - 1]
+            c_title = c_obj.get("chapter_title") or c_obj.get("theme") or chap.get("title") or f"Chapter {idx}"
+            ep_num = c_obj.get("episode")
+            ep_suffix = f" (Ep {ep_num})" if ep_num else ""
+            c_s = chap.get("start_time", 0.0)
+            mins = int(c_s // 60)
+            secs = int(c_s % 60)
+            exact_chapters.append(f"{mins:02d}:{secs:02d} Chapter {idx}: {c_title}{ep_suffix}")
+
+        old_desc = arc_script["full_video"]["description"]
+        if "Arc Chapters:\n" in old_desc:
+            prefix, rest = old_desc.split("Arc Chapters:\n", 1)
+            rest_parts = rest.split("\n\nEnjoying", 1)
+            suffix = "\n\nEnjoying" + rest_parts[1] if len(rest_parts) > 1 else ""
+            arc_script["full_video"]["description"] = f"{prefix}Arc Chapters:\n{chr(10).join(exact_chapters)}{suffix}"
+            arc_script["full_video"]["chapters"] = exact_chapters
 
     master_render_success = assemble_arc_master_video(
         raw_episode_map=raw_episode_map,

@@ -7,6 +7,7 @@ Runs isolated, lightweight checks without heavy computation or rendering.
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 import sys
 
 # Add scripts to path
@@ -1209,10 +1210,23 @@ class TestAnimeArcEngine(unittest.TestCase):
         self.assertIsNotNone(arc_for_ep)
         self.assertEqual(arc_for_ep["arc_key"], "demon-slayer-mount-natagumo")
 
-        # Previous 4 arcs (episodes 1-14) are marked complete in anime_history.json
-        next_arc = get_next_arc("demon-slayer")
+        # Mock history where previous 4 arcs (episodes 1-14) are complete and Mount Natagumo is pending
+        mock_hist = {
+            "completed_arcs": ["demon-slayer-final-selection", "demon-slayer-first-mission", "demon-slayer-asクサ-arc", "demon-slayer-tsuzumi-mansion"],
+            "completed_episodes": [f"demon-slayer-s01e{i:02d}" for i in range(1, 15)],
+        }
+        next_arc = get_next_arc("demon-slayer", history=mock_hist)
         self.assertIsNotNone(next_arc)
         self.assertEqual(next_arc["arc_key"], "demon-slayer-mount-natagumo")
+
+        # In current live history, Mount Natagumo is now completed, so next arc progresses to Rehabilitation Training
+        live_next_arc = get_next_arc("demon-slayer")
+        self.assertIsNotNone(live_next_arc)
+        self.assertEqual(live_next_arc["arc_key"], "demon-slayer-rehabilitation-training")
+
+        # If active_arc is set (e.g. part 2 in-flight), get_next_arc immediately returns active arc
+        mock_active = {"active_arc": {"arc_key": "demon-slayer-mount-natagumo", "part": 2}}
+        self.assertEqual(get_next_arc("demon-slayer", history=mock_active)["arc_key"], "demon-slayer-mount-natagumo")
 
     def test_arc_script_under_1hour_no_split(self):
         """Verify arc with duration <= 3600s produces 1 single complete video without splitting."""
@@ -1309,6 +1323,79 @@ class TestAnimeArcEngine(unittest.TestCase):
             self.assertEqual(res["status"], "preview")
             self.assertEqual(res["action"], "normal_video")
             self.assertEqual(res["mode"], "arc")
+
+    def test_visual_reviewer_arc_mode(self):
+        """Verify visual reviewer properly processes arc_script and full arc video without errors."""
+        import tempfile
+        from unittest.mock import patch
+        from anime_visual_reviewer import review_rendered_episode
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            dummy_mp4 = td_path / "full_demon-slayer-mount-natagumo.mp4"
+            dummy_mp4.write_bytes(b"\x00" * (1024 * 60))
+
+            arc_script = {
+                "arc_key": "demon-slayer-mount-natagumo",
+                "arc_name": "Mount Natagumo Arc",
+                "full_video": {"title": "Demon Slayer - Mount Natagumo Arc Full Story"},
+                "chapters": [
+                    {
+                        "chapter": 1,
+                        "chapter_title": "The Spider Forest",
+                        "narration": "Tanjiro arrives at the sinister mountain covered in webs.",
+                        "beats": [{"weight": 1.0, "start": 10.0}],
+                        "estimated_duration": 40.0,
+                    },
+                    {
+                        "chapter": 2,
+                        "chapter_title": "Rui's Blood Demon Art",
+                        "narration": "Rui reveals the terrifying power of Lower Moon Five.",
+                        "beats": [{"weight": 1.0, "start": 30.0}],
+                        "estimated_duration": 40.0,
+                    },
+                ],
+            }
+            with open(td_path / "arc_script.json", "w") as f:
+                json.dump(arc_script, f)
+
+            summary = {
+                "status": "success",
+                "mode": "arc",
+                "arc_key": "demon-slayer-mount-natagumo",
+                "video_to_upload": {"video_path": str(dummy_mp4)},
+                "parts": [],
+            }
+            with open(td_path / "pipeline_summary.json", "w") as f:
+                json.dump(summary, f)
+
+            def fake_extract(v, t, out):
+                out_p = Path(out)
+                out_p.parent.mkdir(parents=True, exist_ok=True)
+                out_p.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+                return True
+
+            with patch("anime_visual_reviewer.extract_frame", side_effect=fake_extract):
+                rep = review_rendered_episode(td_path)
+
+            self.assertIn("overall_status", rep)
+            self.assertEqual(len(rep["parts"]), 2)
+            self.assertTrue((td_path / "review_summary.json").exists())
+            self.assertTrue((td_path / "visual_review_report.md").exists())
+
+    def test_arc_pipeline_active_continuation(self):
+        """Verify pipeline automatically resumes Part 2 if active_arc indicates part 2 in progress."""
+        from anime_pipeline import run_arc_pipeline
+
+        mock_active_hist = {
+            "completed_arcs": [],
+            "completed_episodes": [],
+            "active_arc": {"arc_key": "demon-slayer-mount-natagumo", "part": 2, "total_parts": 2},
+        }
+        with patch("anime_pipeline.load_history", return_value=mock_active_hist):
+            res = run_arc_pipeline(dry_run=True, max_duration=1500.0)
+            self.assertEqual(res["status"], "success")
+            self.assertEqual(res["video_to_upload"]["part"], 2)
 
 
 if __name__ == "__main__":
