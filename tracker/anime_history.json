@@ -25,7 +25,14 @@
     "demon-slayer-s01e23",
     "demon-slayer-s01e24",
     "demon-slayer-s01e25",
-    "demon-slayer-s01e26"
+    "demon-slayer-s01e26",
+    "demon-slayer-s02e01",
+    "demon-slayer-s02e02",
+    "demon-slayer-s02e03",
+    "demon-slayer-s02e04",
+    "demon-slayer-s02e05",
+    "demon-slayer-s02e06",
+    "demon-slayer-s02e07"
   ],
   "uploaded_parts": [
     {
@@ -397,13 +404,24 @@
       "url": "https://youtu.be/58sKM5yHVXc",
       "title": "Demon Slayer - Rehabilitation Training Arc Full Story Recap & Explanation | Complete Arc",
       "uploaded_at": "2026-11-19T03:49:19Z"
+    },
+    {
+      "episode_key": "demon-slayer-mugen-train",
+      "arc_key": "demon-slayer-mugen-train",
+      "part": 1,
+      "is_full_video": true,
+      "video_id": "Ebsall3ZODk",
+      "url": "https://youtu.be/Ebsall3ZODk",
+      "title": "Demon Slayer - Mugen Train Arc Full Story Recap & Explanation | Complete Arc",
+      "uploaded_at": "2026-11-20T14:42:35Z"
     }
   ],
-  "last_updated": "2026-11-19T03:49:19Z",
+  "last_updated": "2026-11-20T14:42:35Z",
   "active_episode": null,
   "completed_arcs": [
     "demon-slayer-mount-natagumo",
-    "demon-slayer-rehabilitation-training"
+    "demon-slayer-rehabilitation-training",
+    "demon-slayer-mugen-train"
   ],
   "active_arc": null
 }
