@@ -54,7 +54,15 @@
     "demon-slayer-s04e08",
     "demon-slayer-s04e09",
     "demon-slayer-s04e10",
-    "demon-slayer-s04e11"
+    "demon-slayer-s04e11",
+    "demon-slayer-s05e01",
+    "demon-slayer-s05e02",
+    "demon-slayer-s05e03",
+    "demon-slayer-s05e04",
+    "demon-slayer-s05e05",
+    "demon-slayer-s05e06",
+    "demon-slayer-s05e07",
+    "demon-slayer-s05e08"
   ],
   "uploaded_parts": [
     {
@@ -456,16 +464,27 @@
       "url": "https://youtu.be/pxof0H9nLEc",
       "title": "Demon Slayer - Swordsmith Village Arc Full Story Recap & Explanation | Complete Arc",
       "uploaded_at": "2026-11-22T14:42:58Z"
+    },
+    {
+      "episode_key": "demon-slayer-hashira-training",
+      "arc_key": "demon-slayer-hashira-training",
+      "part": 1,
+      "is_full_video": true,
+      "video_id": "sIT0OVV641k",
+      "url": "https://youtu.be/sIT0OVV641k",
+      "title": "Demon Slayer - Hashira Training Arc Full Story Recap & Explanation | Complete Arc",
+      "uploaded_at": "2026-11-23T16:09:33Z"
     }
   ],
-  "last_updated": "2026-11-22T14:42:58Z",
+  "last_updated": "2026-11-23T16:09:33Z",
   "active_episode": null,
   "completed_arcs": [
     "demon-slayer-mount-natagumo",
     "demon-slayer-rehabilitation-training",
     "demon-slayer-mugen-train",
     "demon-slayer-entertainment-district",
-    "demon-slayer-swordsmith-village"
+    "demon-slayer-swordsmith-village",
+    "demon-slayer-hashira-training"
   ],
   "active_arc": null
 }
