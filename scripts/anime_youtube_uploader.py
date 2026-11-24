@@ -87,7 +87,8 @@ def get_latest_upload_time(history: dict | None) -> datetime | None:
 
     timestamps: list[datetime] = []
     for item in history.get("uploaded_parts", []):
-        if isinstance(item, dict):
+        # Shorts cut from an arc video go out right after it; they don't restart the 24h clock.
+        if isinstance(item, dict) and not item.get("is_arc_short"):
             up_at = item.get("uploaded_at")
             dt = parse_iso_datetime(up_at)
             if dt:
@@ -189,7 +190,7 @@ def evaluate_view_velocity_gate(
     if history and isinstance(history, dict):
         uploaded_parts = history.get("uploaded_parts", [])
         for item in reversed(uploaded_parts):
-            if isinstance(item, dict):
+            if isinstance(item, dict) and not item.get("is_arc_short"):
                 candidate_id = item.get("video_id")
                 if candidate_id and not str(candidate_id).startswith("dry_run"):
                     vid_id = candidate_id
@@ -546,6 +547,58 @@ def upload_video_file(
     }
 
 
+def upload_arc_shorts(youtube, summary: dict, ep_key: str, full_video_url: str, privacy: str = "public") -> list[dict]:
+    """Upload the Shorts derived from an arc's long video. Skips parts already uploaded,
+    parts that failed to render, and stops on YouTube's daily upload limit."""
+    out: list[dict] = []
+    for part in summary.get("parts", []):
+        p_num = part.get("part")
+        history = load_history()
+        uploaded_parts = history.get("uploaded_parts", [])
+        already = find_uploaded_part(uploaded_parts, ep_key, p_num=p_num, is_full=False)
+        if already:
+            log(f"⏭️ Arc Short {p_num} already uploaded: {already.get('url')}")
+            out.append(already)
+            continue
+        if part.get("status") != "rendered" or not Path(part.get("video_path", "")).exists():
+            log(f"⚠️ Arc Short {p_num} was not rendered; skipping.")
+            out.append({"part": p_num, "status": "not_rendered"})
+            continue
+        desc = (part.get("description") or "").replace("{FULL_VIDEO_URL}", full_video_url or "on our channel")
+        res = upload_video_file(
+            youtube=youtube,
+            video_path=part["video_path"],
+            title=part["title"],
+            description=desc,
+            tags=part.get("hashtags", []),
+            privacy=privacy,
+            bgm_path=summary.get("bgm_path"),
+        )
+        if res.get("status") == "uploaded":
+            record = {
+                "episode_key": ep_key,
+                "arc_key": summary.get("arc_key"),
+                "part": p_num,
+                "is_full_video": False,
+                "is_arc_short": True,
+                "video_id": res.get("video_id"),
+                "url": res.get("url"),
+                "title": part["title"],
+                "uploaded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            uploaded_parts.append(record)
+            history["uploaded_parts"] = uploaded_parts
+            save_history(history)
+            log(f"✅ Arc Short {p_num} uploaded: {res.get('url')}")
+            out.append(record)
+        else:
+            log(f"⚠️ Arc Short {p_num} not uploaded: {res.get('status')} {res.get('message') or res.get('rejection_reason') or ''}")
+            out.append({"part": p_num, **res})
+            if res.get("status") == "quota_exceeded":
+                break
+    return out
+
+
 def upload_episode_package(
     episode_dir: str | Path,
     live: bool = False,
@@ -816,6 +869,16 @@ def upload_episode_package(
                 "episode_key": ep_key,
                 "uploaded_record": record,
             }
+
+            # Arc mode: publish the Shorts cut from this long video, each linking back to it.
+            if upload_shorts and summary.get("mode") == "arc" and summary.get("parts"):
+                results["shorts"] = upload_arc_shorts(
+                    youtube=youtube,
+                    summary=summary,
+                    ep_key=ep_key,
+                    full_video_url=upload_res.get("url") or "",
+                    privacy=privacy,
+                )
         else:
             results = upload_res
 

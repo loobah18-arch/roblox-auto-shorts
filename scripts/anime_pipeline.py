@@ -1083,17 +1083,24 @@ def run_arc_pipeline(
 
     log(f"🎬 Master Arc Video successfully produced: {arc_video_file.name}")
 
-    # 5. Derive Climax Shorts from key acts of the Arc
-    log("\n=== 📱 Deriving Daily Shorts Excerpts from Master Arc Video ===")
+    # 5. Derive Shorts from the Master Arc Video (uploaded after the long video)
+    log("\n=== 📱 Deriving Shorts from Master Arc Video ===")
     parts_meta = []
-    step = max(1, len(chapter_segments) // 4)
-    climax_indices = [i * step for i in range(min(4, len(chapter_segments)))]
+    master_total = float(arc_video_meta.get("duration") or 0.0) or sum(float(c.get("duration", 0.0)) for c in chapter_segments)
+    num_shorts = int(os.environ.get("ARC_SHORTS_COUNT", "4") or 4)
+    picks = _pick_arc_short_chapters(chapter_segments, arc_script.get("chapters", []), num_shorts)
 
-    for p_order, idx in enumerate(climax_indices, 1):
+    for p_order, idx in enumerate(picks, 1):
         c_seg = chapter_segments[idx]
-        c_start = c_seg.get("start_time", 0.0)
-        c_dur = min(58.0, c_seg.get("duration", 45.0))
-        c_end = c_start + c_dur
+        c_obj = arc_script["chapters"][idx] if idx < len(arc_script.get("chapters", [])) else {}
+        c_start = float(c_seg.get("start_time", 0.0))
+        # Aim for ~55s: a chapter is usually ~50-75s, so run into the next chapter if it is short.
+        c_end = c_start + 55.0
+        if master_total:
+            c_end = min(c_end, master_total)
+        c_dur = max(1.0, c_end - c_start)
+        if c_dur < 20.0:
+            continue
 
         part_dir = arc_work_dir / f"short_{p_order:02d}"
         part_dir.mkdir(parents=True, exist_ok=True)
@@ -1104,19 +1111,28 @@ def run_arc_pipeline(
             output_short_path=short_file,
             start_time=c_start,
             end_time=c_end,
-            badge_text=f"{target_arc['arc_name'].upper()} • CLIMAX {p_order}",
+            badge_text=f"{target_arc['arc_name']} • PART {p_order}",
             dry_run=dry_run,
+            full_bleed=False,  # master has burned-in captions: keep the whole frame readable
+            mirror=False,
         )
 
+        hook = _short_hook_title(c_obj.get("hook") or c_seg.get("title") or "", target_arc["arc_name"])
+        series_tag = target_arc["series_id"].replace("-", "")
         part_meta = {
             "part": p_order,
-            "title": f"{c_seg.get('title', 'Climax Strike')} | {target_arc['display_name']} #shorts",
+            "chapter_index": idx,
+            "title": f"{hook} | {target_arc['display_name']} #shorts"[:100],
             "video_path": str(short_file),
             "start_time": c_start,
             "end_time": c_end,
             "duration": c_dur,
-            "hashtags": ["anime", "animerecap", "shorts", target_arc["series_id"].replace("-", ""), "bhalooji"],
-            "description": f"{c_seg.get('title', '')} from {target_arc['display_name']}.\nWatch our FULL arc breakdown on channel!\n#anime #animerecap #shorts #bhalooji",
+            "hashtags": ["anime", "animerecap", "shorts", series_tag, "bhalooji"],
+            "description": (
+                f"{(c_obj.get('hook') or '').strip()}\n\n"
+                f"Clip from our full {target_arc['display_name']} recap. Watch the complete arc here: {{FULL_VIDEO_URL}}\n\n"
+                f"#anime #animerecap #shorts #{series_tag} #bhalooji"
+            ),
             "status": "rendered" if derive_ok else "failed",
         }
         parts_meta.append(part_meta)
@@ -1143,6 +1159,42 @@ def run_arc_pipeline(
     log(f"Artifacts located at: {arc_work_dir}")
 
     return pipeline_result
+
+
+def _pick_arc_short_chapters(chapter_segments: list, chapters: list, num_shorts: int = 4) -> list[int]:
+    """Pick chapter indices for Shorts: spread across the arc, one per episode where possible,
+    skipping the very first chapter (intro) when the arc is long enough."""
+    n = len(chapter_segments)
+    if n == 0 or num_shorts <= 0:
+        return []
+    candidates = list(range(1, n)) if n > num_shorts else list(range(n))
+    picks: list[int] = []
+    used_eps: set = set()
+    step = max(1, len(candidates) // num_shorts)
+    for k in range(num_shorts):
+        window = candidates[k * step:(k + 1) * step] or candidates[-1:]
+        choice = None
+        for i in window:
+            ep = (chapters[i] if i < len(chapters) else {}).get("episode_key")
+            if ep not in used_eps:
+                choice = i
+                break
+        if choice is None:
+            choice = window[0]
+        if choice not in picks:
+            picks.append(choice)
+            used_eps.add((chapters[choice] if choice < len(chapters) else {}).get("episode_key"))
+    return picks[:num_shorts]
+
+
+def _short_hook_title(hook: str, fallback: str) -> str:
+    """Turn a chapter hook into a short title (first sentence, <= 60 chars)."""
+    h = re.split(r"(?<=[.!?])\s", (hook or "").strip(), maxsplit=1)[0].strip()
+    if not h or h.lower().startswith("chapter "):
+        h = fallback
+    if len(h) > 60:
+        h = h[:60].rsplit(" ", 1)[0].rstrip(",;:-")
+    return h
 
 
 if __name__ == "__main__":
