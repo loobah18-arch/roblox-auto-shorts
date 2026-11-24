@@ -1087,7 +1087,7 @@ def run_arc_pipeline(
     log("\n=== 📱 Deriving Shorts from Master Arc Video ===")
     parts_meta = []
     master_total = float(arc_video_meta.get("duration") or 0.0) or sum(float(c.get("duration", 0.0)) for c in chapter_segments)
-    num_shorts = int(os.environ.get("ARC_SHORTS_COUNT", "4") or 4)
+    num_shorts = int(os.environ.get("ARC_SHORTS_COUNT", "1") or 1)  # one Short per day
     picks = _pick_arc_short_chapters(chapter_segments, arc_script.get("chapters", []), num_shorts)
 
     for p_order, idx in enumerate(picks, 1):
@@ -1161,30 +1161,22 @@ def run_arc_pipeline(
     return pipeline_result
 
 
-def _pick_arc_short_chapters(chapter_segments: list, chapters: list, num_shorts: int = 4) -> list[int]:
-    """Pick chapter indices for Shorts: spread across the arc, one per episode where possible,
-    skipping the very first chapter (intro) when the arc is long enough."""
+def _pick_arc_short_chapters(chapter_segments: list, chapters: list, num_shorts: int = 1) -> list[int]:
+    """Pick chapter indices for Shorts. One Short: the arc's climax (~70% through).
+    Several: spread evenly across the arc, skipping the intro chapter."""
     n = len(chapter_segments)
     if n == 0 or num_shorts <= 0:
         return []
+    if num_shorts == 1:
+        return [min(n - 1, int(round(n * 0.7)))]
     candidates = list(range(1, n)) if n > num_shorts else list(range(n))
-    picks: list[int] = []
-    used_eps: set = set()
-    step = max(1, len(candidates) // num_shorts)
+    step = len(candidates) / float(num_shorts)
+    picks = []
     for k in range(num_shorts):
-        window = candidates[k * step:(k + 1) * step] or candidates[-1:]
-        choice = None
-        for i in window:
-            ep = (chapters[i] if i < len(chapters) else {}).get("episode_key")
-            if ep not in used_eps:
-                choice = i
-                break
-        if choice is None:
-            choice = window[0]
-        if choice not in picks:
-            picks.append(choice)
-            used_eps.add((chapters[choice] if choice < len(chapters) else {}).get("episode_key"))
-    return picks[:num_shorts]
+        i = candidates[min(len(candidates) - 1, int(k * step + step / 2))]
+        if i not in picks:
+            picks.append(i)
+    return picks
 
 
 def _short_hook_title(hook: str, fallback: str) -> str:
