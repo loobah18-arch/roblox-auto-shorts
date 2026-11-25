@@ -711,6 +711,11 @@ def build_short_caption_ass(word_cues: list[dict], start: float, end: float, bad
         "Style: Default,DejaVu Sans Bold,62,&H00FFFFFF,&H0000FFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,5.0,2.0,8,70,70,1250,1")
     shifted = [{"word": c["word"], "start": max(0.0, c["start"] - start), "end": max(0.0, min(c["end"], end) - start)}
                for c in word_cues if c["start"] >= start - 0.01 and c["start"] < end]
+    # keep the caption on screen through the small gaps between words and short pauses (no flicker)
+    for i in range(len(shifted) - 1):
+        gap = shifted[i + 1]["start"] - shifted[i]["end"]
+        if 0 < gap <= 1.2:
+            shifted[i]["end"] = shifted[i + 1]["start"]
     body = cues_to_ass(shifted, badge_text="", is_landscape=False)
     lines = body.split("\n")
     events = [ln for ln in lines if ln.startswith("Dialogue:")]

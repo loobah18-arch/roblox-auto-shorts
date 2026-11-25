@@ -1093,7 +1093,7 @@ def run_arc_pipeline(
             "part": p_order,
             "chapter_index": ci,
             "beats": [b0, b1],
-            "title": f"{chap['chapter_title']} | {target_arc['display_name']} #shorts"[:100],
+            "title": _arc_short_title(chap["chapter_title"], target_arc["display_name"]),
             "hook": hook,
             "video_path": str(short_file),
             "start_time": round(st, 3),
@@ -1124,6 +1124,14 @@ def run_arc_pipeline(
     (arc_work_dir / "pipeline_summary.json").write_text(json.dumps(pipeline_result, indent=2), encoding="utf-8")
     log(f"Story Arc pipeline complete: 1 long video ({total / 60:.1f} min) + {len(parts_meta)} Short(s) in {arc_work_dir}")
     return pipeline_result
+
+
+def _arc_short_title(chapter_title: str, display_name: str) -> str:
+    """'<chapter title> | <arc> Recap #shorts', trimmed to YouTube's 100 characters."""
+    tail = f" | {display_name} Recap #shorts"
+    if len(chapter_title) + len(tail) > 100:
+        tail = " | Recap #shorts"
+    return f"{chapter_title[:100 - len(tail)].rstrip()}{tail}"
 
 
 def _pick_arc_short_windows(timeline: list[dict], chapters: list[dict], num_shorts: int = 1,

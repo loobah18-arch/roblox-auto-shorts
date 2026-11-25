@@ -902,7 +902,8 @@ def plan_beat_cuts(src_start: float, src_end: float, n_frames: int, fps: float, 
     """
     Footage plan for one beat: [(source_time, frames), ...] summing to exactly n_frames, every cut
     <= max_cut seconds and taken from the beat's own [src_start, src_end] scene.
-    * Scene longer than the narration: the cuts are spread evenly across the scene (trimmed).
+    * Scene longer than the narration: the cuts are spread over the first ~1.6x narration-length of
+      the scene (the rest is trimmed).
     * Scene shorter than the narration: it is widened by up to 3 s on each side (staying out of the
       OP/ED and inside the episode) and then looped.
     """
@@ -930,6 +931,9 @@ def plan_beat_cuts(src_start: float, src_end: float, n_frames: int, fps: float, 
     sizes = [base + (1 if k < extra else 0) for k in range(n)]
     cuts = []
     if length >= dur:
+        # The sentence usually describes the start of its range (the lines it was written from), so
+        # the cuts stay within the first 1.6x narration-length of the scene instead of jumping to its tail.
+        length = min(length, max(dur * 1.6, dur + 2.0))
         slack = length - dur
         gap = slack / (n - 1) if n > 1 else 0.0
         t = s

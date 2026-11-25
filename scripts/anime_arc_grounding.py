@@ -348,8 +348,12 @@ def transcribe_episode(ep_key: str, video: Path, songs: list[tuple[float, float]
     return data
 
 
+_CREDIT_RE = re.compile(r"thank(s| you) for watching|please subscribe|subtitles? by|translated by|subs by", re.I)
+
+
 def transcript_for_prompt(transcript: dict) -> str:
-    return "\n".join(f"[{s['start']:.1f}-{s['end']:.1f}] {s['text']}" for s in transcript["segments"])
+    return "\n".join(f"[{s['start']:.1f}-{s['end']:.1f}] {s['text']}" for s in transcript["segments"]
+                     if not _CREDIT_RE.search(s["text"]))
 
 
 # ----------------------------------------------------------------------------------------- beats

@@ -172,7 +172,10 @@ class TitleCopyrightAgent:
     def __init__(self, blocked_titles: Optional[List[str]] = None):
         self.blocked_titles = [t.lower().strip() for t in (blocked_titles or [])]
 
-    def evaluate_title(self, title: str, is_short: bool = True) -> AgentResult:
+    def evaluate_title(self, title: str, is_short: bool = True, premise_title: bool = False) -> AgentResult:
+        """premise_title=True: a Recap-kun premise title for a long arc recap ("Boy Loses His Family
+        to Demons So He..."). It names no series or episode, so it needs no 'Recap' marker; the
+        description still has to carry the transformative notice."""
         violations = []
         warnings = []
         clean_title = title.strip()
@@ -180,7 +183,7 @@ class TitleCopyrightAgent:
 
         # 1. Transformative explanation indicator check
         transformative_terms = ["explanation", "recap", "explained", "breakdown", "story recap"]
-        if not any(term in lower for term in transformative_terms):
+        if not premise_title and not any(term in lower for term in transformative_terms):
             violations.append("Title missing transformative marker ('Explanation', 'Recap', or 'Explained').")
 
         # 2. Scraper blacklist check
@@ -323,9 +326,10 @@ class MultiAgentCopyrightShield:
         time_window: Optional[Tuple[float, float]] = None,
         shots_info: Optional[List[Dict[str, Any]]] = None,
         hashtags: Optional[List[str]] = None,
+        premise_title: bool = False,
     ) -> MultiAgentFilterResult:
         v_res = self.video_agent.evaluate_video(video_path, is_short, time_window, shots_info)
-        t_res = self.title_agent.evaluate_title(title, is_short)
+        t_res = self.title_agent.evaluate_title(title, is_short, premise_title=premise_title and not is_short)
         d_res = self.desc_agent.evaluate_description(description, hashtags)
 
         all_passed = v_res.passed and t_res.passed and d_res.passed
@@ -419,6 +423,9 @@ def verify_output_directory(output_dir: Path | str) -> bool:
             part_num=data.get("part"),
             display_name=data.get("display_name", ep_dir.name),
         )
+        premise = data.get("mode") == "arc" and not is_short
+        if premise:
+            clean_title = title  # arc recaps keep their premise-style title as written
 
         res = shield.inspect_candidate(
             video_path=v_path,
@@ -426,6 +433,7 @@ def verify_output_directory(output_dir: Path | str) -> bool:
             description=clean_desc,
             is_short=is_short,
             hashtags=tags,
+            premise_title=premise,
         )
 
         print(f"\n[copyright_filter] 🛡️ Inspecting: {v_path.name}")
