@@ -21,7 +21,7 @@ from pathlib import Path
 from anime_catalog import get_next_episode, get_active_episode, load_catalog, load_history, save_history, get_next_arc, get_arc, get_story_arcs
 from anime_script_engine import generate_episode_script, generate_cinema_script, generate_arc_script
 from anime_subtitle_sync import get_episode_scene_acts
-from anime_voice_subtitles import produce_part_audio_subtitles, produce_master_audio_subtitles, CINEMA_VOICE
+from anime_voice_subtitles import produce_part_audio_subtitles, produce_master_audio_subtitles, produce_beat_narration, CINEMA_VOICE
 from anime_copyright_filter import MultiAgentCopyrightShield
 from anime_video_engine import (
     assemble_short_part,
@@ -901,13 +901,19 @@ def run_arc_pipeline(
     part: int = 1,
     upload_live: bool = False,
     max_duration: float = 3600.0,
+    reuse_script: bool = False,
+    tts_rate: str = "+10%",
 ) -> dict:
     """
-    Run full story arc video production (1 complete video per arc, split into Part 1/2 if > 1 hour).
+    Recap-kun style story-arc video: every episode of the arc is downloaded, transcribed and
+    retold as grounded beats (anime_arc_grounding); each beat is spoken on its own so its length is
+    exact, and the video shows that beat's own source scene for exactly as long as it is spoken.
+    One chapter per episode. Any grounding failure aborts the run (status "error", no summary for
+    the uploader) - there is no template narration fallback.
     """
-    log("=== ⚔️ Starting Bhaloo Ji Story Arc Explanation Pipeline ===")
+    from anime_arc_grounding import GroundingError, NARRATION_WPS
 
-    # 1. Select Arc (resume active in-progress arc or pick next pending)
+    log("=== Starting Bhaloo Ji Story Arc Recap Pipeline (grounded, Recap-kun style) ===")
     history = load_history()
     active_arc = history.get("active_arc")
     if not arc_key and active_arc:
@@ -915,7 +921,6 @@ def run_arc_pipeline(
         if part == 1 and active_arc.get("part"):
             part = active_arc.get("part")
 
-    target_arc = None
     if arc_key:
         target_arc = get_arc(arc_key)
         if not target_arc:
@@ -927,141 +932,120 @@ def run_arc_pipeline(
             log("No pending story arcs found in catalog.")
             return {"status": "complete", "message": "all arcs completed"}
 
-    log(f"Target Story Arc: {target_arc['display_name']} (Key: {target_arc['arc_key']})")
-    log(f"Episodes in Arc ({len(target_arc['episode_keys'])}): {', '.join(target_arc['episode_keys'])}")
-
+    log(f"Target Story Arc: {target_arc['display_name']} ({len(target_arc['episode_keys'])} episodes: "
+        f"{', '.join(target_arc['episode_keys'])})")
     arc_work_dir = OUTPUT_DIR / target_arc["arc_key"]
     arc_work_dir.mkdir(parents=True, exist_ok=True)
 
-    if not bgm_path:
+    if not bgm_path or not Path(bgm_path).exists():
         bgm_path = pick_bgm_for_episode(series_id=target_arc.get("series_id"))
-        log(f"Auto-selected royalty-free BGM: {bgm_path.name}")
-    elif not Path(bgm_path).exists():
-        bgm_path = pick_bgm_for_episode(series_id=target_arc.get("series_id"))
+        log(f"BGM: {Path(bgm_path).name}")
 
-    # 2. Generate Arc Script Package with 1-hour split rule
+    # 1. Download EVERY episode of the arc before writing anything (the script is grounded in them)
     catalog = load_catalog()
     ep_map = {e["episode_key"]: e for e in catalog.get("episodes", [])}
+    raw_episode_map: dict[str, Path] = {}
+    for ep_k in target_arc["episode_keys"]:
+        ep_obj = ep_map.get(ep_k, {})
+        raw_path = CACHE_DIR / ep_obj.get("filename", f"{ep_k}.mp4")
+        raw_episode_map[ep_k] = raw_path
+        if dry_run:
+            continue
+        ok = download_gdrive_episode(ep_obj.get("gdrive_file_id", ""), raw_path) if ep_obj.get("gdrive_file_id") else False
+        if not ok or not raw_path.exists() or raw_path.stat().st_size < 1_000_000:
+            log(f"Episode {ep_k} could not be downloaded ({raw_path}); aborting the arc run.")
+            return {"status": "error", "message": f"episode {ep_k} not available", "arc_key": target_arc["arc_key"]}
 
-    log("Generating comprehensive Story Arc script & chapters...")
-    arc_script = generate_arc_script(target_arc, part=part, max_duration=max_duration, catalog=catalog)
-
+    # 2. Grounded script (one chapter per episode)
+    script_file = arc_work_dir / "arc_script.json"
+    arc_script = None
+    if reuse_script and script_file.exists():
+        try:
+            cached = json.loads(script_file.read_text(encoding="utf-8"))
+            if cached.get("grounded") and cached.get("part") == part:
+                arc_script = cached
+                log("Reusing the grounded arc script from this run's output folder.")
+        except Exception:
+            arc_script = None
+    if arc_script is None:
+        try:
+            arc_script = generate_arc_script(target_arc, part=part, max_duration=max_duration, catalog=catalog,
+                                             episode_paths=raw_episode_map)
+        except GroundingError as e:
+            log(f"GROUNDING FAILED: {e}")
+            (arc_work_dir / "grounding_error.txt").write_text(str(e), encoding="utf-8")
+            return {"status": "error", "message": f"grounding failed: {e}", "arc_key": target_arc["arc_key"]}
     part_suffix = f"_part{arc_script['part']}" if arc_script.get("is_split") else ""
     script_file = arc_work_dir / f"arc_script{part_suffix}.json"
-    with open(script_file, "w", encoding="utf-8") as f:
-        json.dump(arc_script, f, indent=2, ensure_ascii=False)
+    script_file.write_text(json.dumps(arc_script, indent=2, ensure_ascii=False), encoding="utf-8")
+    log(f"Arc script: '{arc_script['full_video']['title']}' - {len(arc_script['chapters'])} chapters, "
+        f"{arc_script['word_count']} words")
 
-    log(f"Arc Script ready: {arc_script['full_video']['title']} ({arc_script['word_count']} words, est {arc_script['part_duration']:.1f}s / {arc_script['part_duration']/60:.1f} min)")
-
-    # 3. Source Raw Anime Videos for chapters in this part (saves bandwidth & runner disk)
-    needed_ep_keys = list(dict.fromkeys(c.get("episode_key") for c in arc_script["chapters"] if c.get("episode_key"))) or target_arc["episode_keys"]
-    raw_episode_map = {}
-    for ep_k in needed_ep_keys:
-        ep_obj = ep_map.get(ep_k, {})
-        fn = ep_obj.get("filename", f"{ep_k}.mp4")
-        raw_path = CACHE_DIR / fn
-        if not dry_run and not raw_path.exists():
-            fid = ep_obj.get("gdrive_file_id", "")
-            if fid:
-                ok = download_gdrive_episode(fid, raw_path, dry_run=dry_run)
-                if not ok:
-                    log(f"Warning: Failed to download episode {ep_k}.")
-        elif dry_run:
-            fid = ep_obj.get("gdrive_file_id", "")
-            download_gdrive_episode(fid, raw_path, dry_run=True)
-        raw_episode_map[ep_k] = raw_path
-
-    # 4. Produce Master Arc Video (16:9 Landscape)
-    log(f"\n=== 🎬 Producing Master Arc Video (16:9 Landscape) [{part_suffix.strip('_') or 'Full Complete Arc'}] ===")
-    arc_video_file = arc_work_dir / f"full_{target_arc['arc_key']}{part_suffix}.mp4"
-    arc_audio_file = arc_work_dir / f"arc_voice{part_suffix}.mp3"
-    arc_ass_file = arc_work_dir / f"arc_subtitles{part_suffix}.ass"
-
-    chapter_texts = [c["narration"] for c in arc_script["chapters"]]
-
+    # 3. Flatten beats and narrate each one (exact durations)
+    beats = []
+    for ci, chap in enumerate(arc_script["chapters"]):
+        for b in chap["beats"]:
+            beats.append({"text": b["text"], "src_start": float(b["src_start"]), "src_end": float(b["src_end"]),
+                          "episode_key": chap["episode_key"], "chapter_index": ci,
+                          "episode_duration": chap.get("episode_duration"), "songs": chap.get("songs", [])})
+    voice_wav = arc_work_dir / f"arc_voice{part_suffix}.wav"
     if dry_run:
-        total_master_duration = sum(len(t.split()) / 3.0 for t in chapter_texts)
-        chapter_segments = []
-        curr_start = 0.0
-        for idx, (c_obj, text) in enumerate(zip(arc_script["chapters"], chapter_texts), 1):
-            dur = len(text.split()) / 3.0
-            chapter_segments.append({
-                "part": idx,
-                "chapter_index": idx,
-                "episode_key": c_obj.get("episode_key", ""),
-                "title": c_obj.get("chapter_title", f"Chapter {idx}"),
-                "time_range": c_obj.get("time_range", [120, 500]),
-                "beats": c_obj.get("beats", []),
-                "start_time": curr_start,
-                "end_time": curr_start + dur,
-                "duration": dur,
-                "narration": text,
-            })
-            curr_start += dur
-        master_audio_res = {
-            "duration": total_master_duration,
-            "word_count": sum(len(t.split()) for t in chapter_texts),
-            "chapter_segments": chapter_segments,
-        }
-        log(f"[DRY-RUN] Simulating arc master voiceover: {total_master_duration:.1f}s ({len(chapter_texts)} chapters across {len(target_arc['episode_keys'])} episodes)")
+        t = 0.0
+        timeline, chapter_starts, word_cues = [], {}, []
+        for b in beats:
+            d = len(b["text"].split()) / NARRATION_WPS
+            chapter_starts.setdefault(b["chapter_index"], t)
+            timeline.append(dict(b, start=t, speech_end=t + d, end=t + d))
+            t += d
+        narration = {"duration": t, "timeline": timeline, "word_cues": word_cues,
+                     "chapter_starts": [chapter_starts[k] for k in sorted(chapter_starts)]}
     else:
-        master_audio_res = produce_master_audio_subtitles(
-            chapter_texts=chapter_texts,
-            output_audio_path=arc_audio_file,
-            output_ass_path=arc_ass_file,
-            voice=voice,
-            is_landscape=True,
-        )
-        total_master_duration = master_audio_res["duration"]
-        chapter_segments = master_audio_res.get("chapter_segments", [])
-        for idx, chap in enumerate(chapter_segments):
-            if idx < len(arc_script["chapters"]):
-                c_obj = arc_script["chapters"][idx]
-                chap["episode_key"] = c_obj.get("episode_key", "")
-                chap["time_range"] = c_obj.get("time_range", [120, 500])
-                chap["narration"] = c_obj.get("narration", "")
-                chap["beats"] = c_obj.get("beats", [])
+        narration = produce_beat_narration(beats, CACHE_DIR / "tts_beats", voice_wav,
+                                           voice=voice or "en-US-ChristopherNeural", rate=tts_rate)
+    total = narration["duration"]
+    timeline = narration["timeline"]
+    (arc_work_dir / f"beat_timeline{part_suffix}.json").write_text(json.dumps(timeline, indent=1), encoding="utf-8")
+    if narration["word_cues"]:
+        from anime_voice_subtitles import cues_to_ass
+        (arc_work_dir / f"arc_subtitles{part_suffix}.ass").write_text(
+            cues_to_ass(narration["word_cues"], is_landscape=True), encoding="utf-8")
 
-    # Update chapters in description with exact audio start timestamps
-    if chapter_segments and len(chapter_segments) == len(arc_script["chapters"]):
-        exact_chapters = []
-        for idx, chap in enumerate(chapter_segments, 1):
-            c_obj = arc_script["chapters"][idx - 1]
-            c_title = c_obj.get("chapter_title") or c_obj.get("theme") or chap.get("title") or f"Chapter {idx}"
-            ep_num = c_obj.get("episode")
-            ep_suffix = f" (Ep {ep_num})" if ep_num else ""
-            c_s = chap.get("start_time", 0.0)
-            mins = int(c_s // 60)
-            secs = int(c_s % 60)
-            exact_chapters.append(f"{mins:02d}:{secs:02d} Chapter {idx}: {c_title}{ep_suffix}")
+    # 4. Exact chapter timestamps in the description
+    from anime_script_engine import format_chapter_time, build_arc_description
+    long_form = total >= 3600
+    exact = []
+    for ci, chap in enumerate(arc_script["chapters"]):
+        st = 0.0 if ci == 0 else narration["chapter_starts"][ci]
+        exact.append(f"{format_chapter_time(st, long_form)} {chap['chapter_title']} (Episode {chap['episode']})")
+    arc_script["full_video"]["chapters"] = exact
+    arc_script["chapter_timestamps"] = exact
+    arc_script["full_video"]["duration"] = total
+    arc_script["full_video"]["description"] = build_arc_description(
+        target_arc, arc_script["full_video"]["title"], arc_script.get("summary", ""), exact)
+    script_file.write_text(json.dumps(arc_script, indent=2, ensure_ascii=False), encoding="utf-8")
+    log(f"Narration {total:.1f}s ({total / 60:.1f} min). Chapters:\n  " + "\n  ".join(exact))
 
-        old_desc = arc_script["full_video"]["description"]
-        if "Arc Chapters:\n" in old_desc:
-            prefix, rest = old_desc.split("Arc Chapters:\n", 1)
-            rest_parts = rest.split("\n\nEnjoying", 1)
-            suffix = "\n\nEnjoying" + rest_parts[1] if len(rest_parts) > 1 else ""
-            arc_script["full_video"]["description"] = f"{prefix}Arc Chapters:\n{chr(10).join(exact_chapters)}{suffix}"
-            arc_script["full_video"]["chapters"] = exact_chapters
-
-    master_render_success = assemble_arc_master_video(
+    # 5. Long video: each beat shows its own scene
+    arc_video_file = arc_work_dir / f"full_{target_arc['arc_key']}{part_suffix}.mp4"
+    ok = assemble_arc_master_video(
         raw_episode_map=raw_episode_map,
-        voice_audio_path=arc_audio_file,
-        ass_subtitle_path=arc_ass_file,
+        voice_audio_path=voice_wav,
         output_video_path=arc_video_file,
-        chapter_segments=chapter_segments,
-        total_duration=total_master_duration,
+        beat_timeline=timeline,
+        total_duration=total,
         bgm_path=bgm_path,
         dry_run=dry_run,
+        cuts_report_path=arc_work_dir / f"cuts{part_suffix}.json",
     )
-
     arc_video_meta = {
         "title": arc_script["full_video"]["title"],
         "video_path": str(arc_video_file),
-        "chapters": arc_script["full_video"]["chapters"],
+        "chapters": exact,
         "description": arc_script["full_video"]["description"],
         "hashtags": arc_script["full_video"]["hashtags"],
-        "duration": total_master_duration,
-        "status": "rendered" if master_render_success else "failed",
+        "duration": total,
+        "word_count": arc_script["word_count"],
+        "status": "rendered" if ok else "failed",
         "is_full_video": True,
         "is_arc": True,
         "arc_key": target_arc["arc_key"],
@@ -1069,75 +1053,62 @@ def run_arc_pipeline(
         "total_parts": arc_script["total_parts"],
         "is_split": arc_script["is_split"],
     }
+    (arc_work_dir / f"arc_video_meta{part_suffix}.json").write_text(json.dumps(arc_video_meta, indent=2), encoding="utf-8")
+    if not ok:
+        log("Arc video render failed.")
+        return {"status": "error", "message": "arc video rendering failed", "arc_key": target_arc["arc_key"]}
 
-    with open(arc_work_dir / f"arc_video_meta{part_suffix}.json", "w", encoding="utf-8") as f:
-        json.dump(arc_video_meta, f, indent=2)
-
-    if not master_render_success:
-        log("❌ Failed to produce Master Arc Video.")
-        return {
-            "status": "error",
-            "message": "arc video rendering failed",
-            "arc_key": target_arc["arc_key"],
-        }
-
-    log(f"🎬 Master Arc Video successfully produced: {arc_video_file.name}")
-
-    # 5. Derive Shorts from the Master Arc Video (uploaded after the long video)
-    log("\n=== 📱 Deriving Shorts from Master Arc Video ===")
+    # 6. Short: ~55 s starting on a beat boundary near the climax, captions from the beat word cues
     parts_meta = []
-    master_total = float(arc_video_meta.get("duration") or 0.0) or sum(float(c.get("duration", 0.0)) for c in chapter_segments)
-    num_shorts = int(os.environ.get("ARC_SHORTS_COUNT", "1") or 1)  # one Short per day
-    picks = _pick_arc_short_chapters(chapter_segments, arc_script.get("chapters", []), num_shorts)
-
-    for p_order, idx in enumerate(picks, 1):
-        c_seg = chapter_segments[idx]
-        c_obj = arc_script["chapters"][idx] if idx < len(arc_script.get("chapters", [])) else {}
-        c_start = float(c_seg.get("start_time", 0.0))
-        # Aim for ~55s: a chapter is usually ~50-75s, so run into the next chapter if it is short.
-        c_end = c_start + 55.0
-        if master_total:
-            c_end = min(c_end, master_total)
-        c_dur = max(1.0, c_end - c_start)
-        if c_dur < 20.0:
-            continue
-
+    num_shorts = int(os.environ.get("ARC_SHORTS_COUNT", "1") or 1)
+    windows = _pick_arc_short_windows(timeline, arc_script["chapters"], num_shorts)
+    for p_order, (b0, b1) in enumerate(windows, 1):
+        st = 0.0 if b0 == 0 else timeline[b0]["start"]
+        en = timeline[b1]["speech_end"] + 0.4
+        en = min(en, timeline[b1]["end"]) if b1 + 1 < len(timeline) else min(en, total)
+        ci = timeline[b0]["chapter_index"]
+        chap = arc_script["chapters"][ci]
         part_dir = arc_work_dir / f"short_{p_order:02d}"
         part_dir.mkdir(parents=True, exist_ok=True)
         short_file = part_dir / f"short_{target_arc['arc_key']}_p{arc_script['part']}_{p_order}.mp4"
-
+        cap_ass = part_dir / "captions.ass"
+        badge = f"{target_arc['series'].split(':')[0]} • {chap['chapter_title']}"
+        if not dry_run:
+            from anime_voice_subtitles import build_short_caption_ass
+            cap_ass.write_text(build_short_caption_ass(narration["word_cues"], st, en, badge_text=badge), encoding="utf-8")
         derive_ok = derive_short_from_master(
             master_video_path=arc_video_file,
             output_short_path=short_file,
-            start_time=c_start,
-            end_time=c_end,
-            badge_text=f"{target_arc['arc_name']} • PART {p_order}",
+            start_time=st,
+            end_time=en,
+            badge_text="",
             dry_run=dry_run,
-            full_bleed=False,  # master has burned-in captions: keep the whole frame readable
+            full_bleed=False,   # card layout: the whole 16:9 frame stays visible
             mirror=False,
+            caption_ass_path=cap_ass if cap_ass.exists() else None,
         )
-
-        hook = _short_hook_title(c_obj.get("hook") or c_seg.get("title") or "", target_arc["arc_name"])
         series_tag = target_arc["series_id"].replace("-", "")
+        hook = _short_hook_title(timeline[b0]["text"], chap["chapter_title"])
         part_meta = {
             "part": p_order,
-            "chapter_index": idx,
-            "title": f"{hook} | {target_arc['display_name']} #shorts"[:100],
+            "chapter_index": ci,
+            "beats": [b0, b1],
+            "title": f"{chap['chapter_title']} | {target_arc['display_name']} #shorts"[:100],
+            "hook": hook,
             "video_path": str(short_file),
-            "start_time": c_start,
-            "end_time": c_end,
-            "duration": c_dur,
+            "start_time": round(st, 3),
+            "end_time": round(en, 3),
+            "duration": round(en - st, 3),
             "hashtags": ["anime", "animerecap", "shorts", series_tag, "bhalooji"],
             "description": (
-                f"{(c_obj.get('hook') or '').strip()}\n\n"
-                f"Clip from our full {target_arc['display_name']} recap. Watch the complete arc here: {{FULL_VIDEO_URL}}\n\n"
+                f"{' '.join(b['text'] for b in timeline[b0:b0 + 2])}\n\n"
+                f"From our full recap of the {target_arc['arc_name']}: {{FULL_VIDEO_URL}}\n\n"
                 f"#anime #animerecap #shorts #{series_tag} #bhalooji"
             ),
             "status": "rendered" if derive_ok else "failed",
         }
         parts_meta.append(part_meta)
-        with open(part_dir / "meta.json", "w", encoding="utf-8") as f:
-            json.dump(part_meta, f, indent=2)
+        (part_dir / "meta.json").write_text(json.dumps(part_meta, indent=2), encoding="utf-8")
 
     pipeline_result = {
         "status": "success",
@@ -1150,15 +1121,53 @@ def run_arc_pipeline(
         "parts": parts_meta,
         "full_video": arc_video_meta,
     }
-
-    with open(arc_work_dir / "pipeline_summary.json", "w", encoding="utf-8") as f:
-        json.dump(pipeline_result, f, indent=2)
-
-    log(f"\n🎉 Story Arc Pipeline complete for {target_arc['display_name']}!")
-    log(f"Produced 1 Master Arc Video + {len(parts_meta)} derived Shorts.")
-    log(f"Artifacts located at: {arc_work_dir}")
-
+    (arc_work_dir / "pipeline_summary.json").write_text(json.dumps(pipeline_result, indent=2), encoding="utf-8")
+    log(f"Story Arc pipeline complete: 1 long video ({total / 60:.1f} min) + {len(parts_meta)} Short(s) in {arc_work_dir}")
     return pipeline_result
+
+
+def _pick_arc_short_windows(timeline: list[dict], chapters: list[dict], num_shorts: int = 1,
+                            target: float = 55.0, max_len: float = 59.0, min_len: float = 40.0) -> list[tuple[int, int]]:
+    """
+    Beat windows [(first_beat, last_beat)] for the Shorts. One Short: in the climax chapter (~70%
+    through the arc), around the beat the writer marked as the episode's climax; the window starts on
+    a beat boundary, runs ~55 s and never exceeds max_len. Several: one per evenly spread chapter.
+    """
+    if not timeline or num_shorts <= 0:
+        return []
+    n_ch = max(b["chapter_index"] for b in timeline) + 1
+    if num_shorts == 1:
+        ch_list = [min(n_ch - 1, int(round(n_ch * 0.7)))]
+    else:
+        ch_list = _pick_arc_short_chapters([None] * n_ch, chapters, num_shorts)
+    out = []
+    for ci in ch_list:
+        idxs = [i for i, b in enumerate(timeline) if b["chapter_index"] == ci]
+        if not idxs:
+            continue
+        hint = (chapters[ci] if ci < len(chapters) else {}).get("climax_hint")
+        anchor = idxs[int(len(idxs) * 0.6)]
+        if isinstance(hint, (int, float)):
+            after = [i for i in idxs if timeline[i]["src_end"] >= float(hint)]
+            if after:
+                anchor = after[0]
+
+        def span(a, z):
+            return timeline[z]["speech_end"] - timeline[a]["start"]
+
+        # back up ~20 s before the climax beat so the Short builds into it
+        start = anchor
+        while start - 1 >= 0 and span(start - 1, anchor) <= 20.0:
+            start -= 1
+        end = start
+        while end + 1 < len(timeline) and span(start, end + 1) <= max_len - 0.5 and span(start, end) < target:
+            end += 1
+        while span(start, end) < min_len and start - 1 >= 0 and span(start - 1, end) <= max_len - 0.5:
+            start -= 1
+        while span(start, end) > max_len - 0.5 and end > start:
+            end -= 1
+        out.append((start, end))
+    return out
 
 
 def _pick_arc_short_chapters(chapter_segments: list, chapters: list, num_shorts: int = 1) -> list[int]:

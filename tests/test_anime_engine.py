@@ -1190,6 +1190,124 @@ class TestRecapKunLongFormAndNoDuplicates(unittest.TestCase):
             self.assertNotIn("find out in part 3", narr)
 
 
+
+FAKE_PREMISE_TITLE = "Boy Climbs a Mountain Full of Spider Demons So He Can Save His Sister and Friends"
+
+
+def _fake_grounded_arc(arc: dict, beats_per_ep: int = 12, words_per_beat: int = 40) -> dict:
+    """Stand-in for anime_arc_grounding.ground_arc (no network): valid beats per episode."""
+    eps = []
+    for i, k in enumerate(arc["episode_keys"]):
+        ep_num = 15 + i
+        beats = []
+        for j in range(beats_per_ep):
+            words = ["Tanjiro"] + ["moves"] * (words_per_beat - 2) + [f"scene{j}."]
+            beats.append({"text": " ".join(words), "src_start": 100.0 + j * 90, "src_end": 130.0 + j * 90})
+        eps.append({"episode_key": k, "episode": ep_num, "duration": 1420.0, "songs": [[0.0, 89.0], [1310.0, 1420.0]],
+                    "chapter_title": f"Spider Mountain {ep_num}", "beats": beats,
+                    "story_so_far": "Tanjiro and his friends fight the spider family.", "climax_hint": 700.0,
+                    "model": "fake"})
+    return {"episodes": eps, "language": "japanese"}
+
+
+def _dummy_paths(arc: dict) -> dict:
+    return {k: f"/tmp/{k}.mp4" for k in arc["episode_keys"]}
+
+
+class _fake_grounding:
+    def __init__(self, arc):
+        self.p1 = patch("anime_arc_grounding.ground_arc", side_effect=lambda a, paths, nums=None: _fake_grounded_arc(arc))
+        self.p2 = patch("anime_arc_grounding.write_premise_title",
+                        side_effect=lambda a, summary, titles, part_label="": (FAKE_PREMISE_TITLE + part_label, "fake"))
+
+    def __enter__(self):
+        self.p1.start()
+        self.p2.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.p2.stop()
+        self.p1.stop()
+        return False
+
+
+class TestArcGroundingAndCuts(unittest.TestCase):
+    def _beats(self, n=10, words=45, step=60.0):
+        return [{"text": " ".join(["Tanjiro"] + ["runs"] * (words - 2) + ["away."]), "src_start": 100 + i * step,
+                 "src_end": 120 + i * step} for i in range(n)]
+
+    def test_validate_beats_accepts_grounded_episode(self):
+        from anime_arc_grounding import validate_beats
+        out = validate_beats(self._beats(), 1420.0, [(0, 89), (1310, 1420)])
+        self.assertEqual(len(out), 10)
+        self.assertEqual(out[0]["src_start"], 100.0)
+
+    def test_validate_beats_rejects_bad_scripts(self):
+        from anime_arc_grounding import validate_beats
+        songs = [(0, 89), (1310, 1420)]
+        with self.assertRaises(ValueError):          # too few beats
+            validate_beats(self._beats(n=5), 1420.0, songs)
+        with self.assertRaises(ValueError):          # too few words in total
+            validate_beats(self._beats(words=20), 1420.0, songs)
+        bad = self._beats()
+        bad[3]["text"] = "Get ready, because things are about to get intense as Tanjiro faces the enemy forces head on now."
+        with self.assertRaisesRegex(ValueError, "filler"):
+            validate_beats(bad, 1420.0, songs)
+        bad = self._beats()
+        bad[5]["src_start"], bad[5]["src_end"] = 20.0, 60.0   # back in time and inside the opening song
+        with self.assertRaisesRegex(ValueError, "back in time"):
+            validate_beats(bad, 1420.0, songs)
+        bad = self._beats()
+        bad[9]["src_start"], bad[9]["src_end"] = 1320.0, 1350.0  # inside the ending song
+        with self.assertRaisesRegex(ValueError, "song"):
+            validate_beats(bad, 1420.0, songs)
+        bad = self._beats()
+        bad[2]["src_end"] = 2000.0                           # outside the episode
+        with self.assertRaisesRegex(ValueError, "outside episode"):
+            validate_beats(bad, 1420.0, songs)
+        bad = self._beats()
+        bad[1]["text"] = "Too short."
+        with self.assertRaisesRegex(ValueError, "too short"):
+            validate_beats(bad, 1420.0, songs)
+
+    def test_plan_beat_cuts_exact_and_short(self):
+        from anime_video_engine import plan_beat_cuts
+        fps = 25.0
+        for (s, e, frames) in [(100, 110, 350), (100, 160, 225), (100, 101.5, 150), (500, 504, 400)]:
+            cuts = plan_beat_cuts(s, e, frames, fps, ep_duration=1420.0, songs=[(0, 89), (1310, 1420)])
+            self.assertEqual(sum(n for _, n in cuts), frames)
+            self.assertTrue(all(n / fps <= 4.2 + 1e-6 for _, n in cuts))
+            for t, n in cuts:  # footage stays on the beat's own scene (+ at most 3 s widening)
+                self.assertGreaterEqual(t, s - 3.01)
+                self.assertLessEqual(t + n / fps, e + 3.01)
+
+    def test_short_window_is_beat_aligned_and_under_a_minute(self):
+        from anime_pipeline import _pick_arc_short_windows
+        timeline, t = [], 0.0
+        for ci in range(7):
+            for j in range(12):
+                d = 9.0 + (j % 3)
+                timeline.append({"chapter_index": ci, "start": t, "speech_end": t + d - 0.2, "end": t + d,
+                                 "src_start": 100 + j * 90, "src_end": 130 + j * 90, "text": "x"})
+                t += d
+        chapters = [{"climax_hint": 700.0} for _ in range(7)]
+        (b0, b1), = _pick_arc_short_windows(timeline, chapters, 1)
+        self.assertEqual(timeline[b0]["chapter_index"], 5)  # ~70% through a 7-chapter arc
+        span = timeline[b1]["speech_end"] - timeline[b0]["start"]
+        self.assertGreaterEqual(span, 45.0)
+        self.assertLessEqual(span, 59.0)
+        climax_beat = next(i for i, b in enumerate(timeline) if b["chapter_index"] == 5 and b["src_end"] >= 700)
+        self.assertTrue(b0 <= climax_beat <= b1)
+
+    def test_short_caption_ass_is_shifted(self):
+        from anime_voice_subtitles import build_short_caption_ass
+        cues = [{"word": w, "start": 100 + i * 0.4, "end": 100.3 + i * 0.4} for i, w in enumerate("The spider demon attacks Tanjiro now".split())]
+        ass = build_short_caption_ass(cues, 100.0, 103.0, badge_text="Demon Slayer")
+        self.assertIn("PlayResY: 1920", ass)
+        self.assertIn("Dialogue: 0,0:00:00.00", ass)
+        self.assertNotIn("0:01:40", ass)
+
+
 class TestAnimeArcEngine(unittest.TestCase):
     def test_arc_catalog_and_registry(self):
         """Verify arc registry defines all Demon Slayer and Jujutsu Kaisen arcs and detects next pending arc."""
@@ -1229,66 +1347,98 @@ class TestAnimeArcEngine(unittest.TestCase):
         self.assertEqual(get_next_arc("demon-slayer", history=mock_active)["arc_key"], "demon-slayer-mount-natagumo")
 
     def test_arc_script_under_1hour_no_split(self):
-        """Verify arc with duration <= 3600s produces 1 single complete video without splitting."""
+        """Grounded arc script: one chapter per episode with real titles, premise title, no split under 1 hour."""
         from anime_catalog import get_arc
         from anime_script_engine import generate_arc_script
 
         arc = get_arc("demon-slayer-mount-natagumo")
-        script_pkg = generate_arc_script(arc, part=1, max_duration=3600.0)
+        with _fake_grounding(arc):
+            script_pkg = generate_arc_script(arc, part=1, max_duration=3600.0, episode_paths=_dummy_paths(arc))
 
-        # 1. Total duration must be <= 3600.0s and must NOT split
+        self.assertTrue(script_pkg["grounded"])
         self.assertFalse(script_pkg["is_split"])
         self.assertEqual(script_pkg["total_parts"], 1)
-        self.assertEqual(script_pkg["part"], 1)
         self.assertLessEqual(script_pkg["part_duration"], 3600.0)
-        self.assertGreater(script_pkg["word_count"], 3000)
-
-        # 2. Minimum chapters covering all episodes in the arc
-        self.assertGreaterEqual(len(script_pkg["chapters"]), 7)
-        self.assertTrue(script_pkg["chapter_timestamps"][0].startswith("00:00"))
-
-        # 3. No Part 1 or cliffhanger in title when unsplit
-        self.assertNotIn("Part 1", script_pkg["full_video"]["title"])
-        self.assertIn("Mount Natagumo Arc", script_pkg["full_video"]["title"])
+        self.assertEqual(len(script_pkg["chapters"]), 7)  # one chapter per episode
+        self.assertEqual([c["episode"] for c in script_pkg["chapters"]], list(range(15, 22)))
+        self.assertEqual(script_pkg["word_count"], sum(c["word_count"] for c in script_pkg["chapters"]))
+        self.assertTrue(script_pkg["chapter_timestamps"][0].startswith("00:00 "))
+        self.assertIn("Spider Mountain 15", script_pkg["chapter_timestamps"][0])
+        for c in script_pkg["chapters"]:
+            self.assertTrue(all({"text", "src_start", "src_end", "episode_key"} <= set(b) for b in c["beats"]))
+        title = script_pkg["full_video"]["title"]
+        self.assertEqual(title, FAKE_PREMISE_TITLE)
+        self.assertLessEqual(len(title), 100)
+        self.assertNotIn("Part 1", title)
+        self.assertIn("Section 107", script_pkg["full_video"]["description"])
 
     def test_arc_script_over_1hour_splits(self):
-        """Verify arc exceeding 3600s strictly splits into Part 1/2 and Part 2/2 each <= max_duration."""
+        """When the narration estimate exceeds max_duration the arc splits at an episode boundary."""
         from anime_catalog import get_arc
         from anime_script_engine import generate_arc_script
 
         arc = get_arc("demon-slayer-mount-natagumo")
-        # Test split rule threshold by setting max_duration=1500.0s (less than the ~1972s total)
-        pkg_part1 = generate_arc_script(arc, part=1, max_duration=1500.0)
-        self.assertTrue(pkg_part1["is_split"])
-        self.assertEqual(pkg_part1["total_parts"], 2)
-        self.assertEqual(pkg_part1["part"], 1)
-        self.assertIn("Part 1/2", pkg_part1["full_video"]["title"])
-        self.assertLessEqual(pkg_part1["part_duration"], 1500.0)
+        with _fake_grounding(arc):
+            p1 = generate_arc_script(arc, part=1, max_duration=600.0, episode_paths=_dummy_paths(arc))
+            p2 = generate_arc_script(arc, part=2, max_duration=600.0, episode_paths=_dummy_paths(arc))
+        self.assertTrue(p1["is_split"])
+        self.assertEqual(p1["total_parts"], 2)
+        self.assertIn("(Part 1/2)", p1["full_video"]["title"])
+        self.assertIn("(Part 2/2)", p2["full_video"]["title"])
+        eps1 = [c["episode"] for c in p1["chapters"]]
+        eps2 = [c["episode"] for c in p2["chapters"]]
+        self.assertEqual(eps1 + eps2, list(range(15, 22)))
+        self.assertTrue(eps1 and eps2)
 
-        pkg_part2 = generate_arc_script(arc, part=2, max_duration=1500.0)
-        self.assertTrue(pkg_part2["is_split"])
-        self.assertEqual(pkg_part2["total_parts"], 2)
-        self.assertEqual(pkg_part2["part"], 2)
-        self.assertIn("Part 2/2", pkg_part2["full_video"]["title"])
-        self.assertLessEqual(pkg_part2["part_duration"], 1500.0)
+    def test_arc_script_requires_grounding(self):
+        """No template fallback: without episode files (or when grounding fails) generate_arc_script raises."""
+        from anime_catalog import get_arc
+        from anime_script_engine import generate_arc_script
+        from anime_arc_grounding import GroundingError
+
+        arc = get_arc("demon-slayer-mount-natagumo")
+        with self.assertRaises(GroundingError):
+            generate_arc_script(arc, part=1)
+        with patch("anime_arc_grounding.ground_arc", side_effect=GroundingError("no transcript")):
+            with self.assertRaises(GroundingError):
+                generate_arc_script(arc, part=1, episode_paths={k: "/nonexistent.mp4" for k in arc["episode_keys"]})
+
+    def test_arc_pipeline_grounding_failure_exits_error(self):
+        """A grounding failure ends the arc run with status error and no pipeline_summary for the uploader."""
+        from anime_pipeline import run_arc_pipeline, OUTPUT_DIR
+        from anime_arc_grounding import GroundingError
+
+        summary = OUTPUT_DIR / "demon-slayer-mount-natagumo" / "pipeline_summary.json"
+        if summary.exists():
+            summary.unlink()
+        with patch("anime_arc_grounding.ground_arc", side_effect=GroundingError("Groq Whisper never answered")):
+            res = run_arc_pipeline(arc_key="demon-slayer-mount-natagumo", dry_run=True)
+        self.assertEqual(res["status"], "error")
+        self.assertIn("grounding failed", res["message"])
+        self.assertFalse(summary.exists())
 
     def test_arc_pipeline_dry_run(self):
         """Verify full arc pipeline runs dry-run without errors and produces expected summary schema."""
         from anime_pipeline import run_arc_pipeline
+        from anime_catalog import get_arc
 
-        res = run_arc_pipeline(
-            arc_key="demon-slayer-mount-natagumo",
-            dry_run=True,
-            part=1,
-            upload_live=False,
-        )
+        with _fake_grounding(get_arc("demon-slayer-mount-natagumo")):
+            res = run_arc_pipeline(
+                arc_key="demon-slayer-mount-natagumo",
+                dry_run=True,
+                part=1,
+                upload_live=False,
+            )
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["mode"], "arc")
         self.assertTrue(res["is_arc"])
         self.assertEqual(res["arc_key"], "demon-slayer-mount-natagumo")
-        self.assertIn("video_to_upload", res)
         self.assertTrue(res["video_to_upload"]["is_arc"])
+        self.assertEqual(len(res["video_to_upload"]["chapters"]), 7)
         self.assertGreaterEqual(len(res["parts"]), 1)
+        short = res["parts"][0]
+        self.assertLessEqual(short["duration"], 59.5)
+        self.assertGreaterEqual(short["duration"], 40.0)
 
     def test_arc_uploader_completion(self):
         """Verify uploader properly handles arc packages and updates history tracking."""
@@ -1392,8 +1542,10 @@ class TestAnimeArcEngine(unittest.TestCase):
             "completed_episodes": [],
             "active_arc": {"arc_key": "demon-slayer-mount-natagumo", "part": 2, "total_parts": 2},
         }
-        with patch("anime_pipeline.load_history", return_value=mock_active_hist):
-            res = run_arc_pipeline(dry_run=True, max_duration=1500.0)
+        from anime_catalog import get_arc
+        with patch("anime_pipeline.load_history", return_value=mock_active_hist), \
+                _fake_grounding(get_arc("demon-slayer-mount-natagumo")):
+            res = run_arc_pipeline(dry_run=True, max_duration=600.0)
             self.assertEqual(res["status"], "success")
             self.assertEqual(res["video_to_upload"]["part"], 2)
 

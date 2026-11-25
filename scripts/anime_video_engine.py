@@ -894,213 +894,229 @@ def assemble_master_full_video(
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+MAX_CUT_SECONDS = 4.2
+
+
+def plan_beat_cuts(src_start: float, src_end: float, n_frames: int, fps: float, max_cut: float = MAX_CUT_SECONDS,
+                   ep_duration: float | None = None, songs: list | None = None) -> list[tuple[float, int]]:
+    """
+    Footage plan for one beat: [(source_time, frames), ...] summing to exactly n_frames, every cut
+    <= max_cut seconds and taken from the beat's own [src_start, src_end] scene.
+    * Scene longer than the narration: the cuts are spread evenly across the scene (trimmed).
+    * Scene shorter than the narration: it is widened by up to 3 s on each side (staying out of the
+      OP/ED and inside the episode) and then looped.
+    """
+    if n_frames <= 0:
+        return []
+    dur = n_frames / fps
+    s, e = float(src_start), float(src_end)
+    if e - s < dur:
+        lo = 0.0
+        hi = float(ep_duration) if ep_duration else e + 3.0
+        for a, b in songs or []:
+            a, b = float(a), float(b)
+            if b <= s:
+                lo = max(lo, b)
+            if a >= e:
+                hi = min(hi, a)
+        grow = min(3.0, (dur - (e - s)) / 2.0)
+        s, e = max(lo, s - grow), min(hi, e + grow)
+    length = max(0.5, e - s)
+    max_cut_frames = max(1, int(max_cut * fps))
+    # never cut longer than the scene itself
+    max_cut_frames = max(1, min(max_cut_frames, int(length * fps) - 1 if length * fps > 2 else 1))
+    n = max(1, -(-n_frames // max_cut_frames))
+    base, extra = divmod(n_frames, n)
+    sizes = [base + (1 if k < extra else 0) for k in range(n)]
+    cuts = []
+    if length >= dur:
+        slack = length - dur
+        gap = slack / (n - 1) if n > 1 else 0.0
+        t = s
+        for sz in sizes:
+            cuts.append((round(t, 3), sz))
+            t += sz / fps + gap
+    else:
+        t = s
+        for sz in sizes:
+            if t + sz / fps > e + 0.01:
+                t = s
+            cuts.append((round(t, 3), sz))
+            t += sz / fps
+    return cuts
+
+
+def _render_arc_cut(task: tuple) -> tuple[int, bool, str]:
+    """One cut: exactly `frames` video frames (1280x720, no mirror, no text) + the matching source audio
+    as raw 48 kHz stereo PCM of exactly frames/fps seconds."""
+    idx, src, t, frames, fps, w, h, vid_out, pcm_out = task
+    dur = frames / fps
+    vf = (f"fps={fps},scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,"
+          f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,tpad=stop_mode=clone:stop_duration=10,format=yuv420p")
+    cmd = ["ffmpeg", "-nostdin", "-y", "-v", "error", "-ss", f"{t:.3f}", "-i", src,
+           "-map", "0:v:0", "-vf", vf, "-frames:v", str(frames), "-c:v", "libx264", "-preset", "veryfast",
+           "-crf", "20", "-g", str(int(fps * 2)), "-bf", "0", "-video_track_timescale", str(int(round(fps * 1000))),
+           "-an", vid_out,
+           "-map", "0:a:0?", "-t", f"{dur:.4f}", "-ac", "2", "-ar", "48000", "-f", "s16le", pcm_out]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    ok = r.returncode == 0 and Path(vid_out).exists() and Path(vid_out).stat().st_size > 1000
+    if not ok:
+        log(f"cut {idx} ({src} @{t:.1f}s, {frames} frames) failed: {r.stderr[-300:]}")
+        return idx, False, vid_out
+    # pad / trim the source audio to exactly frames/fps seconds so audio never drifts from video
+    want = int(round(dur * 48000)) * 4
+    pcm = Path(pcm_out).read_bytes() if Path(pcm_out).exists() else b""
+    pcm = pcm[:want] + b"\x00" * max(0, want - len(pcm))
+    Path(pcm_out).write_bytes(pcm)
+    return idx, True, vid_out
+
+
+def _measure_lufs(path: str | Path, extra_input: list[str] | None = None, seconds: float | None = None) -> float | None:
+    cmd = ["ffmpeg", "-nostdin", "-v", "info", *(extra_input or []), "-i", str(path)]
+    if seconds:
+        cmd += ["-t", f"{seconds:.1f}"]
+    cmd += ["-af", "loudnorm=print_format=json", "-f", "null", "-"]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    m = re.search(r'"input_i"\s*:\s*"(-?[\d.]+|-inf)"', r.stderr)
+    if not m or m.group(1) == "-inf":
+        return None
+    return float(m.group(1))
+
+
+def probe_fps(path: str | Path) -> float:
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate",
+                        "-of", "csv=p=0", str(path)], capture_output=True, text=True)
+    try:
+        n, d = r.stdout.strip().split("/")
+        return float(n) / float(d)
+    except Exception:
+        return 0.0
+
+
 def assemble_arc_master_video(
     raw_episode_map: dict[str, str | Path],
     voice_audio_path: str | Path,
-    ass_subtitle_path: str | Path,
     output_video_path: str | Path,
-    chapter_segments: list[dict],
+    beat_timeline: list[dict],
     total_duration: float,
     bgm_path: str | Path | None = None,
     dry_run: bool = False,
+    width: int = 1280,
+    height: int = 720,
+    fps: float | None = None,
+    voice_lufs: float = -16.0,
+    source_under_voice_db: float = 28.0,
+    bgm_under_voice_db: float = 20.0,
+    workers: int | None = None,
+    cuts_report_path: str | Path | None = None,
 ) -> bool:
     """
-    Composes a feature-length 16:9 Landscape master video for an entire Story Arc.
-    Extracts continuous narrative scenes from each episode in the arc matching the chapter spoken timelines.
+    Feature-length 16:9 arc video, Recap-kun style: every beat's footage comes from that beat's own
+    source scene [src_start, src_end] in its episode, in cuts of <= 4.2 s, looped or trimmed to fill
+    the beat's narration slot [start, end) exactly. Full frame (letterboxed to 1280x720), no mirror,
+    no burned-in captions. Audio: narration at voice_lufs, the episode's own audio ~28 dB under the
+    voice, BGM ~20 dB under the voice.
+    beat_timeline: [{episode_key, src_start, src_end, start, end, episode_duration?, songs?}] tiling
+    0..total_duration.
     """
     output_video = Path(output_video_path)
     output_video.parent.mkdir(parents=True, exist_ok=True)
-    ass_subs = Path(ass_subtitle_path)
-    voice_audio = Path(voice_audio_path)
-
     if dry_run:
-        log(f"[DRY-RUN] Simulating Master Arc Video render ({len(chapter_segments)} chapters, {total_duration:.1f}s across {len(raw_episode_map)} episodes) -> {output_video.name}")
+        log(f"[DRY-RUN] Simulating arc video render ({len(beat_timeline)} beats, {total_duration:.1f}s) -> {output_video.name}")
         return True
+    for k in {b["episode_key"] for b in beat_timeline}:
+        p = Path(raw_episode_map.get(k, ""))
+        if not p.exists() or p.stat().st_size < 1_000_000:
+            log(f"Episode file for {k} is missing ({p}); refusing to render with substitute footage")
+            return False
+    if not fps:
+        f0 = probe_fps(raw_episode_map[beat_timeline[0]["episode_key"]])
+        fps = 25.0 if abs(f0 - 25.0) < 0.5 else 30.0
+    fps = float(fps)
+    total_frames = int(round(total_duration * fps))
 
-    temp_dir = Path(tempfile.gettempdir()) / f"temp_arc_{output_video.stem}_{os.getpid()}"
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    slice_tasks = []
-
-    log(f"Composing Master Arc Video across {len(chapter_segments)} chapters and {len(raw_episode_map)} episodes...")
-
+    temp_dir = Path(tempfile.mkdtemp(prefix=f"arc_{output_video.stem}_"))
     try:
-        slice_idx = 0
-        for chap in chapter_segments:
-            ep_key = chap.get("episode_key", "")
-            raw_video = Path(raw_episode_map.get(ep_key, ""))
-            if not raw_video.exists():
-                for r_p in raw_episode_map.values():
-                    if Path(r_p).exists():
-                        raw_video = Path(r_p)
-                        break
-
-            chap_dur = chap.get("duration", 60.0)
-            w_start, w_end = chap.get("time_range", [120, 500])
-            safe_start = max(60.0, float(w_start))
-            safe_end = max(safe_start + 30.0, float(w_end))
-            win_len = max(30.0, safe_end - safe_start)
-
-            beats = chap.get("beats")
-            if beats and len(beats) > 0:
-                shots = []
-                accum_dur = 0.0
-                weights = [float(b.get("weight", 1.0 / len(beats))) for b in beats]
-
-                for b_idx, b in enumerate(beats):
-                    b_start = max(0.0, float(b.get("start", safe_start)))
-                    if b_idx == len(beats) - 1:
-                        b_dur = max(0.5, chap_dur - accum_dur)
-                    else:
-                        w = weights[b_idx] if b_idx < len(weights) else (1.0 / len(beats))
-                        b_dur = round(chap_dur * w, 2)
-                        accum_dur += b_dur
-                    shots.append((b_start, b_dur))
-            elif chap_dur <= 35.0:
-                shots = [(safe_start, chap_dur)]
-            else:
-                s1_dur = chap_dur / 2.0
-                s2_dur = chap_dur - s1_dur
-                s1_start = safe_start
-                s2_start = min(safe_start + (win_len * 0.45), safe_end - s2_dur)
-                s2_start = max(safe_start + s1_dur, s2_start)
-                shots = [(s1_start, s1_dur), (s2_start, s2_dur)]
-
-            MAX_SHOT_DUR = 8.5
-            refined_shots = []
-            for s_start, s_dur in shots:
-                if s_dur <= MAX_SHOT_DUR:
-                    refined_shots.append((s_start, s_dur))
-                else:
-                    num_sub = max(2, int(round(s_dur / 6.0)))
-                    sub_dur = round(s_dur / num_sub, 2)
-                    sub_accum = 0.0
-                    for s_i in range(num_sub):
-                        this_dur = (s_dur - sub_accum) if (s_i == num_sub - 1) else sub_dur
-                        sub_start = min(safe_end - this_dur, s_start + (s_i * 4.5))
-                        sub_start = max(safe_start, sub_start)
-                        refined_shots.append((round(sub_start, 2), round(this_dur, 2)))
-                        sub_accum += this_dur
-            shots = refined_shots
-
-            for s_start, s_dur in shots:
-                if s_dur <= 0.5:
-                    continue
-                seg_file = temp_dir / f"slice_{slice_idx:04d}.mp4"
-                alt_zoom = (slice_idx % 2 == 1)
-                slice_tasks.append((slice_idx, s_start, s_dur, str(raw_video), str(seg_file), alt_zoom))
-                slice_idx += 1
-
-        if not slice_tasks:
-            log("Failed to slice scenes for arc master video.")
+        tasks, report = [], []
+        idx = 0
+        for bi, b in enumerate(beat_timeline):
+            f0 = int(round(b["start"] * fps))
+            f1 = total_frames if bi == len(beat_timeline) - 1 else int(round(b["end"] * fps))
+            cuts = plan_beat_cuts(b["src_start"], b["src_end"], f1 - f0, fps,
+                                  ep_duration=b.get("episode_duration"), songs=b.get("songs"))
+            src = str(Path(raw_episode_map[b["episode_key"]]).resolve())
+            for t, n in cuts:
+                tasks.append((idx, src, t, n, fps, width, height,
+                              str(temp_dir / f"c{idx:05d}.mp4"), str(temp_dir / f"c{idx:05d}.pcm")))
+                report.append({"cut": idx, "beat": bi, "episode_key": b["episode_key"], "src_time": t,
+                               "frames": n, "master_start": round(f0 / fps, 3)})
+                f0 += n
+                idx += 1
+        if cuts_report_path:
+            Path(cuts_report_path).write_text(json.dumps(report, indent=1))
+        workers = workers or max(2, min(8, (os.cpu_count() or 4)))
+        log(f"Rendering {len(tasks)} cuts for {len(beat_timeline)} beats ({total_duration:.1f}s @ {fps:g} fps) with {workers} workers...")
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            results = list(ex.map(_render_arc_cut, tasks))
+        failed = [r[0] for r in results if not r[1]]
+        if failed:
+            log(f"{len(failed)} cuts failed (first: {failed[:5]}); aborting render")
             return False
 
-        log(f"Rendering {len(slice_tasks)} arc video slices in parallel with 4 threads...")
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            rendered = list(executor.map(_render_video_slice, slice_tasks))
-
-        rendered.sort(key=lambda x: x[0])
-        slice_files = [Path(r[2]) for r in rendered if r[1]]
-
-        if not slice_files:
-            log("Failed to produce valid slices for arc master video.")
+        concat_txt = temp_dir / "cuts.txt"
+        concat_txt.write_text("".join(f"file '{t[7]}'\n" for t in tasks))
+        video_only = temp_dir / "video.mp4"
+        r = subprocess.run(["ffmpeg", "-nostdin", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(concat_txt),
+                            "-c", "copy", str(video_only)], capture_output=True, text=True)
+        if r.returncode != 0:
+            log(f"video concat failed: {r.stderr[-400:]}")
             return False
+        src_pcm = temp_dir / "source.pcm"
+        with open(src_pcm, "wb") as out:
+            for t in tasks:
+                out.write(Path(t[8]).read_bytes())
 
-        concat_txt = temp_dir / "slices.txt"
-        with open(concat_txt, "w", encoding="utf-8") as f:
-            for sf in slice_files:
-                f.write(f"file '{sf.resolve()}'\n")
-
-        spliced_video = temp_dir / "spliced_arc_visual.mp4"
-        cmd_concat_copy = [
-            "ffmpeg", "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_txt),
-            "-c", "copy",
-            "-movflags", "+faststart",
-            str(spliced_video)
-        ]
-        res_cat = subprocess.run(cmd_concat_copy, capture_output=True, text=True)
-        if res_cat.returncode != 0 or not spliced_video.exists() or spliced_video.stat().st_size < 1024 * 50:
-            log("Streamcopy concat failed, falling back to ultrafast re-encode...")
-            cmd_concat_fallback = [
-                "ffmpeg", "-y",
-                "-f", "concat",
-                "-safe", "0",
-                "-i", str(concat_txt),
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-crf", "20",
-                "-pix_fmt", "yuv420p",
-                "-r", "30",
-                "-vsync", "cfr",
-                str(spliced_video)
-            ]
-            res_cat = subprocess.run(cmd_concat_fallback, capture_output=True, text=True)
-            if res_cat.returncode != 0 or not spliced_video.exists():
-                log(f"Visual concat failed: {res_cat.stderr[-300:]}")
-                return False
-
-        filtergraph = build_landscape_ffmpeg_filtergraph(
-            has_subtitles=ass_subs.exists(),
-            ass_path=str(ass_subs.resolve()),
-            mirror=True,
-        )
-
+        source_args = ["-f", "s16le", "-ar", "48000", "-ac", "2"]
+        v_meas = _measure_lufs(voice_audio_path) or -20.0
+        s_meas = _measure_lufs(src_pcm, source_args)
+        v_gain = voice_lufs - v_meas
+        s_gain = (voice_lufs - source_under_voice_db - s_meas) if s_meas is not None else -40.0
         if not bgm_path or not Path(bgm_path).exists():
-            if DEFAULT_BGM_PATH.exists():
-                bgm_path = DEFAULT_BGM_PATH
+            bgm_path = DEFAULT_BGM_PATH if DEFAULT_BGM_PATH.exists() else None
+        b_gain = None
+        if bgm_path:
+            b_meas = _measure_lufs(bgm_path)
+            b_gain = (voice_lufs - bgm_under_voice_db - b_meas) if b_meas is not None else -24.0
+        log(f"audio gains: voice {v_gain:+.1f} dB (was {v_meas:.1f} LUFS), source {s_gain:+.1f} dB, "
+            f"bgm {b_gain if b_gain is None else round(b_gain, 1)} dB")
 
-        has_bgm = bgm_path and Path(bgm_path).exists()
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", str(spliced_video),
-            "-i", str(voice_audio),
-        ]
-        if has_bgm:
-            cmd.extend(["-stream_loop", "-1", "-i", str(bgm_path)])
-
-        if has_bgm:
-            audio_filter = (
-                "[1:a]loudnorm=I=-14:TP=-1.5:LRA=11[voice_a];"
-                "[2:a]loudnorm=I=-24:TP=-2:LRA=7[bgm_a];"
-                "[voice_a][bgm_a]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
-            )
-        else:
-            audio_filter = "[1:a]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
-
-        cmd.extend([
-            "-filter_complex", f"{filtergraph};{audio_filter}",
-            "-map", "[v]",
-            "-map", "[aout]",
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "22",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-t", str(total_duration),
-            "-movflags", "+faststart",
-            str(output_video)
-        ])
-
-        log(f"Rendering Master Arc Video: {output_video.name}...")
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0:
-            log(f"FFmpeg arc render error: {res.stderr[-500:]}")
+        cmd = ["ffmpeg", "-nostdin", "-y", "-v", "error", "-i", str(video_only), "-i", str(voice_audio_path),
+               *source_args, "-i", str(src_pcm)]
+        fmt = "aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+        af = [f"[1:a]{fmt},volume={v_gain:.2f}dB,apad[va]", f"[2:a]{fmt},volume={s_gain:.2f}dB[sa]"]
+        mix_in = "[va][sa]"
+        n_in = 2
+        if bgm_path:
+            cmd += ["-stream_loop", "-1", "-i", str(bgm_path)]
+            af.append(f"[3:a]{fmt},volume={b_gain:.2f}dB,afade=t=in:d=2[ba]")
+            mix_in += "[ba]"
+            n_in = 3
+        dur = total_frames / fps
+        af.append(f"{mix_in}amix=inputs={n_in}:duration=longest:normalize=0,atrim=0:{dur:.3f},"
+                  f"afade=t=out:st={max(0.0, dur - 2):.3f}:d=2,alimiter=limit=0.95[aout]")
+        cmd += ["-filter_complex", ";".join(af), "-map", "0:v", "-map", "[aout]", "-c:v", "copy",
+                "-c:a", "aac", "-b:a", "192k", "-t", f"{dur:.3f}", "-movflags", "+faststart", str(output_video)]
+        log(f"Muxing arc video {output_video.name} ...")
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0 or not output_video.exists() or output_video.stat().st_size < 100_000:
+            log(f"arc mux failed: {r.stderr[-600:]}")
             if output_video.exists():
                 output_video.unlink()
             return False
-
-        if not output_video.exists() or output_video.stat().st_size < 1024 * 50:
-            log(f"Arc master render empty or too small: {output_video}")
-            if output_video.exists():
-                output_video.unlink()
-            return False
-
-        log(f"Master Arc Video successfully rendered: {output_video} ({output_video.stat().st_size} bytes)")
+        log(f"Arc video rendered: {output_video} ({output_video.stat().st_size / 1e6:.1f} MB, {dur:.1f}s)")
         return True
     except Exception as err:
-        log(f"Arc video rendering failed: {err}")
+        log(f"Arc video rendering failed: {err!r}")
         if output_video.exists():
             output_video.unlink()
         return False
@@ -1117,6 +1133,7 @@ def derive_short_from_master(
     dry_run: bool = False,
     full_bleed: bool = True,
     mirror: bool = False,
+    caption_ass_path: str | Path | None = None,
 ) -> bool:
     """
     Derives a 9:16 vertical Short excerpt directly from the Master Normal Video.
@@ -1161,7 +1178,11 @@ Dialogue: 1,0:00:00.00,9:59:59.00,CardHeader,,0,0,0,,{{\\an8\\bord3\\shad1\\c&H0
                 f.write(badge_content)
 
         escaped_badge = str(badge_ass.resolve()).replace(":", "\\:").replace("'", "\\'") if (badge_text and not full_bleed) else ""
-        badge_filter = f",ass='{escaped_badge}'[v]" if (badge_text and not full_bleed) else "[v]"
+        badge_filter = f",ass='{escaped_badge}'" if (badge_text and not full_bleed) else ""
+        if caption_ass_path and Path(caption_ass_path).exists():
+            esc_cap = str(Path(caption_ass_path).resolve()).replace(":", "\\:").replace("'", "\\'")
+            badge_filter += f",ass='{esc_cap}'"
+        badge_filter += ",format=yuv420p[v]"
 
         flip = "hflip," if mirror else ""
         if full_bleed:

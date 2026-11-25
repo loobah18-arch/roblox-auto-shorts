@@ -29,131 +29,11 @@ from anime_knowledge_base import EPISODE_KNOWLEDGE, CINEMA_TITLES
 
 
 def call_llm(prompt: str, system_prompt: str) -> str | None:
-    """Call Gemini, Groq, OpenRouter, or NVIDIA API for dynamic script generation."""
-    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
-    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    nvidia_key = os.environ.get("NVIDIA_API_KEY", "").strip()
-
-    # 1. Try Gemini API first (highest quality anime reasoning)
-    if gemini_key:
-        for model in ["gemini-2.0-flash", "gemini-1.5-flash"]:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
-                req_data = {
-                    "system_instruction": {"parts": [{"text": system_prompt}]},
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"temperature": 0.7, "maxOutputTokens": 8192}
-                }
-                req = urllib.request.Request(
-                    url,
-                    data=json.dumps(req_data).encode("utf-8"),
-                    headers={"Content-Type": "application/json"}
-                )
-                with urllib.request.urlopen(req, timeout=25) as resp:
-                    res = json.loads(resp.read().decode("utf-8"))
-                    candidates = res.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts and "text" in parts[0]:
-                            return parts[0]["text"]
-            except Exception:
-                continue
-
-    # 2. Try Groq
-    if groq_key:
-        groq_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-        for g_model in groq_models:
-            try:
-                req_data = {
-                    "model": g_model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "temperature": 0.7,
-                    "max_tokens": 8000,
-                }
-                req = urllib.request.Request(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    data=json.dumps(req_data).encode("utf-8"),
-                    headers={
-                        "Authorization": f"Bearer {groq_key}",
-                        "Content-Type": "application/json",
-                    }
-                )
-                with urllib.request.urlopen(req, timeout=25) as resp:
-                    res = json.loads(resp.read().decode("utf-8"))
-                    content = res["choices"][0]["message"]["content"]
-                    if content:
-                        return content
-            except Exception:
-                continue
-
-    # 3. Try OpenRouter free tier models
-    if openrouter_key:
-        models = [
-            "google/gemma-4-26b-a4b-it:free",
-            "nvidia/nemotron-3.5-lightning:free",
-            "nvidia/nemotron-3.5-super-vl:free",
-            "meta-llama/llama-3.3-70b-instruct",
-        ]
-        for model in models:
-            try:
-                req_data = {
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "temperature": 0.7,
-                }
-                req = urllib.request.Request(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    data=json.dumps(req_data).encode("utf-8"),
-                    headers={
-                        "Authorization": f"Bearer {openrouter_key}",
-                        "Content-Type": "application/json",
-                        "HTTP-Referer": "https://github.com/loobah18-arch/bhaloo-shorts",
-                        "X-Title": "Bhaloo Ji Anime Explanation",
-                    }
-                )
-                with urllib.request.urlopen(req, timeout=25) as resp:
-                    res = json.loads(resp.read().decode("utf-8"))
-                    content = res["choices"][0]["message"]["content"]
-                    if content:
-                        return content
-            except Exception:
-                continue
-
-    # 4. Try NVIDIA NIM API
-    if nvidia_key:
-        try:
-            req_data = {
-                "model": "meta/llama-3.3-70b-instruct",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.7,
-            }
-            req = urllib.request.Request(
-                "https://integrate.api.nvidia.com/v1/chat/completions",
-                data=json.dumps(req_data).encode("utf-8"),
-                headers={
-                    "Authorization": f"Bearer {nvidia_key}",
-                    "Content-Type": "application/json",
-                }
-            )
-            with urllib.request.urlopen(req, timeout=25) as resp:
-                res = json.loads(resp.read().decode("utf-8"))
-                content = res["choices"][0]["message"]["content"]
-                if content:
-                    return content
-        except Exception:
-            pass
-
-    return None
+    """Call the shared provider chain (Gemini -> Groq -> OpenRouter -> NVIDIA). Every failure is logged
+    with its HTTP status and body by anime_llm; returns None only when every provider failed."""
+    from anime_llm import complete
+    res = complete(prompt, system=system_prompt, temperature=0.7, max_tokens=8192, label="script")
+    return res[0] if res else None
 
 
 def generate_episode_script(episode_info: dict) -> dict:
@@ -462,139 +342,134 @@ Enjoying the breakdown? Like and Subscribe to Bhaloo Ji for daily anime recaps!
     }
 
 
-def generate_arc_script(arc_info: dict, part: int = 1, max_duration: float = 3600.0, catalog: dict = None) -> dict:
+def format_chapter_time(seconds: float, long_form: bool = False) -> str:
+    """YouTube chapter timestamp (floored): MM:SS, or H:MM:SS when the video is an hour or longer."""
+    t = int(max(0.0, seconds))
+    h, m, sec = t // 3600, (t % 3600) // 60, t % 60
+    return f"{h}:{m:02d}:{sec:02d}" if (long_form or h) else f"{m:02d}:{sec:02d}"
+
+
+def build_arc_description(arc_info: dict, title: str, summary: str, chapter_lines: list[str]) -> str:
+    series = arc_info.get("series", "Anime")
+    series_tag = re.sub(r"[^A-Za-z0-9]", "", series.split(":")[0]).lower()
+    return f"""{summary.strip()}
+
+This is the full story of the {arc_info.get('arc_name', 'arc')} of {series}, retold scene by scene.
+
+Chapters:
+{chr(10).join(chapter_lines)}
+
+{FAIR_USE_DISCLAIMER}
+#anime #{series_tag} #animerecap #animeexplained #bhalooji"""
+
+
+def generate_arc_script(arc_info: dict, part: int = 1, max_duration: float = 3600.0, catalog: dict = None,
+                        episode_paths: dict | None = None, grounded: dict | None = None) -> dict:
     """
-    Generates a master feature-length anime recap documentary script for an entire Story Arc.
-    Rule: If total arc duration exceeds 1 hour (3600s), splits into Part 1 and Part 2 (each <= 1 hour).
-    If duration <= 1 hour, produces 1 complete arc recap.
+    Recap-kun style arc script grounded in the episodes themselves: one chapter per episode, each a
+    chronological list of beats {text, src_start, src_end} written from the episode's Whisper
+    transcript (see anime_arc_grounding). There is no template / heuristic fallback: when grounding
+    fails a GroundingError propagates and the run must fail.
+
+    The 1-hour rule still applies: when the estimated narration runs past max_duration, the arc is
+    split at an episode boundary into Part 1/2 and Part 2/2. Chapter timestamps here are estimates;
+    the pipeline replaces them with exact ones after TTS.
     """
+    from anime_arc_grounding import ground_arc, write_premise_title, NARRATION_WPS, GroundingError
     from anime_catalog import load_catalog
     if catalog is None:
         catalog = load_catalog()
-
     ep_map = {e["episode_key"]: e for e in catalog.get("episodes", [])}
     series = arc_info.get("series", "Anime")
-    series_id = arc_info.get("series_id", "anime")
-    season = arc_info.get("season", 1)
     arc_name = arc_info.get("arc_name", "Story Arc")
-    arc_key = arc_info.get("arc_key", f"{series_id}-arc")
-    series_tag = series.replace(" ", "").replace(":", "")
+    arc_key = arc_info.get("arc_key", f"{arc_info.get('series_id', 'anime')}-arc")
+    ep_keys = list(arc_info.get("episode_keys", []))
+    def _ep_num(k: str, i: int) -> int:
+        m = re.search(r"e(\d+)$", k)
+        return int((ep_map.get(k) or {}).get("episode") or (m.group(1) if m else i + 1))
+    ep_numbers = {k: _ep_num(k, i) for i, k in enumerate(ep_keys)}
 
-    # Gather chapters across all episodes in the arc
+    if grounded is None:
+        if not episode_paths:
+            raise GroundingError("generate_arc_script needs the downloaded episode files to ground the script")
+        grounded = ground_arc(arc_info, {k: episode_paths[k] for k in ep_keys if k in episode_paths}, ep_numbers)
+
     all_chapters = []
-    ep_keys = arc_info.get("episode_keys", [])
+    for ep in grounded["episodes"]:
+        beats = [dict(b, episode_key=ep["episode_key"]) for b in ep["beats"]]
+        narration = " ".join(b["text"] for b in beats)
+        all_chapters.append({
+            "episode_key": ep["episode_key"],
+            "episode": ep.get("episode"),
+            "series": series,
+            "chapter_title": ep["chapter_title"],
+            "narration": narration,
+            "beats": beats,
+            "story_so_far": ep.get("story_so_far", ""),
+            "climax_hint": ep.get("climax_hint"),
+            "episode_duration": ep.get("duration"),
+            "songs": ep.get("songs", []),
+            "model": ep.get("model", ""),
+            "word_count": len(narration.split()),
+            "estimated_duration": len(narration.split()) / NARRATION_WPS,
+        })
+    if not all_chapters:
+        raise GroundingError("grounding returned no episodes")
 
-    for ep_key in ep_keys:
-        ep_info = ep_map.get(ep_key)
-        if not ep_info:
-            ep_info = {
-                "series": series,
-                "series_id": series_id,
-                "season": season,
-                "episode": int(ep_key.split("e")[-1]) if "e" in ep_key else (len(all_chapters) + 1),
-                "episode_key": ep_key,
-                "filename": f"{ep_key}.mp4",
-                "display_name": f"{series} {ep_key}",
-            }
-        ep_script = generate_episode_script(ep_info)
-        for p in ep_script.get("parts", []):
-            p_copy = dict(p)
-            p_copy["episode_key"] = ep_key
-            p_copy["episode"] = ep_info.get("episode", 1)
-            p_copy["series"] = series
-            all_chapters.append(p_copy)
-
-    total_words = sum(len(c["narration"].split()) for c in all_chapters)
-    total_arc_duration = total_words / 2.8  # ~170 WPM at +8% pace
-
-    # Apply the 1-Hour Rule: If arc exceeds 3600s (60 mins), split into Part 1 & Part 2
-    is_split = (total_arc_duration > max_duration)
+    total_est = sum(c["estimated_duration"] for c in all_chapters)
+    is_split = total_est > max_duration and len(all_chapters) > 1
     total_parts = 2 if is_split else 1
     current_part = min(max(1, part), total_parts)
-
     if is_split:
-        target_half = total_arc_duration / 2.0
-        accum = 0.0
-        split_idx = len(all_chapters) // 2
+        accum, split_idx = 0.0, len(all_chapters) // 2
         for idx, c in enumerate(all_chapters):
-            accum += len(c["narration"].split()) / 2.8
-            if accum >= target_half and idx > 0:
-                split_idx = idx
+            accum += c["estimated_duration"]
+            if accum >= total_est / 2.0:
+                split_idx = max(1, idx + 1 if accum - total_est / 2.0 < c["estimated_duration"] / 2.0 else idx)
                 break
-
-        short_series = "Demon Slayer" if "Demon Slayer" in series else ("Jujutsu Kaisen" if "Jujutsu Kaisen" in series else series.split(":")[0].strip())
-        if current_part == 1:
-            active_chapters = all_chapters[:split_idx]
-            part_label = "Part 1/2"
-            ep_range = f"Episodes {active_chapters[0]['episode']}-{active_chapters[-1]['episode']}"
-            full_title = f"{short_series} - {arc_name} Full Story Recap ({part_label}) | {ep_range}"
-        else:
-            active_chapters = all_chapters[split_idx:]
-            part_label = "Part 2/2"
-            ep_range = f"Episodes {active_chapters[0]['episode']}-{active_chapters[-1]['episode']}"
-            full_title = f"{short_series} - {arc_name} Full Story Recap ({part_label}) | {ep_range}"
+        active = all_chapters[:split_idx] if current_part == 1 else all_chapters[split_idx:]
+        part_label = f" (Part {current_part}/2)"
     else:
-        short_series = "Demon Slayer" if "Demon Slayer" in series else ("Jujutsu Kaisen" if "Jujutsu Kaisen" in series else series.split(":")[0].strip())
-        active_chapters = all_chapters
-        full_title = f"{short_series} - {arc_name} Full Story Recap & Explanation | Complete Arc"
+        active = all_chapters
+        part_label = ""
 
-    if len(full_title) > 100:
-        full_title = full_title[:97] + "..."
+    summary = active[-1].get("story_so_far") or " ".join(c["narration"].split(". ")[0] for c in active[:3])
+    title, title_model = write_premise_title(arc_info, summary, [c["chapter_title"] for c in active], part_label)
 
-    # Format continuous chapter timestamps starting at 00:00
-    chapters = []
-    full_script_paragraphs = []
-    current_time = 0.0
-
-    for i, c in enumerate(active_chapters, 1):
-        c_words = len(c["narration"].split())
-        c_dur = max(30.0, c_words / 2.8)
-        mins = int(current_time // 60)
-        secs = int(current_time % 60)
-        c_title = c.get("chapter_title") or c.get("theme") or f"Act {i}"
-        ep_num = c.get("episode", "")
-        ep_suffix = f" (Ep {ep_num})" if ep_num else ""
-        chapters.append(f"{mins:02d}:{secs:02d} Chapter {i}: {c_title}{ep_suffix}")
-        current_time += c_dur
-        full_script_paragraphs.append(c["narration"])
-
-    part_words = sum(len(p.split()) for p in full_script_paragraphs)
-
-    full_desc = f"""Complete Story Arc recap and explanation of {series}: {arc_name}.
-
-Overview:
-An epic, continuous feature-length anime documentary breakdown of the entire {arc_name} across {len(active_chapters)} in-depth narrative chapters.
-
-Arc Chapters:
-{chr(10).join(chapters)}
-
-Enjoying the breakdown? Like and Subscribe to Bhaloo Ji for complete anime arc recaps!
-
-{FAIR_USE_DISCLAIMER}
-#anime #{series_tag.lower()} #animerecap #animeexplained #bhalooji #fullarc"""
+    chapter_lines, t = [], 0.0
+    long_form = sum(c["estimated_duration"] for c in active) >= 3600
+    for c in active:
+        chapter_lines.append(f"{format_chapter_time(t, long_form)} {c['chapter_title']} (Episode {c['episode']})")
+        t += c["estimated_duration"]
+    part_words = sum(c["word_count"] for c in active)
+    series_tag = re.sub(r"[^A-Za-z0-9]", "", series.split(":")[0]).lower()
 
     return {
         "is_arc": True,
+        "grounded": True,
         "arc_key": arc_key,
         "arc_name": arc_name,
         "series": series,
-        "season": season,
+        "season": arc_info.get("season", 1),
         "total_parts": total_parts,
         "part": current_part,
         "is_split": is_split,
-        "total_arc_duration": total_arc_duration,
-        "part_duration": current_time,
+        "total_arc_duration": total_est,
+        "part_duration": t,
         "word_count": part_words,
-        "chapters": active_chapters,
-        "chapter_timestamps": chapters,
+        "language": grounded.get("language"),
+        "summary": summary,
+        "title_model": title_model,
+        "chapters": active,
+        "chapter_timestamps": chapter_lines,
         "full_video": {
-            "title": full_title[:100],
-            "script": " ".join(full_script_paragraphs),
-            "chapters": chapters,
-            "description": full_desc,
-            "duration": current_time,
-            "hashtags": ["anime", "animerecap", "animeexplained", series_tag.lower(), "bhalooji", "fullarc"]
-        }
+            "title": title[:100],
+            "script": " ".join(c["narration"] for c in active),
+            "chapters": chapter_lines,
+            "description": build_arc_description(arc_info, title, summary, chapter_lines),
+            "duration": t,
+            "hashtags": ["anime", "animerecap", "animeexplained", series_tag, "bhalooji", "fullarc"],
+        },
     }
 
 

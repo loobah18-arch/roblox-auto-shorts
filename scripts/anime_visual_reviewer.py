@@ -43,163 +43,37 @@ def evaluate_frame_alignment(
     part_num: int,
 ) -> dict:
     """
-    Sends frame to Gemini or OpenRouter vision API to verify visual alignment
-    with the spoken script.
+    Ask a vision model (shared anime_llm chain: Gemini flash models, Groq Llama 4 vision, OpenRouter /
+    NVIDIA vision models, picked from the live model lists) whether the frame shows what the narration
+    says. When no model answers, the result is {"skipped": True} - never a made-up PASS.
     """
+    from anime_llm import complete, extract_json
     with open(image_path, "rb") as f:
         img_b64 = base64.b64encode(f.read()).decode("utf-8")
 
     prompt = (
-        f"You are a Quality Control Director for anime recap YouTube videos. "
-        f"We are verifying that the anime video footage matches the spoken narration sentence-for-sentence.\n\n"
-        f"PART {part_num} SCRIPT:\n"
-        f"Hook: {hook}\n"
-        f"Narration: {narration}\n\n"
-        f"Look at the attached video frame.\n"
-        f"Return ONLY valid JSON with this format:\n"
-        f"{{\n"
-        f'  "visual_description": "<concise 1-sentence description of what characters, actions, or objects are visible in this frame>",\n'
-        f'  "matches_narration": true/false,\n'
-        f'  "alignment_score": <integer from 1 to 10>,\n'
-        f'  "feedback": "<brief explanation of how well the visual matches the narrative context>"\n'
-        f"}}"
+        "You check anime recap videos: the footage on screen must show the scene the narrator is describing.\n\n"
+        f"Chapter {part_num} ({hook}). Narration spoken over this frame:\n{narration}\n\n"
+        "Look at the attached frame. Return JSON only: {\"visual_description\": <one sentence: who/what is visible>, "
+        "\"matches_narration\": true|false, \"alignment_score\": <integer 1-10>, \"feedback\": <one sentence>}"
     )
 
-    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
-    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    def validator(text: str) -> None:
+        d = extract_json(text)
+        if not isinstance(d, dict) or "alignment_score" not in d:
+            raise ValueError("no alignment_score in answer")
+        int(d["alignment_score"])
 
-    # 1. Try Groq Vision API (Llama 3.2 Vision)
-    if groq_key:
-        groq_models = ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"]
-        for m in groq_models:
-            try:
-                payload = {
-                    "model": m,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
-                                }
-                            ]
-                        }
-                    ],
-                    "temperature": 0.2,
-                    "response_format": {"type": "json_object"}
-                }
-                req = urllib.request.Request(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={
-                        "Authorization": f"Bearer {groq_key}",
-                        "Content-Type": "application/json",
-                    }
-                )
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    text = data["choices"][0]["message"]["content"]
-                    return json.loads(text.strip())
-            except Exception as e:
-                log(f"Groq {m} vision failed: {e}")
-                continue
-
-    # 2. Try Gemini REST API
-    if gemini_key:
-        models = ["gemini-2.0-flash", "gemini-1.5-flash"]
-        for m in models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={gemini_key}"
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": prompt},
-                            {
-                                "inline_data": {
-                                    "mime_type": "image/jpeg",
-                                    "data": img_b64,
-                                }
-                            }
-                        ]
-                    }
-                ],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "response_mime_type": "application/json",
-                }
-            }
-            try:
-                req = urllib.request.Request(
-                    url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
-                )
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    text = data["candidates"][0]["content"]["parts"][0]["text"]
-                    clean_text = text.strip()
-                    if clean_text.startswith("```"):
-                        clean_text = clean_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-                    return json.loads(clean_text)
-            except Exception as e:
-                log(f"Gemini {m} vision failed: {e}")
-                continue
-
-    # 3. Try OpenRouter multimodal vision
-    if openrouter_key:
-        or_models = [
-            "google/gemini-2.0-flash-001",
-            "google/gemini-flash-1.5",
-            "qwen/qwen-2.5-vl-72b-instruct:free",
-        ]
-        for m in or_models:
-            try:
-                payload = {
-                    "model": m,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
-                                }
-                            ]
-                        }
-                    ],
-                    "temperature": 0.2,
-                }
-                req = urllib.request.Request(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={
-                        "Authorization": f"Bearer {openrouter_key}",
-                        "Content-Type": "application/json",
-                        "HTTP-Referer": "https://github.com/loobah18-arch/roblox-auto-shorts",
-                    }
-                )
-                with urllib.request.urlopen(req, timeout=35) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    text = data["choices"][0]["message"]["content"]
-                    clean_text = text.strip()
-                    if clean_text.startswith("```"):
-                        clean_text = clean_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-                    return json.loads(clean_text)
-            except Exception as e:
-                log(f"OpenRouter {m} vision failed: {e}")
-                continue
-
-    # Fallback heuristic if API keys unavailable
-    return {
-        "visual_description": "Frame extracted successfully (visual API keys omitted or unreachable).",
-        "matches_narration": True,
-        "alignment_score": 8,
-        "feedback": "Video frame captured within clamped scene range."
-    }
+    res = complete(prompt, json_mode=True, temperature=0.2, max_tokens=1200, image_b64=img_b64, vision=True,
+                   validator=validator, timeout=90, max_429_wait=30, label=f"vision review ch{part_num}")
+    if not res:
+        return {"skipped": True, "visual_description": "", "matches_narration": None, "alignment_score": None,
+                "feedback": "no vision model answered; frame not reviewed"}
+    d = extract_json(res[0])
+    d["alignment_score"] = int(d["alignment_score"])
+    d["model"] = res[1]
+    d["skipped"] = False
+    return d
 
 
 def review_rendered_episode(ep_dir: Path) -> dict:
@@ -239,6 +113,8 @@ def review_rendered_episode(ep_dir: Path) -> dict:
         with open(arc_script_files[0], "r", encoding="utf-8") as f:
             arc_script = json.load(f)
         chapters = arc_script.get("chapters", [])
+        tl_files = sorted(ep_dir.glob("beat_timeline*.json"))
+        timeline = json.loads(tl_files[0].read_text(encoding="utf-8")) if tl_files else []
         script_package = {
             "episode_title": arc_script.get("full_video", {}).get("title", arc_script.get("arc_name", ep_dir.name)),
             "parts": [
@@ -250,6 +126,7 @@ def review_rendered_episode(ep_dir: Path) -> dict:
                     "beats": ch.get("beats", []),
                     "time_range": ch.get("time_range", [120, 500]),
                     "estimated_duration": float(ch.get("estimated_duration", 180.0)),
+                    "timed_beats": [b for b in timeline if b.get("chapter_index") == idx],
                 }
                 for idx, ch in enumerate(chapters)
             ],
@@ -323,7 +200,14 @@ def review_rendered_episode(ep_dir: Path) -> dict:
         est_dur = float(part_info.get("estimated_duration", 60.0))
         beats = part_info.get("beats", [])
 
-        if use_master and beats:
+        timed = part_info.get("timed_beats") or []
+        beat_texts = None
+        if use_master and timed:
+            # exact beat slots from the TTS timeline: sample the middle of two beats per chapter
+            picks = [timed[len(timed) // 3], timed[(2 * len(timed)) // 3]] if len(timed) > 1 else timed
+            sample_times = [(b["start"] + b["end"]) / 2.0 for b in picks]
+            beat_texts = [b["text"] for b in picks]
+        elif use_master and beats:
             sample_times = []
             beat_accum = accum_time
             for b in beats:
@@ -359,19 +243,23 @@ def review_rendered_episode(ep_dir: Path) -> dict:
             if extract_frame(vid_f, t, frame_img):
                 eval_data = evaluate_frame_alignment(
                     image_path=frame_img,
-                    narration=part_info.get("narration", ""),
+                    narration=(beat_texts[idx - 1] if beat_texts and idx - 1 < len(beat_texts) else part_info.get("narration", "")),
                     hook=part_info.get("hook", ""),
                     part_num=p_num,
                 )
                 eval_data["frame_path"] = str(frame_img.relative_to(ep_dir))
                 eval_data["timestamp_in_clip"] = round(t, 2)
                 part_evals.append(eval_data)
-                log(f"  Beat Frame {idx} ({t:.1f}s): Score {eval_data.get('alignment_score', '?')}/10 | {eval_data.get('visual_description', '')[:70]}...")
+                log(f"  Beat Frame {idx} ({t:.1f}s): Score {eval_data.get('alignment_score') if not eval_data.get('skipped') else 'skipped'}/10 | {(eval_data.get('visual_description') or '')[:70]}")
 
         # Calculate average score for this part
-        scores = [e.get("alignment_score", 7) for e in part_evals]
-        avg_score = round(sum(scores) / max(1, len(scores)), 1)
-        part_verdict = "PASS" if avg_score >= 6.5 else "WARN"
+        scores = [e["alignment_score"] for e in part_evals if not e.get("skipped") and e.get("alignment_score") is not None]
+        if scores:
+            avg_score = round(sum(scores) / len(scores), 1)
+            part_verdict = "PASS" if avg_score >= 6.5 else "WARN"
+        else:
+            avg_score = None
+            part_verdict = "skipped"
 
         review_results.append({
             "part": p_num,
@@ -383,8 +271,14 @@ def review_rendered_episode(ep_dir: Path) -> dict:
         })
 
     # Overall summary
-    total_avg = round(sum(r["avg_score"] for r in review_results) / max(1, len(review_results)), 1)
-    overall_status = "PASS" if all(r["verdict"] == "PASS" for r in review_results) else "WARN"
+    scored = [r for r in review_results if r["avg_score"] is not None]
+    total_avg = round(sum(r["avg_score"] for r in scored) / len(scored), 1) if scored else None
+    if not scored:
+        overall_status = "skipped"
+    elif all(r["verdict"] in ("PASS", "skipped") for r in review_results):
+        overall_status = "PASS" if len(scored) == len(review_results) else "PARTIAL"
+    else:
+        overall_status = "WARN"
 
     report = {
         "episode_key": ep_dir.name,

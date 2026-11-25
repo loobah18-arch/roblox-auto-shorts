@@ -718,6 +718,7 @@ def upload_episode_package(
                     arc_key=summary.get("arc_key"),
                     bgm_path=ncs_bgm if block_type in ("audio", "both") else None,
                     dry_run=False,
+                    reuse_script=True,
                 )
             elif block_type == "audio":
                 log(f"🎵 [Bhaloo Ji] BGM audio flagged by Content ID. Swapping track to verified copyright-free NCS release ({ncs_bgm.name})...")

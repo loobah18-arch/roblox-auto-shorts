@@ -103,10 +103,21 @@ jobs:
       - name: 💾 Cache Raw Anime Video Files
         uses: actions/cache@v4
         with:
-          path: cache
+          path: |
+            cache
+            !cache/transcripts
           key: ${{ runner.os }}-anime-raw-cache-${{ hashFiles('tracker/anime_catalog.json') }}
           restore-keys: |
             ${{ runner.os }}-anime-raw-cache-
+
+      # Whisper transcripts (and OP/ED ranges) are cached across runs so reruns cost no Groq audio quota.
+      - name: 💾 Restore Episode Transcripts
+        uses: actions/cache/restore@v4
+        with:
+          path: cache/transcripts
+          key: anime-transcripts-v2-${{ github.run_id }}
+          restore-keys: |
+            anime-transcripts-v2-
 
       - name: 🚀 Run Anime Explanation Pipeline
         env:
@@ -127,6 +138,14 @@ jobs:
           if [ -n "$INPUT_SERIES" ] && [ "$INPUT_SERIES" != "all" ]; then ARGS+=(--series "$INPUT_SERIES"); fi
 
           python3 scripts/anime_pipeline.py "${ARGS[@]}"
+
+      - name: 💾 Save Episode Transcripts
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: cache/transcripts
+          key: anime-transcripts-v2-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: 🔍 Automated Visual Alignment & Quality Review
         env:
@@ -178,6 +197,8 @@ jobs:
             output/**/*.json
             output/**/*.jpg
             output/**/*.md
+            output/**/*.txt
+            cache/transcripts/*.json
           retention-days: 14
           if-no-files-found: warn
 

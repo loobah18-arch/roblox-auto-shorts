@@ -587,6 +587,140 @@ def produce_master_audio_subtitles(
 
 
 
+# ----------------------------------------------------------------------------------------- arc beats
+ARC_VOICE = "en-US-ChristopherNeural"
+ARC_RATE = "+10%"
+BEAT_SAMPLE_RATE = 24000
+
+
+async def _tts_one_beat(text: str, mp3_path: Path, voice: str, rate: str, sem: asyncio.Semaphore) -> list[dict]:
+    """edge-tts one beat with WordBoundary cues (times relative to the beat). Raises after 5 failed attempts."""
+    last = None
+    async with sem:
+        for attempt in range(1, 6):
+            try:
+                try:
+                    comm = edge_tts.Communicate(text, voice=voice, rate=rate, boundary="WordBoundary")
+                except TypeError:  # edge-tts < 7 always emits word boundaries
+                    comm = edge_tts.Communicate(text, voice=voice, rate=rate)
+                audio = bytearray()
+                cues = []
+                async for ch in comm.stream():
+                    if ch["type"] == "audio":
+                        audio.extend(ch["data"])
+                    elif ch["type"] == "WordBoundary":
+                        cues.append({"word": ch["text"], "start": ch["offset"] / 1e7,
+                                     "end": (ch["offset"] + ch["duration"]) / 1e7})
+                if len(audio) < 2000:
+                    raise RuntimeError(f"edge-tts returned {len(audio)} bytes")
+                mp3_path.write_bytes(bytes(audio))
+                return cues
+            except Exception as e:  # noqa: BLE001 - logged and retried
+                last = e
+                print(f"[anime_voice] TTS beat attempt {attempt}/5 failed: {e!r}", flush=True)
+                await asyncio.sleep(2.0 * attempt)
+    raise RuntimeError(f"edge-tts failed for beat '{text[:60]}': {last!r}")
+
+
+def _decode_pcm(mp3_path: Path, sample_rate: int = BEAT_SAMPLE_RATE) -> bytes:
+    r = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", str(mp3_path), "-ac", "1", "-ar", str(sample_rate),
+                        "-f", "s16le", "-"], capture_output=True)
+    if r.returncode != 0 or not r.stdout:
+        raise RuntimeError(f"could not decode {mp3_path}: {r.stderr[-200:]!r}")
+    return r.stdout
+
+
+def produce_beat_narration(beats: list[dict], work_dir: str | Path, output_wav_path: str | Path,
+                           voice: str = ARC_VOICE, rate: str = ARC_RATE, beat_gap: float = 0.18,
+                           chapter_gap: float = 0.8, concurrency: int = 6) -> dict:
+    """
+    Speak every beat separately so each beat's exact duration is known, then join them into one
+    voice track (mono 24 kHz WAV). beats: [{text, chapter_index, ...}]. Returns
+    {"duration", "timeline": [beat + {start, end, speech_end}], "word_cues": [...absolute...],
+     "chapter_starts": [seconds per chapter_index]}.
+    A beat's [start, end) slot covers its speech plus the pause after it, so slots tile the
+    timeline with no holes: the video shows beat i's scene for exactly that slot.
+    """
+    import hashlib
+    import wave
+    work_dir = Path(work_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for b in beats:
+        h = hashlib.sha1(f"{voice}|{rate}|{b['text']}".encode("utf-8")).hexdigest()[:16]
+        paths.append(work_dir / f"beat_{h}.mp3")
+
+    async def run_all():
+        sem = asyncio.Semaphore(concurrency)
+        jobs = []
+        for b, p in zip(beats, paths):
+            cue_f = p.with_suffix(".json")
+            if p.exists() and cue_f.exists() and p.stat().st_size > 2000:
+                async def cached(cf=cue_f):
+                    return json.loads(cf.read_text())
+                jobs.append(cached())
+            else:
+                jobs.append(_tts_one_beat(b["text"], p, voice, rate, sem))
+        return await asyncio.gather(*jobs)
+
+    all_cues = asyncio.run(run_all())
+    sr = BEAT_SAMPLE_RATE
+    pcm = bytearray()
+    timeline, word_cues, chapter_starts = [], [], {}
+    t = 0.0
+    for i, (b, p, cues) in enumerate(zip(beats, paths, all_cues)):
+        p.with_suffix(".json").write_text(json.dumps(cues))
+        audio = _decode_pcm(p, sr)
+        speech = len(audio) / 2 / sr
+        if not cues:
+            cues = synthesize_word_cues(b["text"], speech)
+        nxt = beats[i + 1] if i + 1 < len(beats) else None
+        gap = 0.0 if nxt is None else (chapter_gap if nxt.get("chapter_index") != b.get("chapter_index") else beat_gap)
+        gap_samples = int(round(gap * sr))
+        ci = b.get("chapter_index", 0)
+        chapter_starts.setdefault(ci, t)
+        start = t
+        pcm.extend(audio)
+        pcm.extend(b"\x00\x00" * gap_samples)
+        t = len(pcm) / 2 / sr
+        timeline.append(dict(b, start=round(start, 4), speech_end=round(start + speech, 4), end=round(t, 4)))
+        for c in cues:
+            word_cues.append({"word": c["word"], "start": round(start + c["start"], 3),
+                              "end": round(start + min(c["end"], speech), 3), "beat": i})
+    out = Path(output_wav_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(out), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(bytes(pcm))
+    total = len(pcm) / 2 / sr
+    words = sum(len(b["text"].split()) for b in beats)
+    print(f"[anime_voice] narrated {len(beats)} beats, {words} words, {total:.1f}s "
+          f"({words / max(total, 1) * 60:.0f} wpm incl. pauses)", flush=True)
+    return {"duration": total, "timeline": timeline, "word_cues": word_cues,
+            "chapter_starts": [chapter_starts[k] for k in sorted(chapter_starts)], "audio_path": str(out)}
+
+
+def build_short_caption_ass(word_cues: list[dict], start: float, end: float, badge_text: str = "") -> str:
+    """Vertical (1080x1920 card layout) karaoke captions for the window [start, end) of the arc,
+    with times shifted so the Short starts at 0. Captions sit under the 16:9 card."""
+    header = build_ass_header(is_landscape=False)
+    header = header.replace(
+        "Style: Default,DejaVu Sans Bold,66,&H00FFFFFF,&H0000FFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,5.0,2.0,2,60,60,560,1",
+        "Style: Default,DejaVu Sans Bold,62,&H00FFFFFF,&H0000FFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,5.0,2.0,8,70,70,1250,1")
+    shifted = [{"word": c["word"], "start": max(0.0, c["start"] - start), "end": max(0.0, min(c["end"], end) - start)}
+               for c in word_cues if c["start"] >= start - 0.01 and c["start"] < end]
+    body = cues_to_ass(shifted, badge_text="", is_landscape=False)
+    lines = body.split("\n")
+    events = [ln for ln in lines if ln.startswith("Dialogue:")]
+    out = header
+    if badge_text:
+        out += (f"Dialogue: 1,0:00:00.00,{format_ass_time(end - start + 1)},CardHeader,,0,0,0,,"
+                f"{{\\an8\\bord3\\shad1\\c&H00D7FF&}}{badge_text.upper()}\n")
+    return out + "\n".join(events) + "\n"
+
+
 if __name__ == "__main__":
     sample_text = (
         "Tanjiro Kamado spent the night selling charcoal in town, completely unaware of the nightmare waiting for him at home. "
