@@ -393,8 +393,8 @@ def validate_beats(beats: list, ep_duration: float, songs: list | None = None, m
             problems.append(f"beat {i} uses filler phrase '{m.group(0)}'")
         if not (0 <= s < e <= ep_duration + 1.0):
             problems.append(f"beat {i} range {s:.1f}-{e:.1f} outside episode (0-{ep_duration:.0f})")
-        if e - s > 240:
-            problems.append(f"beat {i} range {s:.1f}-{e:.1f} is longer than 240 s")
+        if e - s > 120:
+            problems.append(f"beat {i} range {s:.1f}-{e:.1f} is longer than 120 s (bracket only the moment described)")
         if s < prev_start - 15.0:
             problems.append(f"beat {i} goes back in time ({s:.1f} after {prev_start:.1f})")
         if songs and e > s:
@@ -451,10 +451,11 @@ TASK: Write the narration for this episode of our long-form arc recap.
 - Use character names as they are commonly known in the English release (e.g. Tanjiro, Nezuko, Zenitsu, Inosuke).
 - No hype or filler ("get ready", "jaw-dropping", "things are about to get intense"), no questions to the viewer,
   no "in this episode", no mention of subscribing.
-- For every beat give src_start and src_end: the episode seconds of the scene that sentence describes, taken from
-  the transcript timestamps (a beat about a silent action scene uses the time between the surrounding lines).
-  The range should be 4-60 seconds long, beats must follow the episode's order, and nothing may come from the
-  opening/ending song ranges.
+- For every beat give src_start and src_end: the episode seconds of the exact moment that sentence describes,
+  taken from the transcript timestamps (a beat about a silent action scene uses the time between the surrounding
+  lines). The viewer sees exactly this footage while the sentence is read, so bracket only that moment: normally
+  5-25 seconds, never more than 60, and never spanning unrelated dialogue before or after it. Beats must follow
+  the episode's order, and nothing may come from the opening/ending song ranges.
 - chapter_title: a vivid 3-7 word title for this episode's chapter (not "Chapter 1", no episode numbers).
 - story_so_far: 2-3 sentences summarising the whole arc up to the end of this episode (for the next episode's writer).
 - climax_hint: the src_start of the most intense action moment of this episode.
@@ -539,6 +540,46 @@ def clip_out_of_songs(s: float, e: float, songs: list) -> tuple[float, float]:
     return s, e
 
 
+_STOP = set("""about above after again against also among another because been before being below between both
+could does doing down during each from further have having here herself himself into itself just more most
+other over same should some such than that their them then there these they this those through under until very
+what when where which while whom will with would your yours story begins meanwhile moment learn suddenly however
+while finally later still even back away only every""".split())
+
+
+def _keys(text: str) -> set[str]:
+    out = set()
+    for w in re.findall(r"[a-z]+", text.lower().replace("z", "s")):
+        if len(w) >= 4 and w not in _STOP:
+            out.add(w[:5])
+    return out
+
+
+def focus_beat_range(text: str, s: float, e: float, segments: list[dict], min_window: float = 12.0) -> tuple[float, float]:
+    """
+    Narrow a beat's source range to the part whose dialogue shares the most words with the narration
+    sentence, so the footage shown is the moment described rather than the start of a long range.
+    Returns the (possibly unchanged) range; never leaves [s, e].
+    """
+    est = len(text.split()) / 2.85
+    window = max(min_window, est * 1.6)
+    if e - s <= window * 1.25:
+        return s, e
+    keys = _keys(text)
+    segs = [g for g in segments if g["end"] > s and g["start"] < e]
+    if not keys or not segs:
+        return s, e
+    best, best_t = 0.0, None
+    for g in segs:
+        t0 = max(s, min(g["start"] - 1.0, e - window))
+        score = sum(len(keys & _keys(h["text"])) for h in segs if h["start"] < t0 + window and h["end"] > t0)
+        if score > best:
+            best, best_t = score, t0
+    if best_t is None or best < 1:
+        return s, e
+    return round(best_t, 2), round(min(e, best_t + window), 2)
+
+
 def ground_arc(arc: dict, episode_paths: dict[str, Path], episode_numbers: dict[str, int] | None = None) -> dict:
     """
     Ground every episode of an arc: OP/ED detection, Whisper transcript, LLM beats.
@@ -577,6 +618,10 @@ def ground_arc(arc: dict, episode_paths: dict[str, Path], episode_numbers: dict[
             s, e = clip_out_of_songs(b["src_start"], b["src_end"], tr["songs"])
             if e - s >= 2.0:
                 b["src_start"], b["src_end"] = round(s, 2), round(e, 2)
+            fs, fe = focus_beat_range(b["text"], b["src_start"], b["src_end"], tr["segments"])
+            if (fs, fe) != (b["src_start"], b["src_end"]):
+                b["llm_src"] = [b["src_start"], b["src_end"]]
+                b["src_start"], b["src_end"] = fs, fe
         story = res.get("story_so_far") or story
         words = sum(len(b["text"].split()) for b in res["beats"])
         log(f"{k}: '{res['chapter_title']}' {len(res['beats'])} beats, {words} words ({res['model']})")

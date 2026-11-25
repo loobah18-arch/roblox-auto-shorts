@@ -1270,6 +1270,17 @@ class TestArcGroundingAndCuts(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "too short"):
             validate_beats(bad, 1420.0, songs)
 
+    def test_focus_beat_range_finds_described_moment(self):
+        from anime_arc_grounding import focus_beat_range
+        segs = [{"start": 836.0 + i * 4, "end": 839.0 + i * 4, "text": "I am scared of this mountain"} for i in range(15)]
+        segs += [{"start": 902.0, "end": 905.0, "text": "Ah! She took Nesuko!"},
+                 {"start": 911.0, "end": 914.0, "text": "Don't take her to a dangerous place, Tanjiro!"}]
+        text = ("Zenitsu suddenly realizes Tanjiro took Nezuko into the dangerous forest with him and angrily "
+                "runs into the woods after them to save her.")
+        s, e = focus_beat_range(text, 836.5, 925.9, segs)
+        self.assertTrue(836.5 <= s <= 903.0 and 911.0 <= e <= 925.9, (s, e))
+        self.assertEqual(focus_beat_range(text, 900.0, 912.0, segs), (900.0, 912.0))  # already tight
+
     def test_plan_beat_cuts_exact_and_short(self):
         from anime_video_engine import plan_beat_cuts
         fps = 25.0
