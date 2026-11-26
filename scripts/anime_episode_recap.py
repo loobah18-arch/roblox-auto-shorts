@@ -155,8 +155,9 @@ def hook_stands_alone(text: str, names: set[str] | None = None) -> bool:
 
 
 # ----------------------------------------------------------------------------------------- style
-def style_problems(beats: list[dict]) -> list[str]:
-    """Checks the narration against the reference style. Returns the problems found (empty = OK)."""
+def style_problems(beats: list[dict], opening: bool = True, ending: bool = True) -> list[str]:
+    """Checks the narration against the reference style. Returns the problems found (empty = OK).
+    opening / ending: also check the cold-open hook / the closing line (off for a half script)."""
     problems = []
     texts = [b["text"] for b in beats]
     n = len(texts)
@@ -184,11 +185,12 @@ def style_problems(beats: list[dict]) -> list[str]:
     if twists < max(3, n // 7):
         problems.append(f"only {twists} beats turn the story ('But', 'Just then', 'Meanwhile', 'Seeing this', "
                         f"'It turned out', 'Sure enough'); need at least {max(3, n // 7)}")
-    if texts:
+    if texts and opening:
         if not CONTRAST_RE.search(" ".join(texts[:2])):
             problems.append("the opening is not a contrarian/underdog hook (beat 0 needs a contrast: 'but', 'yet', 'nobody', ...)")
         if len(texts[0].split()) > 34:
             problems.append("opening hook is longer than 34 words")
+    if texts and ending:
         if "?" in texts[-1]:
             problems.append("the last beat asks a question; end on the payoff line")
     return problems
@@ -364,7 +366,7 @@ def shorts_title(title: str) -> str:
     return f"{t[:100 - len(' #shorts')].rstrip()} #shorts"
 
 
-# ----------------------------------------------------------------------------------------- prompt
+# ----------------------------------------------------------------------------------------- prompts
 SYSTEM_PROMPT = (
     "You are the head writer of a fast, cold-open story recap channel. You retell one anime episode as a tight "
     "third-person PAST-tense story told in short punchy sentences, each one a visible action or a change in stakes, "
@@ -372,8 +374,50 @@ SYSTEM_PROMPT = (
     "never mention the channel. You only state what the transcript supports. You answer with JSON only."
 )
 
+STYLE_BLOCK = f"""STYLE (follow it exactly). Reference narration from the style we copy:
+"{STYLE_REFERENCE}"
+- Third person, PAST tense ("Tanjiro swung", "Rui laughed", "It turned out that..."), never present tense.
+- Short punchy sentences of 5-18 words. Each sentence is one visible action or one change in the stakes.
+- Constant setup -> twist rhythm with connectors such as "But", "Just then", "Meanwhile", "Seeing this",
+  "It turned out that", "Sure enough", "Before long", "At that moment", "Just as" (at least one beat in six).
+  Plant small mysteries (a strange detail, an odd reaction) and pay them off later with "It turned out that...".
+- Introduce every character by name with a short identity tag the first time, as if the viewer knows nothing
+  (e.g. "Rui, a demon child who controlled razor-sharp threads"). Use the English-release names
+  (Tanjiro, Nezuko, Zenitsu, Inosuke, Giyu, Shinobu, Rui...).
+- No commentary, no opinions, no hype ("epic", "insane", "jaw-dropping"), no "we learn", no "you", no questions,
+  no "in this episode", no channel talk, no teaser for the next episode."""
 
-def build_episode_recap_prompt(ep: dict, transcript: dict, arc: dict | None = None) -> str:
+GROUNDING_BLOCK = """GROUNDING: every beat has "text" and src_start/src_end: the episode seconds of the exact moment that sentence
+describes, from the transcript timestamps (a silent action moment uses the time between the surrounding lines).
+The viewer sees exactly this footage while the sentence is read, so bracket only that moment: usually 3-15
+seconds, never more than 60. Beats follow the episode's order; nothing may come from the song ranges."""
+
+HALF_MIN_WORDS, HALF_MAX_WORDS = 520, 1250
+HALF_MIN_BEATS = 30
+
+
+def split_point(transcript: dict) -> float:
+    """Where to split the episode into two writing halves: the longest dialogue gap within 90 s of the
+    middle of the dialogue."""
+    segs = transcript.get("segments") or []
+    if len(segs) < 4:
+        return transcript.get("duration", 0) / 2.0
+    mid = (segs[0]["start"] + segs[-1]["end"]) / 2.0
+    best, best_gap = mid, -1.0
+    for a, b in zip(segs, segs[1:]):
+        g0, g1 = a["end"], b["start"]
+        c = (g0 + g1) / 2.0
+        if abs(c - mid) <= 90 and g1 - g0 > best_gap:
+            best, best_gap = c, g1 - g0
+    return round(best, 1)
+
+
+def _half_transcript(transcript: dict, lo: float, hi: float) -> dict:
+    return dict(transcript, segments=[s for s in transcript["segments"] if lo <= s["start"] < hi])
+
+
+def build_half_prompt(ep: dict, transcript: dict, arc: dict | None, half: int, split: float,
+                      prev_tail: list[str] | None = None, known_names: set[str] | None = None) -> str:
     dur = transcript["duration"]
     songs = transcript.get("songs") or []
     song_txt = ", ".join(f"{s:.0f}-{e:.0f}s" for s, e in songs) or "none detected"
@@ -384,58 +428,95 @@ def build_episode_recap_prompt(ep: dict, transcript: dict, arc: dict | None = No
             where = f" It is episode {pos} of {len(arc['episode_keys'])} of the {arc.get('arc_name')}."
         except ValueError:
             where = f" It belongs to the {arc.get('arc_name')}."
+    if half == 1:
+        part = _half_transcript(transcript, 0.0, split)
+        scope = (f"the FIRST HALF of the episode (0-{split:.0f}s). The second half is written separately, so do not "
+                 f"wrap the story up.")
+        opener = ("Beat 0 is the cold open of the whole video: an underdog/contrarian hook built from the episode's "
+                  "central conflict, with no intro and no \"the story begins\", e.g. \"Every demon slayer on the mountain "
+                  "was losing to the spiders, but Tanjiro chose to fight the strongest demon of all.\" Beat 0 may "
+                  "describe a moment from anywhere in the episode; give it that moment's timestamps. From beat 1 on, "
+                  "retell the first half in order.")
+        context = ""
+    else:
+        part = _half_transcript(transcript, split, dur + 1)
+        scope = f"the SECOND HALF of the episode ({split:.0f}-{dur:.0f}s)."
+        opener = ("Continue straight on from the first half (no recap, no re-introduction of characters already "
+                  "introduced). The final beat is the payoff line: the episode's resolution or final reveal.")
+        context = ("The first half's narration ended with:\n" + "\n".join(f"- {t}" for t in (prev_tail or [])) +
+                   (f"\nCharacters already introduced: {', '.join(sorted(known_names))}." if known_names else "") + "\n\n")
     return f"""Series: {ep.get('series')} - season {ep.get('season')}, episode {ep.get('episode')}.{where}
 
-Below is the timestamped English dialogue of the whole episode (seconds from the start of the episode file;
-machine-translated, so names may be misspelled). Opening/ending songs ({song_txt}) were removed.
-Episode length: {dur:.0f}s.
+Below is the timestamped English dialogue of {scope}
+(seconds from the start of the episode file; machine-translated, so names may be misspelled). Opening/ending songs
+({song_txt}) were removed. Episode length: {dur:.0f}s.
 
 TRANSCRIPT:
-{transcript_for_prompt(transcript)}
+{transcript_for_prompt(part)}
 
-TASK: Write the narration of a standalone recap video of THIS ONE EPISODE, as beats.
+{context}TASK: Write the narration of this half of a standalone recap video of this one episode, as beats.
+Cover every scene of this half in order. Write 55-80 beats, about 750-1000 words in total. One beat = one or two
+sentences of at most 30 words.
+{opener}
 
-STYLE (follow it exactly). Reference narration from the style we copy:
-"{STYLE_REFERENCE}"
-- Open COLD on an underdog/contrarian hook built from this episode's central conflict, with no intro and no
-  "the story begins": e.g. "Every demon slayer on the mountain was losing to the spiders, but Tanjiro chose to fight
-  the strongest demon of all with a broken sword." The hook is beat 0.
-- Third person, PAST tense ("Tanjiro swung", "Rui laughed", "It turned out that..."), never present tense.
-- Short punchy sentences of 5-18 words. Each sentence is one visible action or one change in the stakes.
-- Constant setup -> twist rhythm with connectors such as "But", "Just then", "Meanwhile", "Seeing this",
-  "It turned out that", "Sure enough", "Before long", "At that moment", "Just as". Plant small mysteries early
-  (a strange detail, an odd reaction) and pay them off later with "It turned out that...".
-- Introduce every character by name with a short identity tag the first time, as if the viewer knows nothing
-  (e.g. "Rui, a demon child who controlled razor-sharp threads"). Use the English-release names
-  (Tanjiro, Nezuko, Zenitsu, Inosuke, Giyu, Shinobu, Rui...).
-- Cover the WHOLE episode in order, every scene. Length follows the episode: about 1200-2000 words in total
-  (a slow episode near 1250, a packed one near 2000). One beat = one or two sentences, at most 30 words.
-- No commentary, no opinions, no hype ("epic", "insane", "jaw-dropping"), no "we learn", no "you", no questions,
-  no "in this episode", no channel talk, no teaser for the next episode. The final beat is the payoff line.
+{STYLE_BLOCK}
 
-GROUNDING: every beat has "id" (0, 1, 2, ... in order), "text", and src_start/src_end: the episode seconds of the
-exact moment that sentence describes, from the transcript timestamps (a silent action moment uses the time
-between the surrounding lines). The viewer sees exactly this footage while the sentence is read, so bracket only
-that moment: usually 3-15 seconds, never more than 60. Beats follow the episode's order; nothing may come from the
-song ranges.
+{GROUNDING_BLOCK}
 
-ALSO RETURN:
-- "title": the YouTube title, a hook in the same spirit WITHOUT the anime's name, Title Case, 30-95 characters,
-  no hashtags, no season/episode numbers, e.g. "He Broke His Sword Against a Demon Child, So He Used His Dead Father's Dance".
-- "summary": 2 plain sentences on what happens in the episode (past tense).
-- "acts": 3-6 story acts that become the video's chapters: [{{"title": 2-6 vivid words, "start_beat": id}}];
+Return JSON: {{"beats": [{{"text": str, "src_start": number, "src_end": number}}, ...]}}"""
+
+
+def parse_half_answer(text: str, transcript: dict, half: int, split: float, min_words: int = HALF_MIN_WORDS) -> list[dict]:
+    data = extract_json(text)
+    raw = data.get("beats") if isinstance(data, dict) else data
+    beats = validate_beats(raw, transcript["duration"], transcript.get("songs"), min_words=min_words,
+                           max_words=HALF_MAX_WORDS, min_beat_words=4, max_beat_words=34, min_beats=HALF_MIN_BEATS,
+                           free_first=(half == 1))
+    problems = []
+    for i, b in enumerate(beats):
+        if half == 1 and i > 0 and b["src_start"] > split + 45:
+            problems.append(f"beat {i} ({b['src_start']:.0f}s) is past the first half (ends {split:.0f}s)")
+        if half == 2 and b["src_end"] < split - 45:
+            problems.append(f"beat {i} ({b['src_start']:.0f}s) is before the second half (starts {split:.0f}s)")
+    problems += style_problems(beats, opening=(half == 1), ending=(half == 2))
+    if problems:
+        raise ValueError("; ".join(problems[:10]))
+    return beats
+
+
+def build_structure_prompt(ep: dict, texts: list[str]) -> str:
+    slots, speech = estimated_slots(texts)
+    t, rows = 0.0, []
+    for i, (tx, sl) in enumerate(zip(texts, slots)):
+        rows.append(f"[{i}] ({len(tx.split())}w, {int(t // 60):02d}:{int(t % 60):02d}) {tx}")
+        t += sl
+    return f"""Below is the full narration of our recap video of {ep.get('series')} season {ep.get('season')} episode
+{ep.get('episode')}, one beat per line: [beat index] (word count, start time in the video) text.
+The narrator speaks about {EPISODE_WPS * 60:.0f} words per minute.
+
+NARRATION:
+{chr(10).join(rows)}
+
+TASK: Return the video's packaging as JSON.
+- "title": the YouTube title, a hook in the spirit of the narration's opening WITHOUT the anime's name, Title Case,
+  30-95 characters, no hashtags, no season/episode numbers, e.g.
+  "He Broke His Sword Against a Demon Child, So He Used His Dead Father's Dance".
+- "summary": 2 plain past-tense sentences on what happens.
+- "acts": 3-6 story acts that become the video's chapters: [{{"title": 2-6 vivid words, "start_beat": index}}];
   the first act starts at beat 0 and every act has at least 5 beats.
-- "climax_beat": id of the beat at the episode's peak moment.
-- "short_candidates": 1-3 YouTube Shorts cut from this script, best first. Each is a contiguous beat range
-  {{"start_beat", "end_beat", "hook_beat", "payoff_beat", "title", "hook_text"}} where hook_beat == start_beat and
+- "climax_beat": index of the beat at the episode's peak moment.
+- "short_candidates": 1-3 YouTube Shorts cut from this narration, best first. Each is a contiguous beat range
+  {{"start_beat", "end_beat", "hook_beat", "payoff_beat", "title", "hook_text"}} with hook_beat == start_beat and
   payoff_beat == end_beat. The range must OPEN on a hook sentence that stands alone for someone who never saw the
-  episode (it names the character, no leading "He"/"But"/"Then") - put that sentence in "hook_text", rewriting
-  beat start_beat as a cold-open hook the way the reference opens if needed - and END on its payoff beat (the
-  resolution or reveal). Its narration must last 35-59 seconds: about 125-185 words in total. "title" is the
-  Short's hook headline (12-70 characters, no hashtags), e.g. "His Sword Snapped, So He Used His Father's Dance".
+  episode (it names the character, no leading "He"/"She"/"But"/"Then"/"Seeing this") - "hook_text" is that
+  sentence: beat start_beat itself if it already stands alone, otherwise rewritten as a cold-open hook in the
+  reference style ("Every contestant chose top of the line ingredients, but Ethan picked a beef spine that nobody
+  wanted."), past tense, 10-30 words. The range must END on its payoff beat (the resolution or reveal of what the
+  hook set up). Its narration must last 35-59 seconds: 130-190 words in total counting hook_text instead of beat
+  start_beat (use the word counts above). "title": the Short's hook headline, 12-70 characters, no hashtags,
+  e.g. "His Sword Snapped, So He Used His Father's Dance".
 
-Return JSON: {{"title": str, "summary": str, "beats": [{{"id": int, "text": str, "src_start": number, "src_end": number}}, ...],
-"acts": [...], "climax_beat": int, "short_candidates": [...]}}"""
+Return JSON: {{"title": str, "summary": str, "acts": [...], "climax_beat": int, "short_candidates": [...]}}"""
 
 
 def _title_problems(title: str) -> list[str]:
@@ -450,35 +531,17 @@ def _title_problems(title: str) -> list[str]:
     return p
 
 
-def parse_recap_answer(text: str, ep_duration: float, songs: list | None, strict_shorts: bool = True) -> dict:
-    """Parse + validate one LLM answer. Raises ValueError listing what is wrong."""
-    data = extract_json(text)
+def parse_structure_answer(data: dict, texts: list[str], strict_shorts: bool = True, ref=None) -> dict:
+    """Validate the packaging (title, acts, climax, short candidates) of a validated narration."""
+    ref = ref or (lambda v: v)
     if not isinstance(data, dict):
         raise ValueError("answer is not a JSON object")
-    raw_beats = data.get("beats")
-    if not isinstance(raw_beats, list):
-        raise ValueError("no beats list")
-    # map ids -> positions (references in acts/candidates use ids)
-    id_pos = {}
-    for pos, b in enumerate(raw_beats):
-        if isinstance(b, dict) and isinstance(b.get("id"), (int, float)):
-            id_pos.setdefault(int(b["id"]), pos)
-    def ref(v):
-        try:
-            v = int(v)
-        except Exception:
-            return v
-        return id_pos.get(v, v)
-
-    beats = validate_beats(raw_beats, ep_duration, songs, min_words=EPISODE_MIN_WORDS, max_words=EPISODE_MAX_WORDS,
-                           min_beat_words=4, max_beat_words=34, min_beats=40)
-    problems = style_problems(beats)
+    problems = []
     title = re.sub(r"\s+", " ", str(data.get("title", ""))).strip().strip('"')
     problems += _title_problems(title)
-    texts = [b["text"] for b in beats]
     try:
         acts = validate_acts([dict(a, start_beat=ref(a.get("start_beat"))) if isinstance(a, dict) else a
-                              for a in (data.get("acts") or [])], len(beats))
+                              for a in (data.get("acts") or [])], len(texts))
     except ValueError as e:
         problems.append(str(e))
         acts = []
@@ -491,28 +554,100 @@ def parse_recap_answer(text: str, ep_duration: float, songs: list | None, strict
     if problems:
         raise ValueError("; ".join(problems[:10]))
     climax = ref(data.get("climax_beat"))
-    climax = climax if isinstance(climax, int) and 0 <= climax < len(beats) else None
-    return {"title": title, "summary": str(data.get("summary", "")).strip(), "beats": beats, "acts": acts,
-            "climax_beat": climax, "short_candidates": cands, "short_candidate_problems": cand_problems}
+    try:
+        climax = int(climax)
+    except Exception:
+        climax = None
+    climax = climax if isinstance(climax, int) and 0 <= climax < len(texts) else None
+    return {"title": title, "summary": str(data.get("summary", "")).strip(), "acts": acts, "climax_beat": climax,
+            "short_candidates": cands, "short_candidate_problems": cand_problems}
+
+
+def parse_recap_answer(text: str, ep_duration: float, songs: list | None, strict_shorts: bool = True) -> dict:
+    """Validate a complete answer (beats + packaging in one JSON object). Raises ValueError."""
+    data = extract_json(text)
+    if not isinstance(data, dict):
+        raise ValueError("answer is not a JSON object")
+    raw_beats = data.get("beats")
+    if not isinstance(raw_beats, list):
+        raise ValueError("no beats list")
+    id_pos = {}
+    for pos, b in enumerate(raw_beats):
+        if isinstance(b, dict) and isinstance(b.get("id"), (int, float)):
+            id_pos.setdefault(int(b["id"]), pos)
+
+    def ref(v):
+        try:
+            v = int(v)
+        except Exception:
+            return v
+        return id_pos.get(v, v)
+
+    beats = validate_beats(raw_beats, ep_duration, songs, min_words=EPISODE_MIN_WORDS, max_words=EPISODE_MAX_WORDS,
+                           min_beat_words=4, max_beat_words=34, min_beats=40, free_first=True)
+    problems = style_problems(beats)
+    try:
+        st = parse_structure_answer(data, [b["text"] for b in beats], strict_shorts, ref)
+    except ValueError as e:
+        problems.append(str(e))
+        st = {}
+    if problems:
+        raise ValueError("; ".join(problems[:10]))
+    return dict(st, beats=beats)
 
 
 def write_episode_recap(ep: dict, transcript: dict, arc: dict | None = None) -> dict:
-    prompt = build_episode_recap_prompt(ep, transcript, arc)
-    holder: dict = {}
+    """
+    Three validated LLM calls: the narration of the first half (opening on the cold-open hook), the
+    second half (continuing from the first, ending on the payoff), then the packaging - hook title,
+    summary, acts, climax beat and Short candidates - written against the finished narration.
+    """
+    split = split_point(transcript)
+    key = ep["episode_key"]
+    log(f"{key}: writing in two halves split at {split:.0f}s")
+    halves: list[list[dict]] = []
+    models = []
+    for half in (1, 2):
+        prev = [b["text"] for b in halves[0][-8:]] if halves else None
+        names = character_names([b["text"] for b in halves[0]]) if halves else None
+        prompt = build_half_prompt(ep, transcript, arc, half, split, prev, names)
+        holder: dict = {}
+        # the second half must bring the whole narration up to the episode floor
+        need = HALF_MIN_WORDS if half == 1 else max(HALF_MIN_WORDS, EPISODE_MIN_WORDS - sum(len(b["text"].split()) for b in halves[0]))
+
+        def validator(text: str, _h=half, _holder=holder, _need=need) -> None:
+            _holder["beats"] = parse_half_answer(text, transcript, _h, split, min_words=_need)
+
+        res = complete(prompt, system=SYSTEM_PROMPT, json_mode=True, temperature=0.6, max_tokens=16000,
+                       validator=validator, label=f"{key} recap half {half}", feedback=True)
+        if not res:
+            raise GroundingError(f"no LLM produced a valid narration for half {half} of {key}")
+        halves.append(holder["beats"])
+        models.append(res[1])
+    beats = halves[0] + halves[1]
+    words = sum(len(b["text"].split()) for b in beats)
+    if not (EPISODE_MIN_WORDS <= words <= EPISODE_MAX_WORDS):
+        raise GroundingError(f"{key}: narration has {words} words (need {EPISODE_MIN_WORDS}-{EPISODE_MAX_WORDS})")
+    texts = [b["text"] for b in beats]
+    holder = {}
     calls = {"n": 0}
 
-    def validator(text: str) -> None:
+    def s_validator(text: str) -> None:
         calls["n"] += 1
-        # The first answers must carry a usable Short; later ones may lean on the deterministic fallback.
-        holder.update(parse_recap_answer(text, transcript["duration"], transcript.get("songs"),
-                                         strict_shorts=calls["n"] <= 3))
+        # the first answers must carry a usable Short; later ones may lean on the deterministic fallback
+        holder.update(parse_structure_answer(extract_json(text), texts, strict_shorts=calls["n"] <= 3))
 
-    res = complete(prompt, system=SYSTEM_PROMPT, json_mode=True, temperature=0.6, max_tokens=24000,
-                   validator=validator, label=f"{ep['episode_key']} recap", feedback=True)
+    res = complete(build_structure_prompt(ep, texts), system="You package anime recap videos for YouTube. JSON only.",
+                   json_mode=True, temperature=0.5, max_tokens=6000, validator=s_validator,
+                   label=f"{key} packaging", feedback=True)
     if not res:
-        raise GroundingError(f"no LLM produced a valid recap of {ep['episode_key']}")
-    holder["model"] = res[1]
+        raise GroundingError(f"no LLM produced valid packaging (title/acts/shorts) for {key}")
+    models.append(res[1])
+    holder["beats"] = beats
+    holder["split"] = split
+    holder["model"] = ", ".join(dict.fromkeys(models))
     return holder
+
 
 
 # ----------------------------------------------------------------------------------------- grounding

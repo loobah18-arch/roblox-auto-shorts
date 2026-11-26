@@ -359,18 +359,21 @@ def transcript_for_prompt(transcript: dict) -> str:
 # ----------------------------------------------------------------------------------------- beats
 def validate_beats(beats: list, ep_duration: float, songs: list | None = None, min_words: int = EP_MIN_WORDS,
                    max_words: int = EP_MAX_WORDS, min_beat_words: int = 6, max_beat_words: int = 60,
-                   min_beats: int = 8) -> list[dict]:
+                   min_beats: int = 8, free_first: bool = False) -> list[dict]:
     """
     Validate and normalise an episode's beats. Raises ValueError (with every problem found) on a bad
     script. Rules: 8+ beats; each has narration text of 6-60 words with no hype filler; src_start <
     src_end, both inside the episode; beats run in story order (start times never go back more than
-    15 s); total words within [min_words, max_words].
+    15 s); total words within [min_words, max_words]. free_first: beat 0 is a cold-open hook that may
+    show a moment from anywhere in the episode, so it does not take part in the story-order check.
     """
     problems = []
     if not isinstance(beats, list) or len(beats) < min_beats:
         raise ValueError(f"need at least {min_beats} beats, got {len(beats) if isinstance(beats, list) else type(beats).__name__}")
     clean = []
     prev_start = -1.0
+    max_beat = 0
+    back_in_time = 0
     total_words = 0
     for i, b in enumerate(beats):
         if not isinstance(b, dict):
@@ -397,12 +400,16 @@ def validate_beats(beats: list, ep_duration: float, songs: list | None = None, m
         if e - s > 120:
             problems.append(f"beat {i} range {s:.1f}-{e:.1f} is longer than 120 s (bracket only the moment described)")
         if s < prev_start - 15.0:
-            problems.append(f"beat {i} goes back in time ({s:.1f} after {prev_start:.1f})")
+            back_in_time += 1
+            if back_in_time <= 3:
+                problems.append(f"beat {i} goes back in time ({s:.1f} after beat {max_beat} at {prev_start:.1f}; "
+                                f"check beat {max_beat}'s timestamps)")
         if songs and e > s:
             in_song = sum(max(0.0, min(e, float(b)) - max(s, float(a))) for a, b in songs)
             if in_song > 0.5 * (e - s):
                 problems.append(f"beat {i} range {s:.1f}-{e:.1f} is mostly inside the opening/ending song")
-        prev_start = max(prev_start, s)
+        if not (free_first and i == 0) and s > prev_start:
+            prev_start, max_beat = s, i
         clean.append({"text": text, "src_start": round(s, 2), "src_end": round(min(e, ep_duration), 2)})
     if total_words < min_words:
         problems.append(f"only {total_words} words (need >= {min_words})")

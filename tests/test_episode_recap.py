@@ -269,3 +269,53 @@ class TestEpisodeChapters(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTwoHalfWriter(unittest.TestCase):
+    def _transcript(self):
+        segs = [{"start": 130.0 + i * 10, "end": 136.0 + i * 10, "text": "line"} for i in range(60)]
+        segs += [{"start": 760.0 + i * 10, "end": 766.0 + i * 10, "text": "line"} for i in range(55)]  # gap 726-760
+        return {"duration": 1420.0, "songs": [(25, 119)], "segments": segs}
+
+    def test_split_point_uses_dialogue_gap_near_middle(self):
+        from anime_episode_recap import split_point
+        self.assertEqual(split_point(self._transcript()), 743.0)
+
+    def test_half_one_hook_may_come_from_later_but_rest_is_in_order(self):
+        from anime_episode_recap import parse_half_answer
+        texts = make_story(66)
+        beats = [{"text": t, "src_start": 140 + i * 9.0, "src_end": 146 + i * 9.0} for i, t in enumerate(texts)]
+        beats[0].update(src_start=1100.0, src_end=1108.0)   # cold open shows the climax
+        out = parse_half_answer(json.dumps({"beats": beats}), self._transcript(), 1, 743.0)
+        self.assertEqual(out[0]["src_start"], 1100.0)
+        bad = [dict(b) for b in beats]
+        bad[5].update(src_start=1000.0, src_end=1006.0)      # a later beat from the second half is not allowed
+        with self.assertRaisesRegex(ValueError, "back in time|past the first half"):
+            parse_half_answer(json.dumps({"beats": bad}), self._transcript(), 1, 743.0)
+
+    def test_writer_runs_three_validated_calls(self):
+        from unittest.mock import patch
+        import anime_episode_recap as er
+        tr = self._transcript()
+        h1 = [{"text": t, "src_start": 140 + i * 9.0, "src_end": 146 + i * 9.0} for i, t in enumerate(make_story(66))]
+        h2 = [{"text": t, "src_start": 770 + i * 9.0, "src_end": 776 + i * 9.0} for i, t in enumerate(make_story(66))]
+        h2[0]["text"] = "Meanwhile, Rui wrapped his threads tighter around Nezuko as Tanjiro got back up."
+        pack = {"title": "His Sword Broke Against a Demon Child, So He Used His Dead Father's Dance",
+                "summary": "Tanjiro fought Rui.", "climax_beat": 101,
+                "acts": [{"title": "Thread Trap", "start_beat": 0}, {"title": "Broken Blade", "start_beat": 40},
+                         {"title": "Father's Dance", "start_beat": 80}],
+                "short_candidates": [{"start_beat": 90, "end_beat": 101, "hook_beat": 90, "payoff_beat": 101,
+                                      "title": "His Sword Snapped, So He Used His Father's Dance"}]}
+        answers = iter([json.dumps({"beats": h1}), json.dumps({"beats": h2}), json.dumps(pack)])
+
+        def fake_complete(prompt, system="", validator=None, **kw):
+            text = next(answers)
+            validator(text)
+            return text, "fake:model"
+
+        with patch.object(er, "complete", side_effect=fake_complete):
+            res = er.write_episode_recap({"episode_key": "demon-slayer-s01e19", "series": "Demon Slayer", "season": 1,
+                                          "episode": 19}, tr)
+        self.assertEqual(len(res["beats"]), 132)
+        self.assertEqual(res["short_candidates"][0]["end_beat"], 101)
+        self.assertEqual(len(res["acts"]), 3)
