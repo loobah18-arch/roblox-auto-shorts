@@ -358,7 +358,8 @@ def transcript_for_prompt(transcript: dict) -> str:
 
 # ----------------------------------------------------------------------------------------- beats
 def validate_beats(beats: list, ep_duration: float, songs: list | None = None, min_words: int = EP_MIN_WORDS,
-                   max_words: int = EP_MAX_WORDS) -> list[dict]:
+                   max_words: int = EP_MAX_WORDS, min_beat_words: int = 6, max_beat_words: int = 60,
+                   min_beats: int = 8) -> list[dict]:
     """
     Validate and normalise an episode's beats. Raises ValueError (with every problem found) on a bad
     script. Rules: 8+ beats; each has narration text of 6-60 words with no hype filler; src_start <
@@ -366,8 +367,8 @@ def validate_beats(beats: list, ep_duration: float, songs: list | None = None, m
     15 s); total words within [min_words, max_words].
     """
     problems = []
-    if not isinstance(beats, list) or len(beats) < 8:
-        raise ValueError(f"need at least 8 beats, got {len(beats) if isinstance(beats, list) else type(beats).__name__}")
+    if not isinstance(beats, list) or len(beats) < min_beats:
+        raise ValueError(f"need at least {min_beats} beats, got {len(beats) if isinstance(beats, list) else type(beats).__name__}")
     clean = []
     prev_start = -1.0
     total_words = 0
@@ -384,9 +385,9 @@ def validate_beats(beats: list, ep_duration: float, songs: list | None = None, m
             continue
         words = len(text.split())
         total_words += words
-        if words < 6:
+        if words < min_beat_words:
             problems.append(f"beat {i} too short ({words} words)")
-        if words > 60:
+        if words > max_beat_words:
             problems.append(f"beat {i} too long ({words} words)")
         m = _FILLER_RE.search(text)
         if m:

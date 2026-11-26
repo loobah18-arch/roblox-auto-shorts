@@ -1013,6 +1013,7 @@ def assemble_arc_master_video(
     bgm_under_voice_db: float = 20.0,
     workers: int | None = None,
     cuts_report_path: str | Path | None = None,
+    fade_out: float = 2.0,
 ) -> bool:
     """
     Feature-length 16:9 arc video, Recap-kun style: every beat's footage comes from that beat's own
@@ -1107,7 +1108,7 @@ def assemble_arc_master_video(
             n_in = 3
         dur = total_frames / fps
         af.append(f"{mix_in}amix=inputs={n_in}:duration=longest:normalize=0,atrim=0:{dur:.3f},"
-                  f"afade=t=out:st={max(0.0, dur - 2):.3f}:d=2,alimiter=limit=0.95[aout]")
+                  f"afade=t=out:st={max(0.0, dur - fade_out):.3f}:d={max(0.05, fade_out):.2f},alimiter=limit=0.95[aout]")
         cmd += ["-filter_complex", ";".join(af), "-map", "0:v", "-map", "[aout]", "-c:v", "copy",
                 "-c:a", "aac", "-b:a", "192k", "-t", f"{dur:.3f}", "-movflags", "+faststart", str(output_video)]
         log(f"Muxing arc video {output_video.name} ...")

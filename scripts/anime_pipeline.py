@@ -1126,6 +1126,307 @@ def run_arc_pipeline(
     return pipeline_result
 
 
+def build_episode_description(ep: dict, title: str, summary: str, chapter_lines: list[str]) -> str:
+    """Long-video description: the plot in two sentences, the 'Recap' / fair-use framing the copyright
+    check needs, and the act chapters with exact timestamps."""
+    from anime_script_engine import FAIR_USE_DISCLAIMER
+    series = ep.get("series", "Anime")
+    series_tag = re.sub(r"[^A-Za-z0-9]", "", series.split(":")[0]).lower()
+    return f"""{summary.strip()}
+
+Full story recap of {series}, season {ep.get('season')} episode {ep.get('episode')}, retold scene by scene.
+
+Chapters:
+{chr(10).join(chapter_lines)}
+
+{FAIR_USE_DISCLAIMER}
+#anime #{series_tag} #animerecap #animeexplained #bhalooji"""
+
+
+def _act_chapters(acts: list[dict], timeline: list[dict], total: float, long_form: bool = False) -> list[str]:
+    """YouTube chapters from the story acts: first at 00:00, each at the exact start of its first beat,
+    an act shorter than 10 s is merged into the one before it."""
+    from anime_script_engine import format_chapter_time
+    lines, last_t = [], None
+    for ai, a in enumerate(acts):
+        t = 0.0 if ai == 0 else timeline[a["start_beat"]]["start"]
+        if last_t is not None and (t - last_t < 10.0 or total - t < 10.0):
+            continue
+        lines.append(f"{format_chapter_time(t, long_form)} {a['title']}")
+        last_t = t
+    return lines
+
+
+def _render_episode_short(cand: dict, timeline: list[dict], raw_map: dict, part_dir: Path, voice: str, rate: str,
+                          bgm_path, badge: str, dry_run: bool = False) -> dict:
+    """
+    Build one Short from beats [start_beat..end_beat] directly: re-narrate them (the hook beat with its
+    cold-open rewrite; unchanged beats come from the TTS cache), render their footage with the same
+    per-beat footage plan as the long video, then lay it out as a 9:16 card with word-timed captions
+    and a big hook headline for the first ~2 s. Returns {ok, duration, video_path, ...}.
+    """
+    from anime_episode_recap import EPISODE_BEAT_GAP, SHORT_TAIL_S
+    import tempfile
+    b0, b1 = cand["start_beat"], cand["end_beat"]
+    beats = []
+    for i in range(b0, b1 + 1):
+        b = {k: timeline[i][k] for k in ("text", "src_start", "src_end", "episode_key", "episode_duration", "songs")}
+        b["chapter_index"] = 0
+        beats.append(b)
+    beats[0]["text"] = cand["hook_text"]
+    part_dir.mkdir(parents=True, exist_ok=True)
+    voice_wav = part_dir / "short_voice.wav"
+    if dry_run:
+        from anime_episode_recap import EPISODE_WPS
+        dur = sum(len(b["text"].split()) / EPISODE_WPS + EPISODE_BEAT_GAP for b in beats) + SHORT_TAIL_S
+        return {"ok": True, "duration": dur, "video_path": str(part_dir / "short.mp4"), "word_cues": []}
+    narr = produce_beat_narration(beats, CACHE_DIR / "tts_beats", voice_wav, voice=voice, rate=rate,
+                                  beat_gap=EPISODE_BEAT_GAP, chapter_gap=EPISODE_BEAT_GAP, trim_silence=True)
+    dur = narr["duration"] + SHORT_TAIL_S
+    out = {"ok": False, "duration": round(dur, 3), "word_cues": narr["word_cues"], "timeline": narr["timeline"]}
+    from anime_episode_recap import SHORT_MIN_S, SHORT_MAX_S
+    if not (SHORT_MIN_S <= dur <= SHORT_MAX_S + 0.5):
+        out["reason"] = f"narration is {dur:.1f}s (need {SHORT_MIN_S:.0f}-{SHORT_MAX_S:.0f}s)"
+        return out
+    tmp = Path(tempfile.mkdtemp(prefix="ep_short_"))
+    landscape = tmp / "short_16x9.mp4"
+    ok = assemble_arc_master_video(raw_episode_map=raw_map, voice_audio_path=voice_wav, output_video_path=landscape,
+                                   beat_timeline=narr["timeline"], total_duration=dur, bgm_path=bgm_path,
+                                   cuts_report_path=part_dir / "cuts.json", fade_out=0.35)
+    if not ok:
+        out["reason"] = "16:9 render failed"
+        return out
+    from anime_voice_subtitles import build_short_caption_ass
+    cap = part_dir / "captions.ass"
+    cap.write_text(build_short_caption_ass(narr["word_cues"], 0.0, dur, badge_text=badge,
+                                           hook_text=cand["title"], hook_seconds=2.2), encoding="utf-8")
+    short_file = part_dir / "short.mp4"
+    ok = derive_short_from_master(master_video_path=landscape, output_short_path=short_file, start_time=0.0,
+                                  end_time=dur, badge_text="", full_bleed=False, mirror=False, caption_ass_path=cap)
+    try:
+        landscape.unlink()
+        tmp.rmdir()
+    except Exception:
+        pass
+    out.update(ok=bool(ok), video_path=str(short_file))
+    if not ok:
+        out["reason"] = "9:16 derivation failed"
+    return out
+
+
+def run_episode_pipeline(
+    episode_key: str | None = None,
+    series_filter: str | None = None,
+    dry_run: bool = False,
+    voice: str = "en-US-ChristopherNeural",
+    bgm_path: str | Path | None = None,
+    reuse_script: bool = False,
+    tts_rate: str | None = None,
+) -> dict:
+    """
+    Daily long video that retells ONE episode in the cold-open storyteller style (see
+    anime_episode_recap), cut into one Short that runs from a hook to its payoff.
+    1. Pick the next episode (history['completed_episode_recaps']; the uploader marks it done).
+    2. Ground it: Whisper transcript (cached), LLM beats + acts + hook title + short candidates, all validated.
+    3. Narrate every beat (ChristopherNeural, faster rate), render each beat's own footage (OP/ED skipped).
+    4. Chapters = the story's acts with exact timestamps.
+    5. Short(s): best valid candidate (or the deterministic climax window), built from its beats.
+    Any grounding failure aborts the run; nothing is uploaded from filler.
+    """
+    from anime_catalog import get_next_recap_episode, neighbour_episode, get_arc_for_episode
+    from anime_arc_grounding import GroundingError
+    from anime_episode_recap import (ground_episode, EPISODE_RATE, EPISODE_BEAT_GAP, EPISODE_ACT_GAP, EPISODE_WPS,
+                                     validate_short_candidates, fallback_short_window, character_names, shorts_title)
+    tts_rate = tts_rate or os.environ.get("EPISODE_TTS_RATE") or EPISODE_RATE
+
+    log("=== Starting Bhaloo Ji Episode Recap Pipeline (grounded, cold-open storyteller style) ===")
+    catalog = load_catalog()
+    ep_map = {e["episode_key"]: e for e in catalog.get("episodes", [])}
+    if episode_key:
+        ep = ep_map.get(episode_key)
+        if not ep:
+            log(f"Episode '{episode_key}' is not in the catalog.")
+            return {"status": "error", "message": "episode not found"}
+    else:
+        ep = get_next_recap_episode(series_filter, catalog=catalog)
+        if not ep:
+            log("Every catalog episode already has a recap.")
+            return {"status": "complete", "message": "all episodes recapped"}
+    ep_key = ep["episode_key"]
+    arc = get_arc_for_episode(ep_key)
+    log(f"Target episode: {ep['display_name']} ({ep_key})" + (f" - {arc['display_name']}" if arc else ""))
+    work = OUTPUT_DIR / f"{ep_key}-recap"
+    work.mkdir(parents=True, exist_ok=True)
+    if not bgm_path or not Path(bgm_path).exists():
+        bgm_path = pick_bgm_for_episode(series_id=ep.get("series_id"))
+        log(f"BGM: {Path(bgm_path).name}")
+
+    # 1. Footage (and a neighbour episode only when the OP/ED has to be detected)
+    raw = CACHE_DIR / ep.get("filename", f"{ep_key}.mp4")
+    if not dry_run:
+        ok = download_gdrive_episode(ep.get("gdrive_file_id", ""), raw) if ep.get("gdrive_file_id") else raw.exists()
+        if not ok or not raw.exists() or raw.stat().st_size < 1_000_000:
+            log(f"Episode {ep_key} could not be downloaded ({raw}).")
+            return {"status": "error", "message": f"episode {ep_key} not available", "episode_key": ep_key}
+    neighbour = None
+    from anime_episode_recap import find_cached_songs
+    if not dry_run and find_cached_songs(ep_key) is None:
+        nb = neighbour_episode(ep_key, catalog)
+        if nb and nb.get("gdrive_file_id"):
+            nb_path = CACHE_DIR / nb["filename"]
+            if download_gdrive_episode(nb["gdrive_file_id"], nb_path) and nb_path.exists():
+                neighbour = nb_path
+                log(f"OP/ED reference episode: {nb['episode_key']}")
+
+    # 2. Grounded script
+    script_file = work / "episode_script.json"
+    script = None
+    if reuse_script and script_file.exists():
+        try:
+            script = json.loads(script_file.read_text(encoding="utf-8"))
+            log("Reusing the grounded episode script from this run's output folder.")
+        except Exception:
+            script = None
+    if script is None:
+        try:
+            script = ground_episode(ep, raw, neighbour, arc)
+        except GroundingError as e:
+            log(f"GROUNDING FAILED: {e}")
+            (work / "grounding_error.txt").write_text(str(e), encoding="utf-8")
+            return {"status": "error", "message": f"grounding failed: {e}", "episode_key": ep_key}
+    script_file.write_text(json.dumps(script, indent=2, ensure_ascii=False), encoding="utf-8")
+    acts = script["acts"]
+    log(f"Episode script: '{script['title']}' - {len(script['beats'])} beats, {script['word_count']} words, "
+        f"acts: {[a['title'] for a in acts]}")
+
+    # 3. Narration, one TTS per beat; an act boundary gets a slightly longer pause
+    act_of = []
+    for i in range(len(script["beats"])):
+        act_of.append(max(ai for ai, a in enumerate(acts) if a["start_beat"] <= i))
+    beats = [{"text": b["text"], "src_start": float(b["src_start"]), "src_end": float(b["src_end"]),
+              "episode_key": ep_key, "chapter_index": act_of[i], "episode_duration": script.get("duration"),
+              "songs": script.get("songs", [])} for i, b in enumerate(script["beats"])]
+    voice_wav = work / "episode_voice.wav"
+    if dry_run:
+        t, timeline = 0.0, []
+        for b in beats:
+            d = len(b["text"].split()) / EPISODE_WPS
+            timeline.append(dict(b, start=t, speech_end=t + d, end=t + d + EPISODE_BEAT_GAP))
+            t += d + EPISODE_BEAT_GAP
+        narration = {"duration": t, "timeline": timeline, "word_cues": []}
+    else:
+        narration = produce_beat_narration(beats, CACHE_DIR / "tts_beats", voice_wav, voice=voice, rate=tts_rate,
+                                           beat_gap=EPISODE_BEAT_GAP, chapter_gap=EPISODE_ACT_GAP, trim_silence=True)
+    timeline = narration["timeline"]
+    total = narration["duration"] + 1.0  # a beat of silence after the last line
+    (work / "beat_timeline.json").write_text(json.dumps(timeline, indent=1), encoding="utf-8")
+
+    # 4. Chapters from the acts, exact
+    chapters = _act_chapters(acts, timeline, total)
+    title = script["title"][:100]
+    description = build_episode_description(ep, title, script.get("summary", ""), chapters)
+    log(f"Narration {total:.1f}s ({total / 60:.1f} min, {script['word_count'] / max(total, 1) * 60:.0f} wpm). "
+        f"Chapters:\n  " + "\n  ".join(chapters))
+
+    # 5. Long video
+    video_file = work / f"full_{ep_key}_recap.mp4"
+    ok = assemble_arc_master_video(raw_episode_map={ep_key: raw}, voice_audio_path=voice_wav,
+                                   output_video_path=video_file, beat_timeline=timeline, total_duration=total,
+                                   bgm_path=bgm_path, dry_run=dry_run, cuts_report_path=work / "cuts.json",
+                                   fade_out=1.0)
+    series_tag = re.sub(r"[^A-Za-z0-9]", "", ep.get("series", "anime").split(":")[0]).lower()
+    meta = {
+        "title": title,
+        "video_path": str(video_file),
+        "chapters": chapters,
+        "description": description,
+        "hashtags": ["anime", "animerecap", "animeexplained", series_tag, "bhalooji", "episoderecap"],
+        "duration": total,
+        "word_count": script["word_count"],
+        "status": "rendered" if ok else "failed",
+        "is_full_video": True,
+        "is_episode_recap": True,
+        "episode_key": ep_key,
+    }
+    (work / "episode_video_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    if not ok:
+        log("Episode video render failed.")
+        return {"status": "error", "message": "episode video rendering failed", "episode_key": ep_key}
+
+    # 6. Short(s): validated LLM candidates re-checked against the real beat lengths, then the fallback
+    texts = [b["text"] for b in timeline]
+    slots = [b["end"] - b["start"] for b in timeline]
+    speech = [b["speech_end"] - b["start"] for b in timeline]
+    names = character_names(texts)
+    cands, probs = validate_short_candidates(script.get("short_candidates", []), texts, names, slots, speech)
+    for p_ in probs:
+        log(f"short candidate dropped: {p_}")
+    fb = fallback_short_window(texts, slots, speech, script.get("climax_beat"), names)
+    if fb:
+        if len(script["title"]) <= 90:
+            fb["title"] = script["title"]   # the long video's hook title reads better than a clipped sentence
+        cands.append(fb)
+    num_shorts = int(os.environ.get("EPISODE_SHORTS_COUNT") or os.environ.get("ARC_SHORTS_COUNT") or "1")
+    parts_meta, used = [], []
+    badge = ep.get("series", "").split(":")[0]
+    for cand in cands:
+        if len(parts_meta) >= num_shorts:
+            break
+        if any(not (cand["end_beat"] < a or cand["start_beat"] > b) for a, b in used):
+            continue
+        p_order = len(parts_meta) + 1
+        part_dir = work / f"short_{p_order:02d}"
+        res = _render_episode_short(cand, timeline, {ep_key: raw}, part_dir, voice, tts_rate, bgm_path, badge, dry_run)
+        if not res["ok"]:
+            log(f"Short candidate beats {cand['start_beat']}-{cand['end_beat']} ({cand['source']}) skipped: {res.get('reason')}")
+            continue
+        used.append((cand["start_beat"], cand["end_beat"]))
+        hook_line = cand["hook_text"]
+        payoff_line = timeline[cand["end_beat"]]["text"]
+        part_meta = {
+            "part": p_order,
+            "beats": [cand["start_beat"], cand["end_beat"]],
+            "source": cand["source"],
+            "title": shorts_title(cand["title"]),
+            "hook": hook_line,
+            "hook_rewritten": cand.get("hook_rewritten", False),
+            "payoff": payoff_line,
+            "video_path": res["video_path"],
+            "master_start": round(timeline[cand["start_beat"]]["start"], 3),
+            "master_end": round(timeline[cand["end_beat"]]["speech_end"], 3),
+            "duration": res["duration"],
+            "hashtags": ["anime", "animerecap", "shorts", series_tag, "bhalooji"],
+            "description": (
+                f"{hook_line} {timeline[cand['start_beat'] + 1]['text'] if cand['start_beat'] + 1 <= cand['end_beat'] else ''}".strip()
+                + f"\n\nWatch the full episode recap: {{FULL_VIDEO_URL}}\n\n"
+                  f"Story recap / commentary under fair use.\n#anime #animerecap #shorts #{series_tag} #bhalooji"
+            ),
+            "status": "rendered",
+        }
+        parts_meta.append(part_meta)
+        (part_dir / "meta.json").write_text(json.dumps(part_meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        log(f"Short {p_order}: '{part_meta['title']}' beats {cand['start_beat']}-{cand['end_beat']} "
+            f"({cand['source']}, {res['duration']:.1f}s)")
+    if not parts_meta:
+        log("No Short could be built from this episode (no 35-59 s hook-to-payoff window).")
+
+    result = {
+        "status": "success",
+        "mode": "episode",
+        "action": "normal_video",
+        "episode_key": ep_key,
+        "upload_key": f"{ep_key}-recap",
+        "display_name": ep["display_name"],
+        "video_to_upload": meta,
+        "full_video": meta,
+        "parts": parts_meta,
+        "bgm_path": str(bgm_path) if bgm_path else None,
+    }
+    (work / "pipeline_summary.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    log(f"Episode pipeline complete: long video {total / 60:.1f} min + {len(parts_meta)} Short(s) in {work}")
+    return result
+
+
 def _arc_short_title(chapter_title: str, display_name: str) -> str:
     """'<chapter title> | <arc> Recap #shorts', trimmed to YouTube's 100 characters."""
     tail = f" | {display_name} Recap #shorts"
@@ -1209,7 +1510,7 @@ def _short_hook_title(hook: str, fallback: str) -> str:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Run anime explanation pipeline")
-    parser.add_argument("--mode", default="arc", choices=["arc", "recapkun", "cinema", "daily", "full"], help="Pipeline mode: 'arc' (Full Story Arc Recap Video <= 60 mins), 'recapkun' (Master Long-Form RecapKun Video + Shorts), 'daily' (funnel), 'cinema' (3-minute shorts), or 'full'")
+    parser.add_argument("--mode", default="episode", choices=["episode", "arc", "recapkun", "cinema", "daily", "full"], help="Pipeline mode: 'episode' (one episode retold as a cold-open story + one hook-to-payoff Short), 'arc' (Full Story Arc Recap Video <= 60 mins), 'recapkun' (Master Long-Form RecapKun Video + Shorts), 'daily' (funnel), 'cinema' (3-minute shorts), or 'full'")
     parser.add_argument("--arc", default=None, help="Specific story arc key (e.g. demon-slayer-mount-natagumo)")
     parser.add_argument("--part", type=int, default=1, help="Part number if arc is split (default: 1)")
     parser.add_argument("--episode", default=None, help="Episode key (e.g. demon-slayer-s01e01)")
@@ -1220,7 +1521,15 @@ if __name__ == "__main__":
     parser.add_argument("--live", action="store_true", help="Live YouTube upload mode")
 
     args = parser.parse_args()
-    if args.mode == "arc":
+    if args.mode == "episode":
+        res = run_episode_pipeline(
+            episode_key=args.episode,
+            series_filter=args.series,
+            dry_run=args.dry_run,
+            voice=args.voice if args.voice != "default" else "en-US-ChristopherNeural",
+            bgm_path=args.bgm,
+        )
+    elif args.mode == "arc":
         res = run_arc_pipeline(
             arc_key=args.arc,
             series_filter=args.series,

@@ -630,9 +630,29 @@ def _decode_pcm(mp3_path: Path, sample_rate: int = BEAT_SAMPLE_RATE) -> bytes:
     return r.stdout
 
 
+def _trim_pcm_silence(pcm: bytes, sr: int, threshold: float = 0.012, lead_pad: float = 0.03,
+                      tail_pad: float = 0.09) -> tuple[bytes, float]:
+    """Trim leading/trailing silence of mono s16le audio. Returns (audio, seconds cut from the front)."""
+    import numpy as np
+    a = np.frombuffer(pcm, dtype=np.int16)
+    if a.size == 0:
+        return pcm, 0.0
+    win = max(1, int(sr * 0.01))
+    n = a.size // win
+    if n == 0:
+        return pcm, 0.0
+    env = np.abs(a[: n * win].astype(np.float32) / 32768.0).reshape(n, win).max(axis=1)
+    loud = np.flatnonzero(env > threshold)
+    if loud.size == 0:
+        return pcm, 0.0
+    s0 = max(0, loud[0] * win - int(lead_pad * sr))
+    s1 = min(a.size, (loud[-1] + 1) * win + int(tail_pad * sr))
+    return a[s0:s1].tobytes(), s0 / sr
+
+
 def produce_beat_narration(beats: list[dict], work_dir: str | Path, output_wav_path: str | Path,
                            voice: str = ARC_VOICE, rate: str = ARC_RATE, beat_gap: float = 0.18,
-                           chapter_gap: float = 0.8, concurrency: int = 6) -> dict:
+                           chapter_gap: float = 0.8, concurrency: int = 6, trim_silence: bool = False) -> dict:
     """
     Speak every beat separately so each beat's exact duration is known, then join them into one
     voice track (mono 24 kHz WAV). beats: [{text, chapter_index, ...}]. Returns
@@ -640,6 +660,9 @@ def produce_beat_narration(beats: list[dict], work_dir: str | Path, output_wav_p
      "chapter_starts": [seconds per chapter_index]}.
     A beat's [start, end) slot covers its speech plus the pause after it, so slots tile the
     timeline with no holes: the video shows beat i's scene for exactly that slot.
+    trim_silence: cut each clip's leading/trailing silence (edge-tts pads ~0.2 s before and ~0.7 s
+    after every clip) so the pause between beats is exactly beat_gap - the dense pacing of the
+    episode-recap style.
     """
     import hashlib
     import wave
@@ -671,6 +694,10 @@ def produce_beat_narration(beats: list[dict], work_dir: str | Path, output_wav_p
     for i, (b, p, cues) in enumerate(zip(beats, paths, all_cues)):
         p.with_suffix(".json").write_text(json.dumps(cues))
         audio = _decode_pcm(p, sr)
+        if trim_silence:
+            audio, lead = _trim_pcm_silence(audio, sr)
+            cues = [{"word": c["word"], "start": max(0.0, c["start"] - lead), "end": max(0.0, c["end"] - lead)}
+                    for c in cues]
         speech = len(audio) / 2 / sr
         if not cues:
             cues = synthesize_word_cues(b["text"], speech)
@@ -702,9 +729,11 @@ def produce_beat_narration(beats: list[dict], work_dir: str | Path, output_wav_p
             "chapter_starts": [chapter_starts[k] for k in sorted(chapter_starts)], "audio_path": str(out)}
 
 
-def build_short_caption_ass(word_cues: list[dict], start: float, end: float, badge_text: str = "") -> str:
+def build_short_caption_ass(word_cues: list[dict], start: float, end: float, badge_text: str = "",
+                            hook_text: str = "", hook_seconds: float = 2.2) -> str:
     """Vertical (1080x1920 card layout) karaoke captions for the window [start, end) of the arc,
-    with times shifted so the Short starts at 0. Captions sit under the 16:9 card."""
+    with times shifted so the Short starts at 0. Captions sit under the 16:9 card.
+    hook_text: a big headline shown above the card for the first hook_seconds."""
     header = build_ass_header(is_landscape=False)
     header = header.replace(
         "Style: Default,DejaVu Sans Bold,66,&H00FFFFFF,&H0000FFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,5.0,2.0,2,60,60,560,1",
@@ -720,6 +749,12 @@ def build_short_caption_ass(word_cues: list[dict], start: float, end: float, bad
     lines = body.split("\n")
     events = [ln for ln in lines if ln.startswith("Dialogue:")]
     out = header
+    if hook_text:
+        out = out.replace("\n\n[Events]", "\nStyle: Hook,DejaVu Sans Bold,84,&H0000E1FF,&H0000E1FF,&H00000000,&HA0000000,"
+                                        "-1,0,0,0,100,100,1,0,1,7.0,3.0,5,70,70,0,1\n\n[Events]", 1)
+        hook = re.sub(r"\s+", " ", hook_text).strip().upper().replace("{", "(").replace("}", ")")
+        out += (f"Dialogue: 2,0:00:00.00,{format_ass_time(hook_seconds)},Hook,,0,0,0,,"
+                f"{{\\an5\\pos(540,390)\\fad(80,250)}}{hook}\n")
     if badge_text:
         out += (f"Dialogue: 1,0:00:00.00,{format_ass_time(end - start + 1)},CardHeader,,0,0,0,,"
                 f"{{\\an8\\bord3\\shad1\\c&H00D7FF&}}{badge_text.upper()}\n")

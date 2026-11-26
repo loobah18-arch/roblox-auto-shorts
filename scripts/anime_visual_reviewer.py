@@ -109,6 +109,26 @@ def review_rendered_episode(ep_dir: Path) -> dict:
                 }
             ],
         }
+    elif (ep_dir / "episode_script.json").exists():
+        ep_script = json.loads((ep_dir / "episode_script.json").read_text(encoding="utf-8"))
+        tl_f = ep_dir / "beat_timeline.json"
+        timeline = json.loads(tl_f.read_text(encoding="utf-8")) if tl_f.exists() else []
+        acts = ep_script.get("acts", [])
+        script_package = {
+            "episode_title": ep_script.get("title", ep_dir.name),
+            "parts": [
+                {
+                    "part": idx + 1,
+                    "short_title": act.get("title", f"Act {idx + 1}"),
+                    "narration": " ".join(b["text"] for b in timeline if b.get("chapter_index") == idx),
+                    "hook": act.get("title", ""),
+                    "beats": [],
+                    "estimated_duration": 60.0,
+                    "timed_beats": [b for b in timeline if b.get("chapter_index") == idx],
+                }
+                for idx, act in enumerate(acts)
+            ],
+        }
     elif arc_script_files:
         with open(arc_script_files[0], "r", encoding="utf-8") as f:
             arc_script = json.load(f)

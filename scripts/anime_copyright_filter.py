@@ -423,9 +423,9 @@ def verify_output_directory(output_dir: Path | str) -> bool:
             part_num=data.get("part"),
             display_name=data.get("display_name", ep_dir.name),
         )
-        premise = data.get("mode") == "arc" and not is_short
+        premise = data.get("mode") in ("arc", "episode") and not is_short
         if premise:
-            clean_title = title  # arc recaps keep their premise-style title as written
+            clean_title = title  # arc / episode recaps keep their premise-style hook title as written
 
         res = shield.inspect_candidate(
             video_path=v_path,

@@ -80,6 +80,11 @@ def parse_iso_datetime(dt_str: str | None) -> datetime | None:
         return None
 
 
+def is_derived_short(item: dict) -> bool:
+    """A Short cut from a long video (arc or episode recap) that went out right after it."""
+    return bool(isinstance(item, dict) and (item.get("is_derived_short") or item.get("is_arc_short")))
+
+
 def get_latest_upload_time(history: dict | None) -> datetime | None:
     """Finds the most recent upload timestamp from anime_history.json."""
     if not history or not isinstance(history, dict):
@@ -87,8 +92,8 @@ def get_latest_upload_time(history: dict | None) -> datetime | None:
 
     timestamps: list[datetime] = []
     for item in history.get("uploaded_parts", []):
-        # Shorts cut from an arc video go out right after it; they don't restart the 24h clock.
-        if isinstance(item, dict) and not item.get("is_arc_short"):
+        # Shorts cut from a long video go out right after it; they don't restart the 24h clock.
+        if isinstance(item, dict) and not is_derived_short(item):
             up_at = item.get("uploaded_at")
             dt = parse_iso_datetime(up_at)
             if dt:
@@ -190,7 +195,7 @@ def evaluate_view_velocity_gate(
     if history and isinstance(history, dict):
         uploaded_parts = history.get("uploaded_parts", [])
         for item in reversed(uploaded_parts):
-            if isinstance(item, dict) and not item.get("is_arc_short"):
+            if isinstance(item, dict) and not is_derived_short(item):
                 candidate_id = item.get("video_id")
                 if candidate_id and not str(candidate_id).startswith("dry_run"):
                     vid_id = candidate_id
@@ -547,9 +552,10 @@ def upload_video_file(
     }
 
 
-def upload_arc_shorts(youtube, summary: dict, ep_key: str, full_video_url: str, privacy: str = "public") -> list[dict]:
-    """Upload the Shorts derived from an arc's long video. Skips parts already uploaded,
-    parts that failed to render, and stops on YouTube's daily upload limit."""
+def upload_derived_shorts(youtube, summary: dict, ep_key: str, full_video_url: str, privacy: str = "public") -> list[dict]:
+    """Upload the Shorts derived from a long video (arc or episode recap). Skips parts already
+    uploaded, parts that failed to render, and stops on YouTube's daily upload limit. Their records
+    are marked is_derived_short so they never count toward the 24 h cadence or the velocity gate."""
     out: list[dict] = []
     for part in summary.get("parts", []):
         p_num = part.get("part")
@@ -580,7 +586,9 @@ def upload_arc_shorts(youtube, summary: dict, ep_key: str, full_video_url: str, 
                 "arc_key": summary.get("arc_key"),
                 "part": p_num,
                 "is_full_video": False,
-                "is_arc_short": True,
+                "is_derived_short": True,
+                "is_arc_short": summary.get("mode") == "arc",
+                "mode": summary.get("mode"),
                 "video_id": res.get("video_id"),
                 "url": res.get("url"),
                 "title": part["title"],
@@ -589,14 +597,17 @@ def upload_arc_shorts(youtube, summary: dict, ep_key: str, full_video_url: str, 
             uploaded_parts.append(record)
             history["uploaded_parts"] = uploaded_parts
             save_history(history)
-            log(f"✅ Arc Short {p_num} uploaded: {res.get('url')}")
+            log(f"✅ Derived Short {p_num} uploaded: {res.get('url')}")
             out.append(record)
         else:
-            log(f"⚠️ Arc Short {p_num} not uploaded: {res.get('status')} {res.get('message') or res.get('rejection_reason') or ''}")
+            log(f"⚠️ Derived Short {p_num} not uploaded: {res.get('status')} {res.get('message') or res.get('rejection_reason') or ''}")
             out.append({"part": p_num, **res})
             if res.get("status") == "quota_exceeded":
                 break
     return out
+
+
+upload_arc_shorts = upload_derived_shorts  # backward-compatible name
 
 
 def upload_episode_package(
@@ -624,7 +635,8 @@ def upload_episode_package(
 
     history = load_history()
     uploaded_parts = history.get("uploaded_parts", [])
-    ep_key = summary.get("episode_key") or summary.get("arc_key") or ep_dir.name
+    # episode recaps record uploads under their own key so legacy funnel records of the same episode never dedupe them
+    ep_key = summary.get("upload_key") or summary.get("episode_key") or summary.get("arc_key") or ep_dir.name
 
     if live:
         can_proceed, next_allowed, remaining_sec = ensure_upload_cadence(
@@ -664,8 +676,8 @@ def upload_episode_package(
                 json.dump(res, f, indent=2)
             return res
 
-    if summary.get("mode") in ("daily_funnel", "cinema", "recapkun", "full", "arc") or "video_to_upload" in summary:
-        action = summary.get("action", "normal_video" if summary.get("mode") in ("recapkun", "full", "arc") else "short")
+    if summary.get("mode") in ("daily_funnel", "cinema", "recapkun", "full", "arc", "episode") or "video_to_upload" in summary:
+        action = summary.get("action", "normal_video" if summary.get("mode") in ("recapkun", "full", "arc", "episode") else "short")
         vid_to_upload = summary.get("video_to_upload", {})
 
         if not live:
@@ -689,15 +701,21 @@ def upload_episode_package(
             log("Cannot perform live upload: YouTube credentials missing or invalid.")
             return {"status": "error", "message": "missing credentials"}
 
-        upload_res = upload_video_file(
-            youtube=youtube,
-            video_path=vid_to_upload["video_path"],
-            title=vid_to_upload["title"],
-            description=vid_to_upload["description"],
-            tags=vid_to_upload.get("hashtags", []),
-            privacy=privacy,
-            bgm_path=summary.get("bgm_path") or (WORKSPACE_DIR / "assets" / "bgm" / "cradles.mp3"),
-        )
+        already_full = find_uploaded_part(uploaded_parts, ep_key, is_full=True) if summary.get("mode") == "episode" else None
+        if already_full:
+            log(f"⏭️ Episode recap already uploaded: {already_full.get('url')} (no duplicate upload)")
+            upload_res = {"status": "already_uploaded", "video_id": already_full.get("video_id"),
+                          "url": already_full.get("url")}
+        else:
+            upload_res = upload_video_file(
+                youtube=youtube,
+                video_path=vid_to_upload["video_path"],
+                title=vid_to_upload["title"],
+                description=vid_to_upload["description"],
+                tags=vid_to_upload.get("hashtags", []),
+                privacy=privacy,
+                bgm_path=summary.get("bgm_path") or (WORKSPACE_DIR / "assets" / "bgm" / "cradles.mp3"),
+            )
 
         # Handle YouTube Block & Style Restart
         if upload_res.get("status") == "blocked":
@@ -712,7 +730,16 @@ def upload_episode_package(
 
             from anime_pipeline import run_cinema_pipeline, run_pipeline, run_arc_pipeline
 
-            if summary.get("mode") == "arc":
+            if summary.get("mode") == "episode":
+                from anime_pipeline import run_episode_pipeline
+                log("🔄 [Bhaloo Ji] Episode recap flagged. Re-rendering with copyright recovery settings...")
+                re_res = run_episode_pipeline(
+                    episode_key=summary.get("episode_key"),
+                    bgm_path=ncs_bgm if block_type in ("audio", "both") else None,
+                    dry_run=False,
+                    reuse_script=True,
+                )
+            elif summary.get("mode") == "arc":
                 log("🔄 [Bhaloo Ji] Story Arc flagged. Re-rendering Arc with copyright recovery settings...")
                 re_res = run_arc_pipeline(
                     arc_key=summary.get("arc_key"),
@@ -788,7 +815,18 @@ def upload_episode_package(
                     bgm_path=ncs_bgm if block_type in ("audio", "both") else summary.get("bgm_path"),
                 )
 
-        if upload_res.get("status") == "uploaded":
+        if upload_res.get("status") == "already_uploaded":
+            history = load_history()
+            done = history.setdefault("completed_episode_recaps", [])
+            if summary.get("episode_key") and summary["episode_key"] not in done:
+                done.append(summary["episode_key"])
+                save_history(history)
+            results = {"status": "success", "mode": "episode", "action": action, "episode_key": ep_key,
+                       "uploaded_record": already_full}
+            if upload_shorts and summary.get("parts"):
+                results["shorts"] = upload_derived_shorts(youtube=youtube, summary=summary, ep_key=ep_key,
+                                                          full_video_url=upload_res.get("url") or "", privacy=privacy)
+        elif upload_res.get("status") == "uploaded":
             history = load_history()
             active = history.get("active_episode")
             now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -806,7 +844,12 @@ def upload_episode_package(
             uploaded_parts.append(record)
             history["uploaded_parts"] = uploaded_parts
 
-            if summary.get("mode") in ("cinema", "recapkun", "full", "arc") or vid_to_upload.get("is_cinema_short") or vid_to_upload.get("is_arc"):
+            if summary.get("mode") == "episode":
+                log(f"🎉 Episode recap uploaded: {upload_res.get('url')}!")
+                done = history.setdefault("completed_episode_recaps", [])
+                if summary.get("episode_key") and summary["episode_key"] not in done:
+                    done.append(summary["episode_key"])
+            elif summary.get("mode") in ("cinema", "recapkun", "full", "arc") or vid_to_upload.get("is_cinema_short") or vid_to_upload.get("is_arc"):
                 if action == "normal_video" or summary.get("mode") in ("recapkun", "full", "arc") or vid_to_upload.get("is_arc"):
                     if summary.get("mode") == "arc" or vid_to_upload.get("is_arc"):
                         log(f"🎉 Story Arc Master Video successfully uploaded: {upload_res.get('url')}!")
@@ -871,9 +914,9 @@ def upload_episode_package(
                 "uploaded_record": record,
             }
 
-            # Arc mode: publish the Shorts cut from this long video, each linking back to it.
-            if upload_shorts and summary.get("mode") == "arc" and summary.get("parts"):
-                results["shorts"] = upload_arc_shorts(
+            # Arc / episode mode: publish the Shorts cut from this long video, each linking back to it.
+            if upload_shorts and summary.get("mode") in ("arc", "episode") and summary.get("parts"):
+                results["shorts"] = upload_derived_shorts(
                     youtube=youtube,
                     summary=summary,
                     ep_key=ep_key,

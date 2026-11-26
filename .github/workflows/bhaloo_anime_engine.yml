@@ -11,7 +11,7 @@ on:
         required: false
         type: string
       episode:
-        description: "Specific episode key (for single-episode modes: e.g. demon-slayer-s01e01)"
+        description: "Specific episode key (for episode / single-episode modes: e.g. demon-slayer-s01e19; blank = next episode)"
         required: false
         type: string
       series:
@@ -24,11 +24,12 @@ on:
           - "demon-slayer"
           - "jujutsu-kaisen"
       mode:
-        description: "Pipeline mode: 'arc' (Full Story Arc Recap Video <= 60 mins), 'recapkun' (Single Episode RecapKun Video + Shorts), 'daily' (funnel), or 'cinema' (3-minute shorts)"
+        description: "Pipeline mode: 'episode' (one episode retold as a cold-open story + one hook-to-payoff Short), 'arc' (Full Story Arc Recap Video <= 60 mins), 'recapkun' (Single Episode RecapKun Video + Shorts), 'daily' (funnel), or 'cinema' (3-minute shorts)"
         required: false
-        default: "arc"
+        default: "episode"
         type: choice
         options:
+          - "episode"
           - "arc"
           - "recapkun"
           - "daily"
@@ -126,7 +127,7 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          INPUT_MODE: ${{ inputs.mode || 'arc' }}
+          INPUT_MODE: ${{ inputs.mode || 'episode' }}
           INPUT_ARC: ${{ inputs.arc }}
           INPUT_EPISODE: ${{ inputs.episode }}
           INPUT_SERIES: ${{ inputs.series }}

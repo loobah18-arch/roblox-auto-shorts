@@ -217,16 +217,19 @@ def provider_chain(vision: bool = False) -> list[tuple[str, str, object]]:
 
 def complete(prompt: str, system: str = "", json_mode: bool = False, temperature: float = 0.6,
              max_tokens: int = 16000, timeout: float | None = None, validator=None, image_b64: str | None = None,
-             vision: bool = False, max_429_wait: float = 90.0, label: str = "") -> tuple[str, str] | None:
+             vision: bool = False, max_429_wait: float = 90.0, label: str = "",
+             feedback: bool = False) -> tuple[str, str] | None:
     """
     Try every provider/model in order. `validator(text)` may raise ValueError to reject an answer
     (the next model is then tried; the rejection is logged). Returns (text, "provider:model") or None.
+    feedback=True: after a rejection, later attempts get the rejection reasons appended to the prompt.
     """
     timeout = timeout or DEFAULT_TIMEOUT
     chain = provider_chain(vision=vision or bool(image_b64))
     if not chain:
         log(f"{label}: no LLM API keys in the environment")
         return None
+    base_prompt = prompt
     for provider, model, fn in chain:
         tag = f"{provider}:{model}"
         if tag in _DEAD:
@@ -255,6 +258,9 @@ def complete(prompt: str, system: str = "", json_mode: bool = False, temperature
                 break
             except ValueError as e:
                 log(f"{label}: {tag} rejected after {time.time() - t0:.1f}s: {e}")
+                if feedback:
+                    prompt = (base_prompt + "\n\nIMPORTANT: a previous answer to this task was rejected by the "
+                              f"validator for these problems - fix every one of them:\n{str(e)[:1500]}")
                 if attempt < 1 and validator is not None:
                     continue  # one more sample from the same model
                 break

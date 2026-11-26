@@ -428,6 +428,53 @@ def get_next_arc(series_id: str | None = None, history: dict | None = None) -> d
     return None
 
 
+def recap_series_order() -> list[str]:
+    """Shows in the order the channel covers them (the order of the story-arc registry)."""
+    order: list[str] = []
+    for arc in ANIME_STORY_ARCS.values():
+        if arc["series_id"] not in order:
+            order.append(arc["series_id"])
+    return order
+
+
+def get_next_recap_episode(series_id: str | None = None, history: dict | None = None,
+                           catalog: dict | None = None) -> dict | None:
+    """
+    Next episode for the single-episode recap mode ('episode'): the first catalog episode, in story
+    order (show by show as listed in the arc registry, then season, then episode), that is not yet in
+    history['completed_episode_recaps']. When a show's last episode is done the next show starts.
+    Progress is tracked separately from the legacy funnel's 'completed_episodes', because the
+    grounded episode recaps are a new format.
+    """
+    history = load_history() if history is None else history
+    catalog = load_catalog() if catalog is None else catalog
+    done = set(history.get("completed_episode_recaps", []))
+    order = recap_series_order()
+    eps = [e for e in catalog.get("episodes", []) if e.get("series_id") in order]
+    if series_id:
+        eps = [e for e in eps if e.get("series_id") == series_id]
+    eps.sort(key=lambda e: (order.index(e["series_id"]), int(e.get("season") or 0), int(e.get("episode") or 0)))
+    for e in eps:
+        if e["episode_key"] not in done:
+            return e
+    return None
+
+
+def neighbour_episode(episode_key: str, catalog: dict | None = None) -> dict | None:
+    """Another episode of the same show and season (the next one, else the previous one), used to
+    find the opening/ending songs both episodes share."""
+    catalog = load_catalog() if catalog is None else catalog
+    eps = catalog.get("episodes", [])
+    me = next((e for e in eps if e["episode_key"] == episode_key), None)
+    if not me:
+        return None
+    same = sorted((e for e in eps if e.get("series_id") == me.get("series_id") and e.get("season") == me.get("season")
+                   and e["episode_key"] != episode_key), key=lambda e: int(e.get("episode") or 0))
+    after = [e for e in same if int(e.get("episode") or 0) > int(me.get("episode") or 0)]
+    before = [e for e in same if int(e.get("episode") or 0) < int(me.get("episode") or 0)]
+    return (after[:1] or before[-1:] or [None])[0]
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Sync and manage anime catalog")
