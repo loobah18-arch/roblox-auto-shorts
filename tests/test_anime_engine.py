@@ -171,7 +171,7 @@ class TestAnimeVideoFiltergraph(unittest.TestCase):
     def test_bgm_asset_exists(self):
         from anime_video_engine import DEFAULT_BGM_PATH
         self.assertTrue(DEFAULT_BGM_PATH.exists(), f"Default BGM not found: {DEFAULT_BGM_PATH}")
-        self.assertEqual(DEFAULT_BGM_PATH.name, "aerohead_fragments_recap.mp3")
+        self.assertEqual(DEFAULT_BGM_PATH.name, "craspore_flashbacks_slowed.mp3")
 
 
 class TestAnimeUploader(unittest.TestCase):

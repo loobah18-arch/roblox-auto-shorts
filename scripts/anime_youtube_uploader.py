@@ -414,7 +414,7 @@ def classify_block_reason(
 
     # If already using an authentic NCS track, audio cannot be the block cause -> must be the video clip!
     bgm_lower = str(bgm_path or "").lower()
-    if any(ncs_kw in bgm_lower for ncs_kw in ("ncs", "cradles", "aerohead", "nocopyright")):
+    if any(ncs_kw in bgm_lower for ncs_kw in ("ncs", "cradles", "aerohead", "craspore", "flashbacks", "nocopyright")):
         return "clip"
 
     # If generic "copyright" with non-NCS audio, audio is the dominant content ID claim
