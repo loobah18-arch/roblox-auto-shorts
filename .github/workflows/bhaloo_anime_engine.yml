@@ -24,15 +24,15 @@ on:
           - "demon-slayer"
           - "jujutsu-kaisen"
       mode:
-        description: "Pipeline mode: 'cinema' (Standalone 3-Minute Shorts), 'recapkun' (RecapKun Video + Shorts), 'daily' (funnel), or 'arc' (Full Story Arc Recap Video <= 60 mins)"
+        description: "Pipeline mode: 'arc' (Full Story Arc Recap Video <= 60 mins), 'recapkun' (RecapKun Video + Shorts), 'daily' (funnel), or 'cinema' (3-minute shorts)"
         required: false
-        default: "cinema"
+        default: "arc"
         type: choice
         options:
-          - "cinema"
+          - "arc"
           - "recapkun"
           - "daily"
-          - "arc"
+          - "cinema"
           - "full"
       upload_to_youtube:
         description: "Upload rendered Shorts & Full Video to YouTube (default: true - live publishing enabled)"
@@ -115,7 +115,7 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          INPUT_MODE: ${{ inputs.mode || 'cinema' }}
+          INPUT_MODE: ${{ inputs.mode || 'arc' }}
           INPUT_ARC: ${{ inputs.arc }}
           INPUT_EPISODE: ${{ inputs.episode }}
           INPUT_SERIES: ${{ inputs.series }}

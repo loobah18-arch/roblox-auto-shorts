@@ -221,12 +221,12 @@ def run_pipeline(
         # Lookup chapter start and end from master audio segments
         if idx < len(chapter_segments):
             c_start = chapter_segments[idx]["start_time"]
-            c_end = chapter_segments[idx]["end_time"]
-            c_dur = chapter_segments[idx]["duration"]
+            c_dur = min(58.5, float(chapter_segments[idx]["duration"]))
+            c_end = c_start + c_dur
         else:
             c_start = 0.0
-            c_end = 60.0
-            c_dur = 60.0
+            c_end = 58.5
+            c_dur = 58.5
 
         derive_ok = derive_short_from_master(
             master_video_path=full_video_file,
