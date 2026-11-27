@@ -175,17 +175,16 @@ def generate_episode_script(episode_info: dict) -> dict:
     scene_acts = get_episode_scene_acts(episode_info, num_parts=3)
 
     # If not in cache, use LLM to generate
-    system_prompt = """You are an elite anime documentary narrator and scriptwriter modeling the signature style of RecapKun (@recapkun).
-Your task is to write a MASTER long-form anime recap script for the full normal video.
-Shorts will later be clipped as direct excerpts from the chapters of this normal video.
+    system_prompt = """You are an elite anime documentary narrator modeling the signature viral style of RecapKun (@recapkun).
+Your task is to write a master anime story recap script that is punchy, high-tension, and impossible to click away from.
 
-CRITICAL ARCHITECTURE RULES:
-1. MASTER NORMAL VIDEO FIRST: There is NO word limit or time limit for the normal video. Be exhaustive, immersive, rich, and detailed.
-2. CONTINUOUS FLOW: The narration across all chapters MUST be ONE continuous, uninterrupted story. Each chapter must flow seamlessly into the next with natural narrative transitions.
-3. NO MID-VIDEO CLIFFHANGERS IN NARRATION: Never write phrases like 'Wait until you see in Part 2' or 'In Part 3' inside the narration text. Cliffhangers are only provided in the separate 'cliffhanger' metadata field for the Short excerpt teasers.
-4. EXPLAIN THE LORE: Deeply explain combat mechanics, breathing forms, cursed energy techniques, character emotional conflicts, and power systems.
-5. CHRONOLOGICAL SCENE ACTS: You MUST write each chapter specifically about its assigned chronological scene act, matching the EXACT time_range provided.
-6. SHORTS ARE EXCERPTS: Provide an opening hook and high-CTR title for each chapter so that Shorts can be clipped as excerpts from this normal video.
+CRITICAL RECAPKUN FORMULA RULES:
+1. PURE STORY & ACTION MOMENTUM: Narrate the fight blow-by-blow like an excited friend recounting the craziest anime moment. Focus on what happens, the immediate life-or-death danger, character arrogance, fear, and shocking plot twists.
+2. ZERO ACADEMIC LORE DUMPS: Absolutely BANNED: textbook biology, oxygenating bloodstream lectures, physics formulas, and centrifugal torque essays. Never pause a fight to give a science lecture. Mention techniques naturally in one punchy phrase (e.g. "Tanjiro unleashes Tenth Form Constant Flux, summoning a roaring water dragon").
+3. SHORT, ENERGETIC SENTENCES: Keep sentences punchy (8 to 15 words average). Use active, high-impact verbs ("smash", "decapitate", "blitz", "vaporize", "ricochet").
+4. PRESENT TENSE & DRAMA: Write strictly in vivid present tense. Highlight character arrogance ("Susamaru is laughing like a maniac because she hasn't even gotten serious yet") and sudden desperation ("Tanjiro knows if he misses this one swing, they're all dead").
+5. CONTINUOUS SEAMLESS FLOW: The script across all chapters must flow naturally as ONE continuous, uninterrupted story.
+6. EXACT SCENE MATCHING: Each sentence must describe the exact visual action occurring in that scene act so words and on-screen anime footage stay 1:1 synchronized.
 7. Return ONLY valid JSON matching the requested schema.
 """
 
