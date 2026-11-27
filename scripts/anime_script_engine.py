@@ -636,7 +636,7 @@ def generate_cinema_script(episode_info: dict) -> dict:
             "Seizing his final opening against Yahaba's relentless gravitational assault, Tanjiro unleashed Tenth Form: Constant Flux, summoning a roaring dragon of pure swirling water that accelerated through the night air and cleanly severed Yahaba's demonic head, even as Yahaba's dying rage triggered an inescapable gravitational trap dragging Tanjiro into crushed earth! "
             "To watch the next episode, comment yes."
         )
-        beats = CURATED_ACT_TIMELINES["demon-slayer-s01e09"]["acts"][0]["beats"]
+        beats = [b for a in CURATED_ACT_TIMELINES["demon-slayer-s01e09"]["acts"] for b in a.get("beats", [])]
     elif ep_key in EPISODE_KNOWLEDGE:
         data = EPISODE_KNOWLEDGE[ep_key]
         parts = data.get("parts", [])

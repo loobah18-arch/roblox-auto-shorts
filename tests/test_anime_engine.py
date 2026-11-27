@@ -821,11 +821,12 @@ class TestMotionTrackerAndEditors(unittest.TestCase):
         from anime_subtitle_sync import CURATED_ACT_TIMELINES
         self.assertIn("demon-slayer-s01e09", CURATED_ACT_TIMELINES)
         acts = CURATED_ACT_TIMELINES["demon-slayer-s01e09"]["acts"]
-        self.assertEqual(len(acts[0]["beats"]), 11)
-        # Verify timestamps cover the post-OP fight from 195s to 1260s (before ED credits)
-        beats = acts[0]["beats"]
-        self.assertGreaterEqual(beats[0]["start"], 180.0)
-        self.assertLessEqual(beats[-1]["start"], 1265.0)
+        self.assertEqual(len(acts), 4)
+        all_beats = [b for a in acts for b in a.get("beats", [])]
+        self.assertEqual(len(all_beats), 11)
+        # Verify timestamps cover the post-OP fight from 210s to 1205s (past OP, before ED credits)
+        self.assertGreaterEqual(all_beats[0]["start"], 200.0)
+        self.assertLessEqual(all_beats[-1]["start"], 1205.0)
 
     def test_demon_slayer_s01e09_1to1_sentence_beat_lock(self):
         """Verify demon-slayer-s01e09 has exact 1:1 sentence-to-beat locking with zero drift."""

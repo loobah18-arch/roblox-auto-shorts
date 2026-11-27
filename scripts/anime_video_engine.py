@@ -1181,12 +1181,14 @@ def derive_short_from_master(
     end_time: float,
     badge_text: str = "",
     dry_run: bool = False,
-    full_bleed: bool = True,
+    full_bleed: bool = False,
 ) -> bool:
     """
     Derives a 9:16 vertical Short excerpt directly from the Master Normal Video.
     Cuts the exact segment [start_time, end_time], formats it to 9:16 vertical canvas
-    (clean full-bleed cinema view if full_bleed=True, or blurred-background card if full_bleed=False).
+    with the COMPLETE 16:9 widescreen video fully visible in the center (zero cropping),
+    ambient blurred background filling top and bottom, and NO horizontal flipping so
+    all burned-in subtitles and visuals remain 100% intact and right-side-up.
     """
     master_video = Path(master_video_path)
     output_short = Path(output_short_path)
@@ -1202,8 +1204,8 @@ def derive_short_from_master(
     badge_ass = temp_dir / "badge.ass"
 
     try:
-        # Create subtle top pill badge ASS file (only if badge_text is provided and not full_bleed)
-        if badge_text and not full_bleed:
+        # Create subtle top pill badge ASS file (only if badge_text is provided)
+        if badge_text:
             badge_content = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -1221,21 +1223,16 @@ Dialogue: 1,0:00:00.00,9:59:59.00,CardHeader,,0,0,0,,{{\\an8\\bord3\\shad1\\c&H0
             with open(badge_ass, "w", encoding="utf-8") as f:
                 f.write(badge_content)
 
-        escaped_badge = str(badge_ass.resolve()).replace(":", "\\:").replace("'", "\\'") if (badge_text and not full_bleed) else ""
-        badge_filter = f",ass='{escaped_badge}'[v]" if (badge_text and not full_bleed) else "[v]"
+        escaped_badge = str(badge_ass.resolve()).replace(":", "\\:").replace("'", "\\'") if badge_text else ""
+        badge_filter = f",ass='{escaped_badge}'[v]" if badge_text else "[v]"
 
-        if full_bleed:
-            filters = [
-                "[0:v]hflip,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,"
-                f"eq=contrast=1.12:brightness=-0.02:saturation=1.18:gamma=0.96,vignette=PI/4.5,unsharp=5:5:0.8:5:5:0.4{badge_filter}"
-            ]
-        else:
-            filters = [
-                "[0:v]split=2[raw_bg][raw_fg]",
-                "[raw_bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,boxblur=25:5,eq=brightness=-0.14[bg]",
-                "[raw_fg]hflip,scale=1040:584:force_original_aspect_ratio=decrease,pad=1040:584:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,drawbox=x=0:y=0:w=iw:h=ih:color=white@0.22:t=3[fg]",
-                f"[bg][fg]overlay=(W-w)/2:(H-h)/2-60{badge_filter}",
-            ]
+        # Full uncropped 16:9 view: Complete video visible in center, ambient blurred background
+        filters = [
+            "[0:v]split=2[raw_bg][raw_fg]",
+            "[raw_bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,boxblur=25:5,eq=brightness=-0.18[bg]",
+            "[raw_fg]scale=1080:608:force_original_aspect_ratio=decrease,setsar=1[fg]",
+            f"[bg][fg]overlay=(W-w)/2:(H-h)/2{badge_filter}",
+        ]
         filtergraph = ";".join(filters)
 
         cmd = [
