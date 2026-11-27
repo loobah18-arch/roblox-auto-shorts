@@ -573,7 +573,8 @@ def upload_episode_package(
     uploaded_parts = history.get("uploaded_parts", [])
     ep_key = summary.get("episode_key") or summary.get("arc_key") or ep_dir.name
 
-    if summary.get("mode") == "recapkun" and upload_shorts:
+    is_arc = bool(summary.get("is_arc") or summary.get("mode") == "arc")
+    if not is_arc and upload_shorts and summary.get("parts"):
         upload_full = False
 
     if live:
@@ -1013,12 +1014,17 @@ def upload_episode_package(
 
     completed = history.get("completed_episodes", [])
     if uploaded_shorts_count == total_parts_expected and (not upload_full or full_uploaded):
+        if is_arc:
+            completed_arcs = history.get("completed_arcs", [])
+            if ep_key not in completed_arcs:
+                completed_arcs.append(ep_key)
+                history["completed_arcs"] = completed_arcs
         if ep_key not in completed:
             completed.append(ep_key)
             history["completed_episodes"] = completed
-            history["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            save_history(history)
-            log(f"🎉 Episode {ep_key} is 100% uploaded ({uploaded_shorts_count}/{total_parts_expected} Shorts + Full Video)! Marked complete in history.")
+        history["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save_history(history)
+        log(f"🎉 {'Arc' if is_arc else 'Episode'} {ep_key} is 100% uploaded ({uploaded_shorts_count}/{total_parts_expected} Shorts{' + Full Video' if upload_full else ''})! Marked complete in history.")
     else:
         if ep_key in completed:
             completed.remove(ep_key)

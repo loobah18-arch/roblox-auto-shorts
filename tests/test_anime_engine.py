@@ -1403,6 +1403,49 @@ class TestAnimeArcEngine(unittest.TestCase):
             self.assertEqual(res["action"], "normal_video")
             self.assertEqual(res["mode"], "arc")
 
+    def test_arc_uploader_uploads_both_full_arc_and_shorts(self):
+        """Verify uploader in arc mode queues both 16:9 full arc video and highlight shorts."""
+        import tempfile
+        from anime_youtube_uploader import upload_episode_package
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            summary = {
+                "status": "success",
+                "mode": "arc",
+                "action": "normal_video",
+                "is_arc": True,
+                "arc_key": "jujutsu-kaisen-fearsome-womb",
+                "display_name": "Jujutsu Kaisen - Fearsome Womb Arc",
+                "parts": [
+                    {
+                        "part": 1,
+                        "title": "Ancient Curse Awakens | Story Recap Explanation Part 1 #shorts",
+                        "video_path": str(td_path / "short_1.mp4"),
+                        "description": "Short excerpt",
+                        "hashtags": ["anime", "shorts"],
+                        "status": "rendered",
+                    }
+                ],
+                "full_video": {
+                    "is_arc": True,
+                    "title": "Jujutsu Kaisen Fearsome Womb Full Arc Recap & Explanation",
+                    "video_path": str(td_path / "full_arc.mp4"),
+                    "description": "Full arc breakdown",
+                    "hashtags": ["anime", "animerecap"],
+                    "status": "rendered",
+                },
+            }
+            with open(td_path / "pipeline_summary.json", "w") as f:
+                json.dump(summary, f)
+
+            res = upload_episode_package(episode_dir=td_path, live=False)
+            self.assertIn("shorts", res)
+            self.assertEqual(len(res["shorts"]), 1)
+            self.assertIn("full_video", res)
+            self.assertEqual(res["full_video"]["status"], "preview")
+            self.assertIn("Full Arc", res["full_video"]["title"])
+
     def test_visual_reviewer_arc_mode(self):
         """Verify visual reviewer properly processes arc_script and full arc video without errors."""
         import tempfile
