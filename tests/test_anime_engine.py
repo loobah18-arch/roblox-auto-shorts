@@ -997,6 +997,109 @@ class TestMotionTrackerAndEditors(unittest.TestCase):
         )
         self.assertTrue(ok)
 
+    def test_remediate_title_and_description(self):
+        """Verify title & description are rewritten with fair-use and zero franchise names on block retry."""
+        from anime_youtube_uploader import remediate_title_and_description
+        t, d = remediate_title_and_description(
+            title="Demon Slayer Tanjiro Fight #shorts",
+            description="Tanjiro faces the demon.",
+            attempt=1,
+            is_short=True,
+        )
+        self.assertNotIn("Demon Slayer", t)
+        self.assertIn("#shorts", t)
+        self.assertIn("Section 107", d)
+        self.assertIn("Transformative Fair Use", d)
+
+    def test_upload_video_file_transforms_video_and_title_on_retry(self):
+        """Verify upload_video_file mutates video file and title when retrying after a YouTube block."""
+        import tempfile
+        import os
+        from unittest.mock import MagicMock, patch
+        from anime_youtube_uploader import upload_video_file
+
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(b"0" * (60 * 1024))
+            temp_path = f.name
+
+        try:
+            mock_yt = MagicMock()
+            mock_req_1 = MagicMock()
+            mock_req_1.next_chunk.return_value = (None, {"id": "blocked_1"})
+            mock_req_2 = MagicMock()
+            mock_req_2.next_chunk.return_value = (None, {"id": "ok_2"})
+            mock_yt.videos().insert.side_effect = [mock_req_1, mock_req_2]
+
+            with patch("anime_youtube_uploader.check_youtube_video_status") as mock_status, \
+                 patch("anime_youtube_uploader.remediate_blocked_video_file") as mock_remediate_vid, \
+                 patch("anime_youtube_uploader.remediate_title_and_description") as mock_remediate_meta:
+
+                mock_status.side_effect = [
+                    (True, "copyright", {}),  # Attempt 1 blocked
+                    (False, None, {}),        # Attempt 2 accepted
+                ]
+                mock_remediate_vid.return_value = Path(temp_path)
+                mock_remediate_meta.return_value = ("Remediated Title #shorts", "Remediated Description")
+
+                res = upload_video_file(
+                    youtube=mock_yt,
+                    video_path=temp_path,
+                    title="Original Title #shorts",
+                    description="Original Desc",
+                    tags=["test"],
+                    max_retries=1,
+                    verify_timeout_sec=0.0,
+                    media_upload_cls=MagicMock(),
+                )
+
+                self.assertEqual(res["status"], "uploaded")
+                self.assertEqual(res["video_id"], "ok_2")
+                self.assertTrue(mock_remediate_vid.called)
+                self.assertTrue(mock_remediate_meta.called)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def test_permanent_block_triggers_fresh_workflow_run(self):
+        """Verify a permanently blocked video clears active history and triggers a fresh workflow run."""
+        import tempfile
+        from unittest.mock import patch, MagicMock
+        from anime_youtube_uploader import upload_episode_package
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            summary = {
+                "status": "success",
+                "episode_key": "test-blocked-ep",
+                "mode": "cinema",
+                "action": "short",
+                "video_to_upload": {
+                    "video_path": str(td_path / "vid.mp4"),
+                    "title": "Blocked Video",
+                    "description": "d",
+                    "hashtags": ["anime"],
+                }
+            }
+            with open(td_path / "pipeline_summary.json", "w") as f:
+                json.dump(summary, f)
+
+            with patch("anime_youtube_uploader.load_history", return_value={"active_episode": "test-blocked-ep"}), \
+                 patch("anime_youtube_uploader.save_history") as mock_save, \
+                 patch("anime_youtube_uploader.get_youtube_service", return_value=MagicMock()), \
+                 patch("anime_youtube_uploader.upload_video_file", return_value={"status": "blocked", "rejection_reason": "copyright"}), \
+                 patch("anime_youtube_uploader.trigger_fresh_workflow_run", return_value=True) as mock_trigger:
+
+                res = upload_episode_package(
+                    episode_dir=td_path,
+                    live=True,
+                    allow_cadence_override=True,
+                )
+
+                self.assertEqual(res["status"], "blocked")
+                self.assertTrue(res.get("fresh_run_restarted"))
+                self.assertTrue(mock_trigger.called)
+                self.assertTrue(mock_save.called)
+
 
 class TestUploadCadence(unittest.TestCase):
     def test_parse_iso_datetime(self):

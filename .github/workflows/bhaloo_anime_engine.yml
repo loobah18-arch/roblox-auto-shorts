@@ -60,6 +60,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   produce_anime_episode:
@@ -154,6 +155,8 @@ jobs:
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
           PRIVACY_STATUS: ${{ inputs.privacy || 'public' }}
           ALLOW_CADENCE_OVERRIDE: ${{ inputs.allow_cadence_override || 'false' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           echo "📺 Publishing Anime Shorts & Full Video to Bhaloo Ji YouTube channel..."
           EXTRA_ARGS=()

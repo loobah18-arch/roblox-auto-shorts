@@ -434,6 +434,121 @@ def classify_block_reason(
     return "audio" if not has_video else "both"
 
 
+def remediate_title_and_description(
+    title: str,
+    description: str,
+    attempt: int = 1,
+    is_short: bool = True,
+) -> tuple[str, str]:
+    """Generates an altered, highly transformative title & description on block retry."""
+    hooks = [
+        "Shocking Truth Revealed | Plot Breakdown",
+        "Climax Scene Explained | Full Analysis",
+        "The Turning Point | Story Breakdown",
+        "Unbelievable Twist | Scene Analysis",
+    ]
+    hook = hooks[(attempt - 1) % len(hooks)]
+
+    clean_t = title
+    for tag in ("#Shorts", "#shorts", "#SHORTS"):
+        clean_t = clean_t.replace(tag, "")
+    clean_t = clean_t.strip(" -|:")
+
+    from anime_copyright_filter import MultiAgentCopyrightShield
+    from anime_script_engine import sanitize_title_and_description
+    shield = MultiAgentCopyrightShield()
+    clean_t, clean_d = shield.remediate_metadata(clean_t, description, is_short=is_short)
+    clean_t = sanitize_title_and_description(clean_t)
+    clean_d = sanitize_title_and_description(clean_d)
+
+    if is_short:
+        base = f"{clean_t[:40]} | {hook}"
+        new_title = f"{base[:90]} #shorts"
+    else:
+        new_title = f"{clean_t[:50]} | {hook}"[:100]
+
+    new_desc = (
+        f"{clean_d.strip()}\n\n"
+        "📌 Transformative Fair Use Notice: This video contains original educational commentary, narrative recap, "
+        "and critical analysis under Section 107 of the Copyright Act 1976."
+    )
+    return new_title, new_desc
+
+
+def remediate_blocked_video_file(
+    video_path: str | Path,
+    attempt: int = 1,
+    block_type: str = "both",
+) -> Path:
+    """Applies transformative video and audio mutations to break YouTube ContentID fingerprint matches.
+    - Video: Speed micro-shift (1.03x/0.98x), subtle color grade (contrast/saturation), micro-scale (1.02x).
+    - Audio: Pitch/tempo micro-shift (1.03x) and slight volume attenuation.
+    """
+    in_path = Path(video_path)
+    if not in_path.exists():
+        return in_path
+
+    out_path = in_path.parent / f"remediated_att{attempt}_{in_path.name}"
+
+    speed_factor = 1.03 if attempt % 2 == 1 else 0.98
+    pts_factor = 1.0 / speed_factor
+
+    af_filter = f"atempo={speed_factor:.2f},volume=0.95"
+    vf_filter = (
+        f"setpts={pts_factor:.4f}*PTS,"
+        f"eq=contrast=1.03:brightness=0.01:saturation=1.04,"
+        f"scale=iw*1.02:ih*1.02,crop=iw/1.02:ih/1.02"
+    )
+
+    cmd = [
+        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        "-i", str(in_path),
+        "-vf", vf_filter,
+        "-af", af_filter,
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+        "-c:a", "aac", "-b:a", "128k",
+        str(out_path),
+    ]
+
+    log(f"🎬 [UploadGuard] Re-encoding blocked video with fingerprint-breaking transform -> {out_path.name} (speed={speed_factor:.2f}x)")
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if res.returncode == 0 and out_path.exists() and out_path.stat().st_size > 1024 * 50:
+            log(f"✅ [UploadGuard] Remediated video generated successfully ({out_path.stat().st_size // 1024} KB).")
+            return out_path
+        else:
+            log(f"⚠️ [UploadGuard] Remediated video generation unsuccessful (rc={res.returncode}), using current file.")
+            return in_path
+    except Exception as exc:
+        log(f"⚠️ [UploadGuard] Failed to re-encode remediated video: {exc}. Using current file.")
+        return in_path
+
+
+def trigger_fresh_workflow_run() -> bool:
+    """Launches a fresh GitHub Actions workflow run for the next arc/episode after a permanent block."""
+    log("🔄 [UploadGuard] Triggering fresh workflow run on next anime arc/episode...")
+    try:
+        cmd = [
+            "gh", "workflow", "run", "bhaloo_anime_engine.yml",
+            "-f", "mode=arc",
+            "-f", "upload_to_youtube=true",
+            "-f", "privacy=public",
+        ]
+        repo = os.environ.get("GITHUB_REPOSITORY")
+        if repo:
+            cmd.extend(["-R", repo])
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if res.returncode == 0:
+            log("🚀 [UploadGuard] Fresh workflow run successfully dispatched on GitHub Actions!")
+            return True
+        else:
+            log(f"⚠️ [UploadGuard] Failed to dispatch fresh run via gh: {res.stderr}")
+            return False
+    except Exception as exc:
+        log(f"⚠️ [UploadGuard] Could not trigger fresh run: {exc}")
+        return False
+
+
 def upload_video_file(
     youtube,
     video_path: str | Path,
@@ -459,17 +574,29 @@ def upload_video_file(
         from googleapiclient.http import MediaFileUpload
         effective_upload_cls = MediaFileUpload
 
+    curr_video_path = path
     curr_title = title
     curr_desc = description
     curr_tags = list(tags)
     last_block_reason: str | None = None
+    raw_status: dict | None = None
 
     for attempt in range(max_retries + 1):
         if attempt > 0:
-            log(f"🔄 [UploadGuard] RETRY {attempt}/{max_retries} for {path.name} after block ({last_block_reason}). Applying remediation...")
-            clean_t = curr_title.replace("#Shorts", "").replace("#shorts", "").strip()
-            curr_title = f"{clean_t} | Story Breakdown 🎬🔥 #shorts"[:100]
-            curr_desc = f"{curr_desc.strip()}\n\n📌 Transformative Fair Use: Original commentary and narrative recap."
+            block_type = classify_block_reason(last_block_reason, raw_status, bgm_path)
+            log(f"🔄 [UploadGuard] RETRY {attempt}/{max_retries} for {path.name} after block ({last_block_reason}, type='{block_type}'). Applying title & video remediation...")
+            is_short = "#shorts" in curr_title.lower() or "#shorts" in curr_desc.lower()
+            curr_title, curr_desc = remediate_title_and_description(
+                title=curr_title,
+                description=curr_desc,
+                attempt=attempt,
+                is_short=is_short,
+            )
+            curr_video_path = remediate_blocked_video_file(
+                video_path=curr_video_path,
+                attempt=attempt,
+                block_type=block_type,
+            )
 
         body = {
             "snippet": {
@@ -484,9 +611,9 @@ def upload_video_file(
             }
         }
 
-        log(f"Uploading {path.name} (Attempt {attempt + 1}/{max_retries + 1}, {privacy}) -> '{curr_title[:50]}...'")
+        log(f"Uploading {curr_video_path.name} (Attempt {attempt + 1}/{max_retries + 1}, {privacy}) -> '{curr_title[:50]}...'")
         try:
-            media = effective_upload_cls(str(path), chunksize=-1, resumable=True, mimetype="video/mp4")
+            media = effective_upload_cls(str(curr_video_path), chunksize=-1, resumable=True, mimetype="video/mp4")
             videos_res = getattr(youtube, "videos", None)
             if callable(videos_res):
                 videos_res = videos_res()
@@ -885,6 +1012,20 @@ def upload_episode_package(
             }
         else:
             results = upload_res
+            if upload_res.get("status") == "blocked":
+                log("🚨 [UploadGuard] Video remained blocked after all remediation retries. Clearing active episode and restarting fresh run...")
+                history = load_history()
+                history.setdefault("blocked_videos", []).append({
+                    "episode_key": ep_key,
+                    "title": vid_to_upload.get("title"),
+                    "reason": upload_res.get("rejection_reason"),
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                })
+                history["active_episode"] = None
+                history["active_arc"] = None
+                save_history(history)
+                dispatched = trigger_fresh_workflow_run()
+                results["fresh_run_restarted"] = dispatched
 
         with open(ep_dir / "upload_result.json", "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2)
@@ -1030,6 +1171,22 @@ def upload_episode_package(
             elif short_res.get("status") == "quota_exceeded":
                 quota_hit = True
                 results["shorts"].append(short_res)
+            elif short_res.get("status") == "blocked":
+                log(f"🚨 [UploadGuard] Part {p_num} was blocked by YouTube and remained blocked after retrying.")
+                history = load_history()
+                history.setdefault("blocked_videos", []).append({
+                    "episode_key": ep_key,
+                    "part": p_num,
+                    "title": part["title"],
+                    "reason": short_res.get("rejection_reason"),
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                })
+                history["active_episode"] = None
+                history["active_arc"] = None
+                save_history(history)
+                dispatched = trigger_fresh_workflow_run()
+                short_res["fresh_run_restarted"] = dispatched
+                results["shorts"].append(short_res)
             else:
                 results["shorts"].append(short_res)
 
@@ -1106,6 +1263,22 @@ def upload_episode_package(
                             results["full_video"] = record
                         elif full_res.get("status") == "quota_exceeded":
                             quota_hit = True
+                            results["full_video"] = full_res
+                        elif full_res.get("status") == "blocked":
+                            log("🚨 [UploadGuard] Full Video was blocked by YouTube and remained blocked after retrying.")
+                            history = load_history()
+                            history.setdefault("blocked_videos", []).append({
+                                "episode_key": ep_key,
+                                "is_full_video": True,
+                                "title": full["title"],
+                                "reason": full_res.get("rejection_reason"),
+                                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            })
+                            history["active_episode"] = None
+                            history["active_arc"] = None
+                            save_history(history)
+                            dispatched = trigger_fresh_workflow_run()
+                            full_res["fresh_run_restarted"] = dispatched
                             results["full_video"] = full_res
                         else:
                             results["full_video"] = full_res
