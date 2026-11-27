@@ -80,23 +80,32 @@ def parse_iso_datetime(dt_str: str | None) -> datetime | None:
         return None
 
 
-def get_latest_upload_time(history: dict | None) -> datetime | None:
-    """Finds the most recent upload timestamp from anime_history.json."""
+def get_latest_upload_time(history: dict | None, is_full: bool | None = None) -> datetime | None:
+    """Finds the most recent upload timestamp from anime_history.json.
+    If is_full=True, checks only 16:9 full videos.
+    If is_full=False, checks only 9:16 Shorts.
+    If is_full=None, checks all uploads.
+    """
     if not history or not isinstance(history, dict):
         return None
 
     timestamps: list[datetime] = []
     for item in history.get("uploaded_parts", []):
         if isinstance(item, dict):
+            if is_full is not None:
+                item_is_full = bool(item.get("is_full_video", False))
+                if item_is_full != is_full:
+                    continue
             up_at = item.get("uploaded_at")
             dt = parse_iso_datetime(up_at)
             if dt:
                 timestamps.append(dt)
 
-    last_up = history.get("last_updated")
-    dt_last = parse_iso_datetime(last_up)
-    if dt_last:
-        timestamps.append(dt_last)
+    if is_full is None:
+        last_up = history.get("last_updated")
+        dt_last = parse_iso_datetime(last_up)
+        if dt_last:
+            timestamps.append(dt_last)
 
     if not timestamps:
         return None
@@ -109,19 +118,21 @@ def ensure_upload_cadence(
     max_wait_seconds: float = 1800.0,
     allow_override: bool = False,
     now: datetime | None = None,
+    is_full: bool | None = None,
 ) -> tuple[bool, datetime | None, float]:
-    """Ensures a strict 24-hour cadence between YouTube uploads.
+    """Ensures a strict cadence between YouTube uploads (24h for Shorts, 52h for 3 Long Videos/week).
 
     Returns:
         (can_proceed: bool, next_allowed_time: datetime | None, remaining_seconds: float)
     """
     if allow_override or os.environ.get("ALLOW_CADENCE_OVERRIDE", "false").lower() == "true":
-        log("⚡ [CadenceManager] Cadence override active. Bypassing 24-hour upload gap check.")
+        log("⚡ [CadenceManager] Cadence override active. Bypassing upload gap check.")
         return True, None, 0.0
 
-    last_upload = get_latest_upload_time(history)
+    last_upload = get_latest_upload_time(history, is_full=is_full)
     if not last_upload:
-        log("ℹ️ [CadenceManager] No previous uploads found in history. Proceeding with upload.")
+        media_type = "Long Video" if is_full is True else ("Short" if is_full is False else "video")
+        log(f"ℹ️ [CadenceManager] No previous {media_type} uploads found in history. Proceeding with upload.")
         return True, None, 0.0
 
     now_utc = now or datetime.now(timezone.utc)
@@ -131,9 +142,10 @@ def ensure_upload_cadence(
     next_allowed = last_upload + timedelta(hours=cadence_hours)
     remaining = (next_allowed - now_utc).total_seconds()
 
+    media_label = "Long Video (3/week)" if is_full is True else ("Daily Short (1/day)" if is_full is False else "Upload")
     if remaining <= 0:
         elapsed_h = (now_utc - last_upload).total_seconds() / 3600.0
-        log(f"✅ [CadenceManager] 24-hour upload cadence met. Last upload was at {last_upload.strftime('%Y-%m-%d %H:%M:%S UTC')} ({elapsed_h:.1f}h ago). Proceeding with upload.")
+        log(f"✅ [CadenceManager] {media_label} cadence met. Last upload was at {last_upload.strftime('%Y-%m-%d %H:%M:%S UTC')} ({elapsed_h:.1f}h ago). Proceeding with upload.")
         return True, next_allowed, 0.0
 
     rem_min = remaining / 60.0
@@ -141,7 +153,7 @@ def ensure_upload_cadence(
     last_str = last_upload.strftime("%Y-%m-%d %H:%M:%S UTC")
     next_str = next_allowed.strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    if remaining <= max_wait_seconds:
+    if remaining <= max_wait_seconds and (is_full is False or is_full is None):
         log(f"⏱️ [CadenceManager] Last upload: {last_str}. Target upload timing: {next_str}.")
         log(f"⏳ [CadenceManager] Remaining wait ({rem_min:.1f} min) is within inline window ({max_wait_seconds / 60.0:.1f} min).")
         log(f"💤 [CadenceManager] Sleeping until exact target timing ({next_str})...")
@@ -156,8 +168,9 @@ def ensure_upload_cadence(
         log(f"🔔 [CadenceManager] Target upload timing reached! Proceeding with upload.")
         return True, next_allowed, 0.0
 
-    log(f"⏸️ [CadenceManager] Strict 24-hour cadence window not yet reached. Last upload: {last_str}.")
+    log(f"⏸️ [CadenceManager] Strict {cadence_hours:.0f}-hour cadence window not yet reached. Last upload: {last_str}.")
     log(f"🎯 [CadenceManager] Next upload permitted at: {next_str} (in {rem_h:.2f} hours).")
+    return False, next_allowed, remaining
     log("📌 [CadenceManager] Deferring upload to preserve exactly 24 hours gap between uploads.")
     return False, next_allowed, remaining
 
@@ -554,6 +567,8 @@ def upload_episode_package(
     upload_full: bool = True,
     allow_cadence_override: bool = False,
     cadence_hours: float = 24.0,
+    max_shorts_per_run: int = 1,
+    long_video_cadence_hours: float = 52.0,
 ) -> dict:
     """Upload all parts and the full video for an episode with deduplication, 24h cadence & quota protection."""
     ep_dir = Path(episode_dir)
@@ -837,16 +852,21 @@ def upload_episode_package(
     if not live:
         log("=== [PREVIEW MODE] Simulating YouTube Uploads (use --live for actual upload) ===")
         if upload_shorts:
+            preview_shorts_count = 0
             for part in summary.get("parts", []):
                 p_num = part["part"]
                 already = find_uploaded_part(uploaded_parts, ep_key, p_num=p_num, is_full=False)
                 if already:
                     log(f"[PREVIEW SHORT] Part {p_num} already uploaded: {already.get('url')}")
                     results["shorts"].append(already)
+                elif max_shorts_per_run and preview_shorts_count >= max_shorts_per_run:
+                    results["shorts"].append({
+                        "part": p_num,
+                        "status": "daily_limit_deferred",
+                        "title": part["title"],
+                    })
                 else:
-                    log(f"[PREVIEW SHORT] Title: {part['title']}")
-                    log(f"                 File: {part['video_path']}")
-                    log(f"                 Tags: {part['hashtags']}")
+                    preview_shorts_count += 1
                     results["shorts"].append({
                         "part": p_num,
                         "status": "preview",
@@ -878,6 +898,7 @@ def upload_episode_package(
     quota_hit = False
 
     if upload_shorts:
+        shorts_uploaded_this_run = 0
         for part in summary.get("parts", []):
             p_num = part.get("part")
             if part.get("status") != "rendered":
@@ -896,6 +917,15 @@ def upload_episode_package(
                 results["shorts"].append({
                     "part": p_num,
                     "status": "quota_deferred",
+                    "title": part["title"],
+                })
+                continue
+
+            if max_shorts_per_run and shorts_uploaded_this_run >= max_shorts_per_run:
+                log(f"📌 Daily Shorts limit ({max_shorts_per_run}) reached for this run. Part {p_num} queued for tomorrow.")
+                results["shorts"].append({
+                    "part": p_num,
+                    "status": "daily_limit_deferred",
                     "title": part["title"],
                 })
                 continue
@@ -923,6 +953,7 @@ def upload_episode_package(
                 privacy=privacy,
             )
             if short_res.get("status") == "uploaded":
+                shorts_uploaded_this_run += 1
                 record = {
                     "episode_key": ep_key,
                     "part": p_num,
@@ -961,46 +992,63 @@ def upload_episode_package(
                     "title": full["title"],
                 }
             else:
-                shield = MultiAgentCopyrightShield()
-                check_full = shield.inspect_candidate(
-                    video_path=full["video_path"],
-                    title=full["title"],
-                    description=full["description"],
-                    is_short=False,
-                    hashtags=full.get("hashtags", []),
+                can_proceed_full, next_allowed_full, remaining_sec_full = ensure_upload_cadence(
+                    history=history,
+                    cadence_hours=long_video_cadence_hours,
+                    allow_override=allow_cadence_override,
+                    is_full=True,
                 )
-                if not check_full.passed:
-                    log(f"🛑 [Uploader Shield] Full Video REJECTED by copyright filter: {check_full.summary}")
-                    log("Aborting full video upload to protect channel standing.")
-                    results["full_video"] = {"status": "filter_rejected", "violations": check_full.violations}
+                if not can_proceed_full and live:
+                    next_iso_full = next_allowed_full.isoformat() if next_allowed_full else None
+                    rem_h_full = remaining_sec_full / 3600.0
+                    log(f"⏸️ [CadenceManager] Long Video upload deferred to maintain 3 videos/week schedule ({rem_h_full:.1f}h remaining). Next allowed: {next_iso_full}")
+                    results["full_video"] = {
+                        "status": "deferred_cadence",
+                        "message": f"Long Video cadence (3/week) requires {long_video_cadence_hours}h interval ({rem_h_full:.1f}h remaining)",
+                        "next_allowed": next_iso_full,
+                        "title": full.get("title", ""),
+                    }
                 else:
-                    full_res = upload_video_file(
-                        youtube=youtube,
+                    shield = MultiAgentCopyrightShield()
+                    check_full = shield.inspect_candidate(
                         video_path=full["video_path"],
                         title=full["title"],
                         description=full["description"],
-                        tags=full["hashtags"],
-                        privacy=privacy,
+                        is_short=False,
+                        hashtags=full.get("hashtags", []),
                     )
-                if full_res.get("status") == "uploaded":
-                    record = {
-                        "episode_key": ep_key,
-                        "part": None,
-                        "is_full_video": True,
-                        "video_id": full_res.get("video_id"),
-                        "url": full_res.get("url"),
-                        "title": full["title"],
-                        "uploaded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    }
-                    uploaded_parts.append(record)
-                    history["uploaded_parts"] = uploaded_parts
-                    save_history(history)
-                    results["full_video"] = record
-                elif full_res.get("status") == "quota_exceeded":
-                    quota_hit = True
-                    results["full_video"] = full_res
-                else:
-                    results["full_video"] = full_res
+                    if not check_full.passed:
+                        log(f"🛑 [Uploader Shield] Full Video REJECTED by copyright filter: {check_full.summary}")
+                        log("Aborting full video upload to protect channel standing.")
+                        results["full_video"] = {"status": "filter_rejected", "violations": check_full.violations}
+                    else:
+                        full_res = upload_video_file(
+                            youtube=youtube,
+                            video_path=full["video_path"],
+                            title=full["title"],
+                            description=full["description"],
+                            tags=full["hashtags"],
+                            privacy=privacy,
+                        )
+                        if full_res.get("status") == "uploaded":
+                            record = {
+                                "episode_key": ep_key,
+                                "part": None,
+                                "is_full_video": True,
+                                "video_id": full_res.get("video_id"),
+                                "url": full_res.get("url"),
+                                "title": full["title"],
+                                "uploaded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            }
+                            uploaded_parts.append(record)
+                            history["uploaded_parts"] = uploaded_parts
+                            save_history(history)
+                            results["full_video"] = record
+                        elif full_res.get("status") == "quota_exceeded":
+                            quota_hit = True
+                            results["full_video"] = full_res
+                        else:
+                            results["full_video"] = full_res
 
     # Check overall completion state
     total_parts_expected = len(summary.get("parts", []))
@@ -1077,6 +1125,8 @@ if __name__ == "__main__":
     parser.add_argument("--set-privacy", nargs=2, metavar=("VIDEO_ID", "PRIVACY"), help="Update video privacy (e.g. --set-privacy G-zNVrRr82I private)")
     parser.add_argument("--allow-cadence-override", action="store_true", help="Bypass 24-hour upload cadence interval")
     parser.add_argument("--cadence-hours", type=float, default=24.0, help="Minimum hours between uploads (default: 24.0)")
+    parser.add_argument("--max-shorts", type=int, default=1, help="Max Shorts uploaded per run (default: 1)")
+    parser.add_argument("--long-video-cadence-hours", type=float, default=52.0, help="Minimum hours between long video uploads (default: 52.0 for 3/week)")
 
     args = parser.parse_args()
 
@@ -1106,6 +1156,8 @@ if __name__ == "__main__":
         upload_full=not args.no_full,
         allow_cadence_override=args.allow_cadence_override,
         cadence_hours=args.cadence_hours,
+        max_shorts_per_run=args.max_shorts,
+        long_video_cadence_hours=args.long_video_cadence_hours,
     )
     print(json.dumps(res, indent=2))
 

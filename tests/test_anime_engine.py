@@ -1127,6 +1127,95 @@ class TestUploadCadence(unittest.TestCase):
                 self.assertIn("Upload deferred", res["message"])
                 self.assertEqual(res["remaining_seconds"], 7200.0)
 
+    def test_ensure_upload_cadence_decoupled_shorts_and_long(self):
+        """Verify 1 Short/day and 3 Long Videos/week operate on decoupled, independent cadence timers."""
+        from anime_youtube_uploader import ensure_upload_cadence
+        from datetime import datetime, timezone
+
+        now = datetime(2026, 11, 7, 12, 0, 0, tzinfo=timezone.utc)
+        history = {
+            "uploaded_parts": [
+                {
+                    "part": 1,
+                    "is_full_video": False,
+                    "uploaded_at": "2026-11-07T10:00:00Z",  # Short uploaded 2h ago
+                },
+                {
+                    "part": None,
+                    "is_full_video": True,
+                    "uploaded_at": "2026-11-04T12:00:00Z",  # Long video uploaded 72h ago (>52h)
+                },
+            ]
+        }
+
+        # Short check: 2h ago is < 24h -> must be deferred
+        can_short, _, rem_short = ensure_upload_cadence(
+            history, cadence_hours=24.0, max_wait_seconds=1800.0, now=now, is_full=False
+        )
+        self.assertFalse(can_short)
+        self.assertGreater(rem_short, 3600.0 * 21)
+
+        # Long video check: 72h ago is >= 52h (3/week) -> must be allowed
+        can_long, _, rem_long = ensure_upload_cadence(
+            history, cadence_hours=52.0, max_wait_seconds=1800.0, now=now, is_full=True
+        )
+        self.assertTrue(can_long)
+        self.assertEqual(rem_long, 0.0)
+
+    def test_upload_episode_package_enforces_one_short_per_day(self):
+        """Verify upload_episode_package caps Shorts uploads to max_shorts_per_run=1 and defers the rest."""
+        import tempfile
+        from unittest.mock import patch, MagicMock
+        from anime_youtube_uploader import upload_episode_package
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            summary = {
+                "status": "success",
+                "episode_key": "test-arc-s01",
+                "is_arc": True,
+                "parts": [
+                    {"part": 1, "status": "rendered", "video_path": str(td_path / "part1.mp4"), "title": "Part 1 Climax", "description": "d", "hashtags": ["anime"]},
+                    {"part": 2, "status": "rendered", "video_path": str(td_path / "part2.mp4"), "title": "Part 2 Climax", "description": "d", "hashtags": ["anime"]},
+                    {"part": 3, "status": "rendered", "video_path": str(td_path / "part3.mp4"), "title": "Part 3 Climax", "description": "d", "hashtags": ["anime"]},
+                ],
+                "full_video": {
+                    "video_path": str(td_path / "full.mp4"),
+                    "title": "Master Arc Full Video",
+                    "description": "Full arc",
+                    "hashtags": ["anime"],
+                }
+            }
+            with open(td_path / "pipeline_summary.json", "w") as f:
+                json.dump(summary, f)
+
+            with patch("anime_youtube_uploader.load_history", return_value={"uploaded_parts": []}), \
+                 patch("anime_youtube_uploader.save_history"), \
+                 patch("anime_youtube_uploader.get_youtube_service", return_value=MagicMock()), \
+                 patch("anime_youtube_uploader.upload_video_file", return_value={"status": "uploaded", "video_id": "vid123", "url": "https://youtu.be/vid123"}), \
+                 patch("anime_youtube_uploader.MultiAgentCopyrightShield.inspect_candidate", return_value=MagicMock(passed=True)), \
+                 patch("anime_youtube_uploader.check_youtube_video_status", return_value=(False, None, {})):
+
+                res = upload_episode_package(
+                    episode_dir=td_path,
+                    live=True,
+                    upload_shorts=True,
+                    upload_full=False,
+                    max_shorts_per_run=1,
+                    allow_cadence_override=True,
+                )
+
+                # Part 1 should be uploaded
+                self.assertEqual(len(res["shorts"]), 3)
+                self.assertEqual(res["shorts"][0]["part"], 1)
+                self.assertEqual(res["shorts"][0]["video_id"], "vid123")
+
+                # Parts 2 and 3 should be deferred by the 1-short-per-day rate limit
+                self.assertEqual(res["shorts"][1]["part"], 2)
+                self.assertEqual(res["shorts"][1]["status"], "daily_limit_deferred")
+                self.assertEqual(res["shorts"][2]["part"], 3)
+                self.assertEqual(res["shorts"][2]["status"], "daily_limit_deferred")
+
 
 class TestRecapKunLongFormAndNoDuplicates(unittest.TestCase):
     def test_no_duplicate_titles_or_narrations_for_episodes_11_to_16(self):
