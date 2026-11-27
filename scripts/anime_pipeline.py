@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 from anime_catalog import get_next_episode, get_active_episode, load_catalog, load_history, save_history, get_next_arc, get_arc, get_story_arcs
-from anime_script_engine import generate_episode_script, generate_cinema_script, generate_arc_script
+from anime_script_engine import generate_episode_script, generate_cinema_script, generate_arc_script, sanitize_title_and_description
 from anime_subtitle_sync import get_episode_scene_acts
 from anime_voice_subtitles import produce_part_audio_subtitles, produce_master_audio_subtitles, CINEMA_VOICE
 from anime_copyright_filter import MultiAgentCopyrightShield
@@ -1111,15 +1111,27 @@ def run_arc_pipeline(
             dry_run=dry_run,
         )
 
+        shield = MultiAgentCopyrightShield()
+        raw_short_title = f"{c_seg.get('title', 'Climax Strike')} | Story Recap Explanation Part {p_order} #shorts"
+        raw_short_desc = f"{c_seg.get('title', '')} Story Recap Explanation and Breakdown.\nWatch our FULL arc breakdown on channel!\n#anime #animerecap #shorts #bhalooji"
+        clean_short_title, clean_short_desc = shield.remediate_metadata(
+            raw_short_title,
+            raw_short_desc,
+            is_short=True,
+            part_num=p_order,
+        )
+        clean_short_title = sanitize_title_and_description(clean_short_title)
+        clean_short_desc = sanitize_title_and_description(clean_short_desc)
+
         part_meta = {
             "part": p_order,
-            "title": f"{c_seg.get('title', 'Climax Strike')} | {target_arc['display_name']} #shorts",
+            "title": clean_short_title,
             "video_path": str(short_file),
             "start_time": c_start,
             "end_time": c_end,
             "duration": c_dur,
             "hashtags": ["anime", "animerecap", "shorts", target_arc["series_id"].replace("-", ""), "bhalooji"],
-            "description": f"{c_seg.get('title', '')} from {target_arc['display_name']}.\nWatch our FULL arc breakdown on channel!\n#anime #animerecap #shorts #bhalooji",
+            "description": clean_short_desc,
             "status": "rendered" if derive_ok else "failed",
         }
         parts_meta.append(part_meta)

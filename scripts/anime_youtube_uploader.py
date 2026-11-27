@@ -1140,10 +1140,27 @@ def upload_episode_package(
                 hashtags=part.get("hashtags", []),
             )
             if not check_res.passed:
-                log(f"🛑 [Uploader Shield] Part {p_num} REJECTED by copyright filter: {check_res.summary}")
-                log("Aborting upload for this part to protect channel standing.")
-                results["shorts"].append({"part": p_num, "status": "filter_rejected", "violations": check_res.violations})
-                continue
+                log(f"⚠️ [Uploader Shield] Part {p_num} initial check had warnings: {check_res.summary}. Auto-remediating metadata...")
+                clean_t, clean_d = shield.remediate_metadata(part["title"], part["description"], is_short=True)
+                from anime_script_engine import sanitize_title_and_description
+                clean_t = sanitize_title_and_description(clean_t)
+                clean_d = sanitize_title_and_description(clean_d)
+                re_check = shield.inspect_candidate(
+                    video_path=part["video_path"],
+                    title=clean_t,
+                    description=clean_d,
+                    is_short=True,
+                    hashtags=part.get("hashtags", []),
+                )
+                if re_check.passed:
+                    part["title"] = clean_t
+                    part["description"] = clean_d
+                    log(f"✅ [Uploader Shield] Part {p_num} auto-remediation passed: '{clean_t}'")
+                else:
+                    log(f"🛑 [Uploader Shield] Part {p_num} REJECTED by copyright filter: {re_check.summary}")
+                    log("Aborting upload for this part to protect channel standing.")
+                    results["shorts"].append({"part": p_num, "status": "filter_rejected", "violations": re_check.violations})
+                    continue
 
             short_res = upload_video_file(
                 youtube=youtube,
@@ -1234,11 +1251,31 @@ def upload_episode_package(
                         is_short=False,
                         hashtags=full.get("hashtags", []),
                     )
-                    if not check_full.passed:
-                        log(f"🛑 [Uploader Shield] Full Video REJECTED by copyright filter: {check_full.summary}")
-                        log("Aborting full video upload to protect channel standing.")
-                        results["full_video"] = {"status": "filter_rejected", "violations": check_full.violations}
-                    else:
+                    full_passed = check_full.passed
+                    if not full_passed:
+                        log(f"⚠️ [Uploader Shield] Full Video initial check had warnings: {check_full.summary}. Auto-remediating metadata...")
+                        clean_t, clean_d = shield.remediate_metadata(full["title"], full["description"], is_short=False)
+                        from anime_script_engine import sanitize_title_and_description
+                        clean_t = sanitize_title_and_description(clean_t)
+                        clean_d = sanitize_title_and_description(clean_d)
+                        re_check = shield.inspect_candidate(
+                            video_path=full["video_path"],
+                            title=clean_t,
+                            description=clean_d,
+                            is_short=False,
+                            hashtags=full.get("hashtags", []),
+                        )
+                        if re_check.passed:
+                            full["title"] = clean_t
+                            full["description"] = clean_d
+                            log(f"✅ [Uploader Shield] Full Video auto-remediation passed: '{clean_t}'")
+                            full_passed = True
+                        else:
+                            log(f"🛑 [Uploader Shield] Full Video REJECTED by copyright filter: {re_check.summary}")
+                            log("Aborting full video upload to protect channel standing.")
+                            results["full_video"] = {"status": "filter_rejected", "violations": re_check.violations}
+
+                    if full_passed:
                         full_res = upload_video_file(
                             youtube=youtube,
                             video_path=full["video_path"],
