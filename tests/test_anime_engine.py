@@ -566,8 +566,34 @@ class TestContinuousMasterEngine(unittest.TestCase):
             end_time=65.0,
             badge_text="DEMON SLAYER • PART 1/4",
             dry_run=True,
+            square_1to1=True,
         )
         self.assertTrue(ok)
+
+    def test_derive_short_1to1_square_aspect_ratio(self):
+        """Verify derive_short_from_master constructs 1:1 square anime window filtergraph."""
+        import tempfile
+        from pathlib import Path
+        from anime_video_engine import derive_short_from_master
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 0
+                derive_short_from_master(
+                    master_video_path=td_path / "fake_master.mp4",
+                    output_short_path=td_path / "fake_short.mp4",
+                    start_time=10.0,
+                    end_time=20.0,
+                    dry_run=False,
+                    square_1to1=True,
+                )
+                self.assertTrue(mock_run.called)
+                cmd = mock_run.call_args[0][0]
+                fg_arg = cmd[cmd.index("-filter_complex") + 1]
+                self.assertIn("scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080", fg_arg)
+                self.assertIn("overlay=(W-w)/2:(H-h)/2", fg_arg)
 
     def test_episode_script_beats_structure(self):
         from anime_script_engine import generate_episode_script

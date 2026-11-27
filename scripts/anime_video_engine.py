@@ -1185,13 +1185,15 @@ def derive_short_from_master(
     badge_text: str = "",
     dry_run: bool = False,
     full_bleed: bool = False,
+    square_1to1: bool = True,
 ) -> bool:
     """
     Derives a 9:16 vertical Short excerpt directly from the Master Normal Video.
     Cuts the exact segment [start_time, end_time], formats it to 9:16 vertical canvas
-    with the COMPLETE 16:9 widescreen video fully visible in the center (zero cropping),
-    ambient blurred background filling top and bottom, and NO horizontal flipping so
-    all burned-in subtitles and visuals remain 100% intact and right-side-up.
+    with a 1:1 square anime window (1080x1080) centered in the 9:16 vertical canvas
+    (or full 16:9 view if square_1to1=False), ambient blurred background filling top
+    and bottom, and NO horizontal flipping so all burned-in subtitles and visuals
+    remain 100% intact and right-side-up.
     """
     master_video = Path(master_video_path)
     output_short = Path(output_short_path)
@@ -1199,7 +1201,7 @@ def derive_short_from_master(
 
     clip_duration = max(1.0, end_time - start_time)
     if dry_run:
-        log(f"[DRY-RUN] Simulating Short excerpt ({start_time:.1f}s to {end_time:.1f}s, dur {clip_duration:.1f}s) -> {output_short.name}")
+        log(f"[DRY-RUN] Simulating Short excerpt ({start_time:.1f}s to {end_time:.1f}s, dur {clip_duration:.1f}s, 1:1={square_1to1}) -> {output_short.name}")
         return True
 
     temp_dir = output_short.parent / f"temp_short_{output_short.stem}"
@@ -1229,11 +1231,17 @@ Dialogue: 1,0:00:00.00,9:59:59.00,CardHeader,,0,0,0,,{{\\an8\\bord3\\shad1\\c&H0
         escaped_badge = str(badge_ass.resolve()).replace(":", "\\:").replace("'", "\\'") if badge_text else ""
         badge_filter = f",ass='{escaped_badge}'[v]" if badge_text else "[v]"
 
-        # Full uncropped 16:9 view: Complete video visible in center, ambient blurred background
+        if square_1to1:
+            # 1:1 Square Anime Window (1080x1080) centered in 1080x1920 vertical canvas
+            # with ambient blurred background filling top and bottom.
+            fg_filter = "[raw_fg]scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080,setsar=1[fg]"
+        else:
+            fg_filter = "[raw_fg]scale=1080:608:force_original_aspect_ratio=decrease,setsar=1[fg]"
+
         filters = [
             "[0:v]split=2[raw_bg][raw_fg]",
             "[raw_bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,boxblur=25:5,eq=brightness=-0.18[bg]",
-            "[raw_fg]scale=1080:608:force_original_aspect_ratio=decrease,setsar=1[fg]",
+            fg_filter,
             f"[bg][fg]overlay=(W-w)/2:(H-h)/2{badge_filter}",
         ]
         filtergraph = ";".join(filters)
