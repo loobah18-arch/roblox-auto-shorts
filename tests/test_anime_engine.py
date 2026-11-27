@@ -1310,20 +1310,20 @@ class TestAnimeArcEngine(unittest.TestCase):
         from anime_script_engine import generate_arc_script
 
         arc = get_arc("demon-slayer-mount-natagumo")
-        # Test split rule threshold by setting max_duration=1500.0s (less than the ~1972s total)
-        pkg_part1 = generate_arc_script(arc, part=1, max_duration=1500.0)
+        # Test split rule threshold by setting max_duration=1000.0s (less than the ~1291s total)
+        pkg_part1 = generate_arc_script(arc, part=1, max_duration=1000.0)
         self.assertTrue(pkg_part1["is_split"])
         self.assertEqual(pkg_part1["total_parts"], 2)
         self.assertEqual(pkg_part1["part"], 1)
         self.assertIn("Part 1/2", pkg_part1["full_video"]["title"])
-        self.assertLessEqual(pkg_part1["part_duration"], 1500.0)
+        self.assertLessEqual(pkg_part1["part_duration"], 1000.0)
 
-        pkg_part2 = generate_arc_script(arc, part=2, max_duration=1500.0)
+        pkg_part2 = generate_arc_script(arc, part=2, max_duration=1000.0)
         self.assertTrue(pkg_part2["is_split"])
         self.assertEqual(pkg_part2["total_parts"], 2)
         self.assertEqual(pkg_part2["part"], 2)
         self.assertIn("Part 2/2", pkg_part2["full_video"]["title"])
-        self.assertLessEqual(pkg_part2["part_duration"], 1500.0)
+        self.assertLessEqual(pkg_part2["part_duration"], 1000.0)
 
     def test_arc_pipeline_dry_run(self):
         """Verify full arc pipeline runs dry-run without errors and produces expected summary schema."""
@@ -1446,7 +1446,7 @@ class TestAnimeArcEngine(unittest.TestCase):
             "active_arc": {"arc_key": "demon-slayer-mount-natagumo", "part": 2, "total_parts": 2},
         }
         with patch("anime_pipeline.load_history", return_value=mock_active_hist):
-            res = run_arc_pipeline(dry_run=True, max_duration=1500.0)
+            res = run_arc_pipeline(dry_run=True, max_duration=1000.0)
             self.assertEqual(res["status"], "success")
             self.assertEqual(res["video_to_upload"]["part"], 2)
 

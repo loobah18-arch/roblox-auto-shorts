@@ -291,56 +291,10 @@ def _generate_heuristic_script(episode_info: dict, scene_acts: list[dict] = None
 
 def ensure_recapkun_longform_depth(parts: list[dict], episode_info: dict) -> list[dict]:
     """
-    Enriches chapter narration to achieve RecapKun's signature 8-18 minute
-    in-depth documentary explanation (~1,400-2,200 words total).
-    Deepens combat mechanics, breathing/cursed energy physiology, character psychology,
-    and sakuga animation analysis.
+    Preserves clean, punchy RecapKun narrative action momentum.
+    Strictly avoids synthetic biology, physics, or lore-dump padding.
     """
-    series = episode_info.get("series", "Anime")
-    season = episode_info.get("season", 1)
-    episode = episode_info.get("episode", 1)
-
-    total_words = sum(len(p.get("narration", "").split()) for p in parts)
-    if total_words >= 1400:
-        return parts
-
-    is_ds = "demon slayer" in series.lower()
-    is_jjk = "jujutsu kaisen" in series.lower()
-
-    ds_expansions = [
-        "In the brutal, unforgiving world of the Demon Slayer Corps, survival hinges entirely on the mastery of Total Concentration Breathing. By inhaling the maximum volume of air into the lungs and holding the oxygen deep within the bloodstream, a swordsman's heart rate surges, granting them the kinetic acceleration and explosive muscle torque required to match demonic reflexes blow for blow. Every breathing form is an exact science: water forms leverage centrifugal momentum to deflect lethal blows, while offensive forms direct concentrated force into a micro-fine cutting edge. Against opponents possessing unpredictable Blood Demon Arts, Tanjiro and his comrades cannot rely purely on raw strength; they must read the invisible scent threads of battle, calculating angles of attack amid swirling debris and life-or-death stakes.",
-        "As combat escalates, the psychological tension reaches a suffocating peak. Beneath the horrific demonic transformations lie tragic human memories—shattered families, broken promises, and the corrupting blood of Muzan Kibutsuji that turned innocent souls into predatory monsters. Tanjiro’s defining strength is not merely his Nichirin sword technique, but his unyielding empathy, treating fallen adversaries not with hatred, but with profound reverence for the humans they once were. Meanwhile, his allies adapt on instinct, demonstrating that the human spirit and camaraderie can conquer the darkest supernatural terrors.",
-        "During this critical turning point, the choreography shifts into high gear as animation studio Ufotable delivers breathtaking visual mastery. Dynamic camera sweeps track every sword arc, contrasting the fluid blue and azure currents of Water Breathing against the jagged, chaotic crimson vectors of demonic power. Every frame is loaded with kinetic weight, capturing the precise instant of impact where stamina, willpower, and tactical resolve collide.",
-        "In the aftermath of the clash, the true gravity of this battle reverberates across the Demon Slayer hierarchy. The information gathered here is not just a tactical victory; it provides vital intelligence regarding Muzan Kibutsuji’s inner circle and the terrifying power of the Twelve Kizuki. As the dust settles over the battlefield, our exhausted heroes must brace themselves, knowing that every step forward brings them closer to the ultimate confrontation with the Demon King."
-    ]
-
-    jjk_expansions = [
-        "Within the unforgiving hierarchy of Jujutsu High, every battle is governed by the volatile laws of Cursed Energy. Born from negative human emotions—fear, grief, regret, and hatred—cursed energy must be channeled with absolute cognitive discipline. Sorcerers must infuse their bodies and cursed tools with this supernatural energy, regulating the flow like electricity through delicate circuitry. To land a strike imbued with Black Flash, a sorcerer must release their cursed energy within one millionth of a second of physical impact, causing space itself to distort into a flash of pitch-black sparks.",
-        "As the confrontation reaches a fever pitch, tactical mind games dictate every exchange. Opponents constantly deploy innate techniques, binding vows, and domain barriers to gain absolute geometric advantage over the battlefield. Survival requires instant deduction: understanding the opponent's cursed technique is half the battle, and revealing one's hand can either be a fatal mistake or a calculated gamble to boost power through the psychological condition of showing one's cards.",
-        "The animation choreography amplifies every micro-decision, shifting between visceral close-quarters martial arts and explosive metaphysical cursed blasts. Studio MAPPA captures the kinetic brutality of jujutsu sorcery with fluid camera orbits, high-contrast shadows, and raw emotional intensity.",
-        "With the dust settling across the shattered urban landscape, the victory leaves scars that will forever alter the fragile balance between sorcerers and special grade curses. In the shadows, ancient forces continue to orchestrate their millennium-long machinations, setting up the next catastrophic clash."
-    ]
-
-    generic_expansions = [
-        f"Across {series} Season {season} Episode {episode}, the combat dynamics reach a masterclass level of strategic storytelling. Every tactical decision is executed under extreme psychological pressure, forcing our protagonists to innovate mid-battle while conserving vital stamina. The choreography balances high-speed exchanges with quiet moments of tactical realization, elevating this episode into an essential milestone for the series.",
-        "The emotional resonance of this battle anchors every frame. As our heroes confront seemingly insurmountable odds, their internal monologues reveal the deep personal motivations driving them forward. Pushing past physical exhaustion, they demonstrate that genuine resilience is forged through perseverance, sacrifice, and unbreakable trust.",
-        "Cinematically, this confrontation represents a high-water mark for the production, blending fluid combat animation, striking lighting design, and atmospheric sound design that amplifies every sword strike and emotional revelation.",
-        "As the conflict reaches its resolution, the broader narrative stakes become undeniably clear, shifting the balance of power and setting the stage for even greater challenges on the horizon."
-    ]
-
-    expansions = ds_expansions if is_ds else (jjk_expansions if is_jjk else generic_expansions)
-
-    enriched = []
-    for idx, p in enumerate(parts):
-        p_copy = dict(p)
-        narr = p_copy.get("narration", "").strip()
-        words = len(narr.split())
-        if words < 220:
-            exp_text = expansions[idx % len(expansions)]
-            p_copy["narration"] = f"{narr} {exp_text}".strip()
-        enriched.append(p_copy)
-
-    return enriched
+    return [dict(p) for p in parts]
 
 
 def _format_script_package(episode_info: dict, ep_title: str, ep_summary: str, parts: list[dict]) -> dict:
