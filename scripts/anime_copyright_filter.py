@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 MAX_SHORT_DURATION = 180.0  # YouTube Shorts official 3-minute (180s) maximum duration
 MIN_SHORT_DURATION = 10.0
-MAX_SAFE_ANIME_STORY_TIMESTAMP = 1285.0
+MAX_SAFE_ANIME_STORY_TIMESTAMP = 1205.0  # TV anime ED credits start ~1210-1230s; cutoff at 1205s
 MAX_SHOT_DURATION = 3.2
 
 # Blocked crawler patterns that trigger automated Content ID metadata scrapers
