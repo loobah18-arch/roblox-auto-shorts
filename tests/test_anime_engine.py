@@ -1250,10 +1250,31 @@ class TestAnimeArcEngine(unittest.TestCase):
         self.assertIsNotNone(next_arc)
         self.assertEqual(next_arc["arc_key"], "demon-slayer-mount-natagumo")
 
-        # In current live history, Mount Natagumo and subsequent arcs are completed up to Swordsmith Village, so next live arc is Hashira Training
-        live_next_arc = get_next_arc("demon-slayer")
-        self.assertIsNotNone(live_next_arc)
-        self.assertEqual(live_next_arc["arc_key"], "demon-slayer-hashira-training")
+        # Test deterministic mock history for Hashira Training pending
+        mock_hashira_pending = {
+            "completed_arcs": [
+                "demon-slayer-final-selection",
+                "demon-slayer-first-mission",
+                "demon-slayer-asクサ-arc",
+                "demon-slayer-tsuzumi-mansion",
+                "demon-slayer-mount-natagumo",
+                "demon-slayer-rehabilitation-training",
+                "demon-slayer-mugen-train",
+                "demon-slayer-entertainment-district",
+                "demon-slayer-swordsmith-village",
+            ],
+            "completed_episodes": [f"demon-slayer-s01e{i:02d}" for i in range(1, 27)]
+            + [f"demon-slayer-s02e{i:02d}" for i in range(1, 8)]
+            + [f"demon-slayer-s03e{i:02d}" for i in range(1, 12)]
+            + [f"demon-slayer-s04e{i:02d}" for i in range(1, 12)],
+        }
+        next_hashira = get_next_arc("demon-slayer", history=mock_hashira_pending)
+        self.assertIsNotNone(next_hashira)
+        self.assertEqual(next_hashira["arc_key"], "demon-slayer-hashira-training")
+
+        # In current live history, Jujutsu Kaisen has pending arcs
+        live_jjk_arc = get_next_arc("jujutsu-kaisen")
+        self.assertIsNotNone(live_jjk_arc)
 
         # If active_arc is set (e.g. part 2 in-flight), get_next_arc immediately returns active arc
         mock_active = {"active_arc": {"arc_key": "demon-slayer-mount-natagumo", "part": 2}}
