@@ -28,11 +28,12 @@ WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = WORKSPACE_DIR / "output"
 CACHE_DIR = WORKSPACE_DIR / "cache"
 BGM_DIR = WORKSPACE_DIR / "assets" / "bgm"
-DEFAULT_BGM_PATH = BGM_DIR / "craspore_flashbacks_slowed.mp3"
+DEFAULT_BGM_PATH = BGM_DIR / "punch_deck_ethereal.mp3"
 
 # Royalty-free BGM library with mood/genre classification
 BGM_LIBRARY = {
-    "recapkun":     "craspore_flashbacks_slowed.mp3",        # Iconic Recap slowed synth (CRASPORE - Flashbacks Slowed)
+    "recapkun":     "punch_deck_ethereal.mp3",               # Signature Anime Recap track (Punch Deck - Ethereal, CC-BY)
+    "ethereal":     "punch_deck_ethereal.mp3",               # Punch Deck - Ethereal
     "flashbacks":   "craspore_flashbacks_slowed.mp3",        # CRASPORE - Flashbacks (Slowed)
     "aerohead":     "aerohead_fragments_recap.mp3",          # Iconic Recap ambient track (AERØHEAD - Fragments)
     "mystery":      "movie_recap_mystery_the_complex.mp3",   # Iconic Movie Recap mystery synth (Kevin MacLeod - The Complex)
