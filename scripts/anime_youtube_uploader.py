@@ -573,6 +573,9 @@ def upload_episode_package(
     uploaded_parts = history.get("uploaded_parts", [])
     ep_key = summary.get("episode_key") or summary.get("arc_key") or ep_dir.name
 
+    if summary.get("mode") == "recapkun" and upload_shorts:
+        upload_full = False
+
     if live:
         can_proceed, next_allowed, remaining_sec = ensure_upload_cadence(
             history=history,
@@ -611,8 +614,9 @@ def upload_episode_package(
                 json.dump(res, f, indent=2)
             return res
 
-    if summary.get("mode") in ("daily_funnel", "cinema", "recapkun", "full", "arc") or "video_to_upload" in summary:
-        action = summary.get("action", "normal_video" if summary.get("mode") in ("recapkun", "full", "arc") else "short")
+    has_multi_parts = bool(summary.get("parts")) and upload_shorts
+    if not has_multi_parts and (summary.get("mode") in ("daily_funnel", "cinema", "arc") or "video_to_upload" in summary):
+        action = summary.get("action", "normal_video" if summary.get("mode") in ("arc",) else "short")
         vid_to_upload = summary.get("video_to_upload", {})
 
         if not live:
@@ -1008,7 +1012,7 @@ def upload_episode_package(
     )
 
     completed = history.get("completed_episodes", [])
-    if uploaded_shorts_count == total_parts_expected and full_uploaded:
+    if uploaded_shorts_count == total_parts_expected and (not upload_full or full_uploaded):
         if ep_key not in completed:
             completed.append(ep_key)
             history["completed_episodes"] = completed

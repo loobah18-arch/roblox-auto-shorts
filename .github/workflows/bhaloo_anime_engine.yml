@@ -162,7 +162,7 @@ jobs:
           fi
           for ep_dir in output/*; do
             if [ -d "$ep_dir" ] && [ -f "$ep_dir/pipeline_summary.json" ]; then
-              python3 scripts/anime_youtube_uploader.py --dir "$ep_dir" --live --privacy "$PRIVACY_STATUS" "${EXTRA_ARGS[@]}"
+              python3 scripts/anime_youtube_uploader.py --dir "$ep_dir" --live --privacy "$PRIVACY_STATUS" --no-full "${EXTRA_ARGS[@]}"
             fi
           done
 

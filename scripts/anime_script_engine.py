@@ -289,6 +289,34 @@ def _generate_heuristic_script(episode_info: dict, scene_acts: list[dict] = None
     )
 
 
+def sanitize_title_and_description(text: str) -> str:
+    """
+    Strips anime names (Demon Slayer, Kimetsu no Yaiba, Jujutsu Kaisen, etc.)
+    from titles and descriptions to create pure RecapKun curiosity-driven metadata
+    and protect against keyword copyright detection.
+    """
+    if not text:
+        return ""
+    patterns = [
+        (r"Demon Slayer:\s*Kimetsu no Yaiba", ""),
+        (r"Kimetsu no Yaiba", ""),
+        (r"Demon Slayer\s*S\d+\s*Ep\s*(\d+)", r"Episode \1"),
+        (r"Demon Slayer\s*Season\s*\d+\s*Episode\s*(\d+)", r"Episode \1"),
+        (r"Demon Slayer", "Warrior"),
+        (r"Jujutsu Kaisen\s*S\d+\s*Ep\s*(\d+)", r"Episode \1"),
+        (r"Jujutsu Kaisen\s*Season\s*\d+\s*Episode\s*(\d+)", r"Episode \1"),
+        (r"Jujutsu Kaisen", "Sorcerer"),
+        (r"JJK", ""),
+    ]
+    cleaned = text
+    for pat, repl in patterns:
+        cleaned = re.sub(pat, repl, cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"Story Recap Part\s+Explanation\s+Part\s*(\d+)", r"Story Recap Part \1", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\|\s*\|+", "|", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" |:-")
+    return cleaned
+
+
 def ensure_recapkun_longform_depth(parts: list[dict], episode_info: dict) -> list[dict]:
     """
     Preserves clean, punchy RecapKun narrative action momentum.
@@ -338,14 +366,17 @@ def _format_script_package(episode_info: dict, ep_title: str, ep_summary: str, p
         # Guarantee 'Explanation' is explicitly present in every Short title
         raw_st = p.get("short_title", "").strip()
         if not raw_st:
-            raw_st = f"{series} S{season} Ep {episode} Explanation Part {i} #shorts"
-        elif "explanation" not in raw_st.lower() and "explained" not in raw_st.lower():
+            raw_st = f"High Action Story Recap Explanation Part {i} #shorts"
+        raw_st = sanitize_title_and_description(raw_st)
+        if "explanation" not in raw_st.lower() and "explained" not in raw_st.lower():
             if re.search(rf"\bPart\s*{i}\b", raw_st, re.IGNORECASE):
                 raw_st = re.sub(rf"\bPart\s*{i}\b", f"Explanation Part {i}", raw_st, count=1, flags=re.IGNORECASE)
             elif "#shorts" in raw_st.lower():
                 raw_st = re.sub(r"#shorts", f"Explanation Part {i} #shorts", raw_st, count=1, flags=re.IGNORECASE)
             else:
                 raw_st = f"{raw_st} | Explanation Part {i} #shorts"
+        if "#shorts" not in raw_st.lower():
+            raw_st = f"{raw_st} #shorts"
 
         enriched_p = {
             "part": i,
@@ -357,36 +388,34 @@ def _format_script_package(episode_info: dict, ep_title: str, ep_summary: str, p
             "beats": beats,
             "estimated_duration": est_duration,
             "short_title": raw_st,
-            "badge": f"{series.upper()} • S{season:02d}E{episode:02d} • PART {i}/{total_parts}",
+            "badge": f"EPISODE RECAP • PART {i}/{total_parts}",
             "hashtags": [
                 "anime", "animerecap", "animeexplanation", "shorts",
-                series_tag.lower(), "bhalooji", "animelover", "otaku"
+                "storyrecap", "actionanime", "animelover", "otaku", "bhalooji"
             ],
             "description": f"""{p.get('hook', '')}
-Part {i} of {total_parts} covering {series} Season {season} Episode {episode}.
+Part {i} of {total_parts} | Action Anime Story Recap & Explanation.
 
 Watch until the end to find out what happens next!
 
-👍 Like the video, subscribe for more action-packed anime stories, and comment YES if you want the next episode!
+👍 Like the video, subscribe for daily anime story recaps, and comment YES if you want the next episode!
 
-🎬 This is an excerpt from our FULL in-depth episode breakdown! Watch the complete video on our channel:
+🎬 This is an excerpt from our FULL in-depth breakdown! Watch the complete video on our channel:
 https://youtube.com/@bhalooji
 
 {FAIR_USE_DISCLAIMER}
-#AnimeExplained #AnimeRecap #ActionAnime #anime #{series_tag.lower()} #animerecap #shorts #bhalooji"""
+#AnimeExplained #AnimeRecap #ActionAnime #anime #storyrecap #animerecap #shorts #bhalooji"""
         }
         enriched_parts.append(enriched_p)
 
-    short_series = "Demon Slayer" if "Demon Slayer" in series else ("Jujutsu Kaisen" if "Jujutsu Kaisen" in series else series)
-    full_video_title = f"{short_series} S{season} Ep {episode} Full Recap & Explanation | {ep_title}"
-    if len(full_video_title) > 100:
-        full_video_title = f"{short_series} Ep {episode} Recap & Explanation | {ep_title}"
+    clean_ep_title = sanitize_title_and_description(ep_title)
+    full_video_title = f"{clean_ep_title} | Full Recap & Explanation"
     if len(full_video_title) > 100:
         full_video_title = full_video_title[:97] + "..."
-    full_description = f"""Full episode breakdown and explanation of {series} Season {season} Episode {episode}: {ep_title}.
+    full_description = f"""Full breakdown and story recap of {clean_ep_title}.
 
 Overview:
-{ep_summary}
+{sanitize_title_and_description(ep_summary)}
 
 Episode Chapters:
 {chr(10).join(chapters)}
@@ -394,7 +423,7 @@ Episode Chapters:
 Enjoying the breakdown? Like and Subscribe to Bhaloo Ji for daily anime recaps!
 
 {FAIR_USE_DISCLAIMER}
-#anime #{series_tag.lower()} #animerecap #animeexplained #bhalooji"""
+#anime #animerecap #animeexplained #storyrecap #bhalooji"""
 
     return {
         "series": series,
