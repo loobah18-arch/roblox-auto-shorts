@@ -340,6 +340,9 @@ def run_cinema_pipeline(
     ep_work_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. BGM selection (Default series recap track, e.g. AERØHEAD - Fragments, or explicit mood)
+    if bgm_path and not Path(bgm_path).exists() and not bgm_mood:
+        bgm_mood = str(bgm_path)
+        bgm_path = None
     if not bgm_path or not Path(bgm_path).exists():
         bgm_path = pick_bgm_for_episode(series_id=target_ep.get("series_id"), mood=bgm_mood)
         log(f"Auto-selected BGM: {bgm_path.name}")
