@@ -24,7 +24,7 @@ on:
           - "demon-slayer"
           - "jujutsu-kaisen"
       mode:
-        description: "Pipeline mode: 'arc' (Full Story Arc Recap Video <= 60 mins), 'recapkun' (Single Episode RecapKun Video + Shorts), 'daily' (funnel), or 'cinema' (3-minute shorts)"
+        description: "Pipeline mode: 'arc' (Full Story Arc Recap Video <= 60 mins), 'recapkun' (RecapKun Video + Shorts), 'daily' (funnel), or 'cinema' (3-minute shorts)"
         required: false
         default: "arc"
         type: choice

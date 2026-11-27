@@ -296,6 +296,37 @@ class TestRecapKunStyle(unittest.TestCase):
         self.assertEqual(DEFAULT_VOICE, "en-US-ChristopherNeural")
         self.assertEqual(DEFAULT_RATE, "+8%")
 
+    def test_popular_explainer_bgm_selection(self):
+        from anime_video_engine import pick_bgm_for_episode
+        mystery_bgm = pick_bgm_for_episode(mood="mystery")
+        self.assertEqual(mystery_bgm.name, "movie_recap_mystery_the_complex.mp3")
+        self.assertTrue(mystery_bgm.exists())
+
+        crypto_bgm = pick_bgm_for_episode(mood="investigation")
+        self.assertEqual(crypto_bgm.name, "movie_recap_investigation_crypto.mp3")
+        self.assertTrue(crypto_bgm.exists())
+
+        phonk_bgm = pick_bgm_for_episode(mood="phonk")
+        self.assertEqual(phonk_bgm.name, "cradles.mp3")
+        self.assertTrue(phonk_bgm.exists())
+
+    def test_detect_story_credits_transition(self):
+        from anime_video_engine import detect_story_credits_transition
+        # When no video / cues, defaults safely to max ceiling (1205.0)
+        self.assertEqual(detect_story_credits_transition(), 1205.0)
+
+        # When cues show dialogue gap at 1140s -> detects early ending before credits
+        mock_cues = [
+            {"start": 1050.0, "end": 1080.0, "text": "Fight continues"},
+            {"start": 1090.0, "end": 1140.0, "text": "Final blow delivered"},
+            {"start": 1165.0, "end": 1190.0, "text": "Next episode preview teaser"},
+            {"start": 1220.0, "end": 1230.0, "text": "Preview banter"},
+            {"start": 1240.0, "end": 1250.0, "text": "Preview title"},
+            {"start": 1260.0, "end": 1270.0, "text": "Air date"},
+        ]
+        detected = detect_story_credits_transition(cues=mock_cues, max_safe_ceiling=1205.0)
+        self.assertAlmostEqual(detected, 1143.0)
+
 
 class TestDailyFunnel(unittest.TestCase):
     def test_daily_funnel_case_a_starts_normal_video(self):
@@ -1219,10 +1250,10 @@ class TestAnimeArcEngine(unittest.TestCase):
         self.assertIsNotNone(next_arc)
         self.assertEqual(next_arc["arc_key"], "demon-slayer-mount-natagumo")
 
-        # In current live history, Mount Natagumo is now completed, so next arc progresses to Rehabilitation Training
+        # In current live history, Mount Natagumo and subsequent arcs are completed up to Swordsmith Village, so next live arc is Hashira Training
         live_next_arc = get_next_arc("demon-slayer")
         self.assertIsNotNone(live_next_arc)
-        self.assertEqual(live_next_arc["arc_key"], "demon-slayer-rehabilitation-training")
+        self.assertEqual(live_next_arc["arc_key"], "demon-slayer-hashira-training")
 
         # If active_arc is set (e.g. part 2 in-flight), get_next_arc immediately returns active arc
         mock_active = {"active_arc": {"arc_key": "demon-slayer-mount-natagumo", "part": 2}}

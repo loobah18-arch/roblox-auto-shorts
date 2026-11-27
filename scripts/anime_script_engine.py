@@ -681,7 +681,7 @@ CRITICAL RULES:
             title = parsed_llm.get("title") or title
             hook = parsed_llm.get("hook") or f"{series} changed forever the moment an impossible crisis struck."
             narration = parsed_llm["narration"]
-            beats = parsed_llm.get("beats") or generate_default_beats([120, 1260])
+            beats = parsed_llm.get("beats") or generate_default_beats([120, 1205])
         else:
             scene_acts = get_episode_scene_acts(episode_info, num_parts=4)
             beats = []
@@ -725,7 +725,7 @@ CRITICAL RULES:
 
     # Build beats if empty
     if not beats:
-        beats = generate_default_beats([120, 1260])
+        beats = generate_default_beats([120, 1205])
 
     # 3. High-retention description matching ICFR22QXs_o
     description = f"""{hook}
@@ -747,7 +747,7 @@ Watch until the end to find out what happens next!
         "narration": narration,
         "description": description,
         "hashtags": ["anime", "animerecap", "animeexplained", "actionanime", series_tag.lower(), "bhalooji", "shorts"],
-        "time_window": [120, 1260],
+        "time_window": [120, 1205],
         "beats": beats,
         "word_count": words,
         "estimated_duration": est_duration,

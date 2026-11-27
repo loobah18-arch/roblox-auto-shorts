@@ -32,21 +32,26 @@ DEFAULT_BGM_PATH = BGM_DIR / "aerohead_fragments_recap.mp3"
 
 # Royalty-free BGM library with mood/genre classification
 BGM_LIBRARY = {
-    "recapkun":     "aerohead_fragments_recap.mp3",      # Iconic RecapKun chill ambient recap track (AERØHEAD - Fragments)
-    "action":       "cinematic_suspense_thriller.mp3",   # High-action battles & reveals
-    "drone":        "cinematic_suspense_drone.mp3",       # Tense build-up moments
-    "emotional":    "sad_cinematic_piano.mp3",            # Tragic / emotional scenes
-    "atmospheric":  "dreamy_night_drift.mp3",             # Discovery / quiet moments
-    "lofi":         "lofi_chill_beats.mp3",              # Light intro scenes
-    "dark":         "malevolent_shrine_sukuna.mp3",       # Villain / horror moments
-    "cozy":         "cozy_cafe_guitar.mp3",               # Slice-of-life / training
-    "snowfall":     "snowfall_calm_aesthetic.mp3",        # Sad / reflective moments
+    "recapkun":     "aerohead_fragments_recap.mp3",          # Iconic RecapKun chill ambient recap track (AERØHEAD - Fragments)
+    "mystery":      "movie_recap_mystery_the_complex.mp3",   # Iconic Movie Recap mystery synth (Kevin MacLeod - The Complex)
+    "investigation":"movie_recap_investigation_crypto.mp3",  # Driving investigative suspense beat (Kevin MacLeod - Crypto)
+    "phonk":        "cradles.mp3",                           # Viral hype / urban explainer track (Sub Urban - Cradles)
+    "action":       "cinematic_suspense_thriller.mp3",       # High-action battles & reveals
+    "drone":        "cinematic_suspense_drone.mp3",          # Tense build-up moments
+    "emotional":    "sad_cinematic_piano.mp3",               # Tragic / emotional scenes
+    "atmospheric":  "dreamy_night_drift.mp3",                # Discovery / quiet moments
+    "lofi":         "lofi_chill_beats.mp3",                  # Light intro scenes
+    "dark":         "malevolent_shrine_sukuna.mp3",          # Villain / horror moments
+    "cozy":         "cozy_cafe_guitar.mp3",                  # Slice-of-life / training
+    "snowfall":     "snowfall_calm_aesthetic.mp3",           # Sad / reflective moments
 }
 
 # Per-series default BGM mapping (RecapKun AERØHEAD by default)
 SERIES_BGM_MAP = {
     "demon-slayer":      "recapkun",
     "jujutsu-kaisen":    "recapkun",
+    "mystery-recap":     "mystery",
+    "movie-recap":       "mystery",
     "default":           "recapkun",
 }
 
@@ -205,6 +210,62 @@ def build_ffmpeg_filtergraph(
     return ";".join(filters)
 
 
+def detect_story_credits_transition(
+    raw_video_path: Path | str | None = None,
+    cues: list[dict] | None = None,
+    max_safe_ceiling: float = 1205.0,
+    search_start: float = 1020.0,
+) -> float:
+    """
+    Dynamically identifies the exact transition point where the anime story finishes
+    and the ending credits (ED) begin.
+    1. Subtitle silence gap detection: Checks if dialogue ceases before a prolonged gap (>12s)
+       in the 17m-20m window.
+    2. FFmpeg black frame detection: Scans for cinematic fade-to-black scene transitions
+       between 1020s (17:00) and max_safe_ceiling (1205s).
+    3. Guarantees output never exceeds max_safe_ceiling (1205.0s).
+    """
+    detected_cutoff = max_safe_ceiling
+
+    # 1. Check subtitle cues if provided
+    if cues and len(cues) > 5:
+        late_cues = [c for c in cues if search_start <= float(c.get("start", 0)) <= max_safe_ceiling]
+        if late_cues:
+            # Check backwards for a dialogue gap >= 20s indicating the story ended and ED music/preview began
+            for i in range(len(late_cues) - 2, -1, -1):
+                gap = float(late_cues[i + 1].get("start", 0)) - float(late_cues[i].get("end", 0))
+                if gap >= 20.0:
+                    detected_cutoff = min(detected_cutoff, float(late_cues[i].get("end", 0)) + 3.0)
+                    break
+            else:
+                detected_cutoff = min(detected_cutoff, float(late_cues[-1].get("end", 0)) + 2.5)
+
+    # 2. Check FFmpeg black frame detection if raw video exists
+    if raw_video_path:
+        rv = Path(raw_video_path)
+        if rv.exists() and rv.stat().st_size > 1024 * 1024:
+            try:
+                cmd = [
+                    "ffmpeg", "-hide_banner", "-nostats",
+                    "-ss", str(search_start),
+                    "-to", str(max_safe_ceiling),
+                    "-i", str(rv),
+                    "-vf", "blackdetect=d=0.25:pix_th=0.10",
+                    "-an", "-f", "null", "-"
+                ]
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+                black_matches = re.findall(r"black_start:([0-9.]+)", res.stderr)
+                if black_matches:
+                    black_times = [float(b) + search_start for b in black_matches]
+                    valid_fades = [t for t in black_times if search_start <= t <= max_safe_ceiling]
+                    if valid_fades:
+                        detected_cutoff = min(detected_cutoff, valid_fades[-1])
+            except Exception:
+                pass
+
+    return min(max_safe_ceiling, max(search_start, detected_cutoff))
+
+
 def assemble_short_part(
     raw_video_path: str | Path,
     voice_audio_path: str | Path,
@@ -241,13 +302,18 @@ def assemble_short_part(
         log(f"[DRY-RUN] Simulating {mode_label} render for window {time_window} -> {output_video.name}")
         return True
 
-    # 1. Timeline Clamping for the specific scene: Keep within story boundaries
-    # Standard TV anime episodes have ending credits/ED song starting at ~1285s (21m25s).
-    # Slicing past 1285s cuts directly into the ED credit crawl / music video, triggering instant Aniplex Content ID.
-    MAX_SAFE_ANIME_STORY_TIMESTAMP = 1285.0
+    # 1. Timeline Clamping for the specific scene: Keep strictly within story boundaries.
+    # Standard TV anime episodes have ending credits/ED song starting at ~1210-1230s (20m10s-20m30s)
+    # followed by post-credits stinger and next-episode preview (jikai yokoku).
+    # Slicing past 1205s cuts into ED credit crawl / music video and preview spoilers, triggering Content ID.
+    MAX_SAFE_ANIME_STORY_TIMESTAMP = 1205.0
     w_start, w_end = time_window
-    safe_start = max(60.0, min(MAX_SAFE_ANIME_STORY_TIMESTAMP - 30.0, float(w_start)))
-    safe_end = min(MAX_SAFE_ANIME_STORY_TIMESTAMP, max(safe_start + 30.0, float(w_end)))
+    detected_cutoff = detect_story_credits_transition(
+        raw_video_path=raw_video,
+        max_safe_ceiling=MAX_SAFE_ANIME_STORY_TIMESTAMP,
+    )
+    safe_start = max(60.0, min(detected_cutoff - 30.0, float(w_start)))
+    safe_end = min(detected_cutoff, max(safe_start + 30.0, float(w_end)))
     window_length = max(30.0, safe_end - safe_start)
 
     # 2. Dynamic Sentence-Locked Scene Allocation

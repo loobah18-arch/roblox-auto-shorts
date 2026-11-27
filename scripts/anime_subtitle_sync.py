@@ -62,13 +62,13 @@ CURATED_ACT_TIMELINES = {
             },
             {
                 "part": 5,
-                "time_range": [1207, 1370],
+                "time_range": [1040, 1205],
                 "theme": "Haganezuka comedic rage over black blade, Urokodaki explains the omen, Kasugai crow announces first mission, Tanjiro departs",
                 "beats": [
-                    {"start": 1210.0, "weight": 0.24, "desc": "Haganezuka comedic rage wrestling Tanjiro over black sword"},
-                    {"start": 1250.0, "weight": 0.26, "desc": "Urokodaki explains black blade mystery and historic omen of death"},
-                    {"start": 1290.0, "weight": 0.25, "desc": "Kasugai crow screeches first assignment in fluent human speech"},
-                    {"start": 1330.0, "weight": 0.25, "desc": "Tanjiro receives Demon Slayer uniform and wooden box for Nezuko"},
+                    {"start": 1050.0, "weight": 0.24, "desc": "Haganezuka comedic rage wrestling Tanjiro over black sword"},
+                    {"start": 1090.0, "weight": 0.26, "desc": "Urokodaki explains black blade mystery and historic omen of death"},
+                    {"start": 1140.0, "weight": 0.25, "desc": "Kasugai crow screeches first assignment in fluent human speech"},
+                    {"start": 1180.0, "weight": 0.25, "desc": "Tanjiro receives Demon Slayer uniform and wooden box for Nezuko"},
                 ]
             }
         ]
@@ -240,7 +240,7 @@ CURATED_ACT_TIMELINES = {
         "acts": [
             {
                 "part": 1,
-                "time_range": [210, 1260],
+                "time_range": [210, 1205],
                 "theme": "Susamaru and Yahaba attack Lady Tamayo's clinic; Tanjiro decodes invisible vector arrows to sever Yahaba's head with Tenth Form Constant Flux",
                 "beats": [
                     {"start": 210.0, "weight": 0.09, "desc": "Supersonic temari balls crash through the brick walls of Lady Tamayo's clinic"},
@@ -252,8 +252,8 @@ CURATED_ACT_TIMELINES = {
                     {"start": 1015.0, "weight": 0.09, "desc": "Yushiro fully regenerates head from rubble, preparing blood talisman"},
                     {"start": 1118.0, "weight": 0.09, "desc": "Yushiro slaps mystical paper talisman onto Tanjiro's forehead"},
                     {"start": 1155.0, "weight": 0.09, "desc": "Talisman reveals invisible glowing crimson vector arrows steered by Yahaba"},
-                    {"start": 1242.0, "weight": 0.16, "desc": "Tanjiro unleashes Tenth Form Constant Flux water dragon severing Yahaba's head as gravitational trap erupts"},
-                    {"start": 1255.0, "weight": 0.03, "desc": "Yahaba severed head dying rage gravitational vortex cliffhanger and comment yes CTA"}
+                    {"start": 1165.0, "weight": 0.16, "desc": "Tanjiro unleashes Tenth Form Constant Flux water dragon severing Yahaba's head as gravitational trap erupts"},
+                    {"start": 1195.0, "weight": 0.03, "desc": "Yahaba severed head dying rage gravitational vortex cliffhanger and comment yes CTA"}
                 ]
             }
         ]
@@ -337,8 +337,8 @@ def cluster_dialogue_into_acts(dialogue_cues: list[dict], num_parts: int = 4, ep
     if not dialogue_cues:
         return []
 
-    # Filter out OP and ED dialogue
-    story_cues = [c for c in dialogue_cues if 90.0 <= c["start"] <= (episode_duration - 90.0)]
+    # Filter out OP and ED dialogue + next episode preview
+    story_cues = [c for c in dialogue_cues if 90.0 <= c["start"] <= min(1205.0, episode_duration - 210.0)]
     if not story_cues:
         story_cues = dialogue_cues
 
@@ -442,9 +442,9 @@ def get_episode_scene_acts(episode_info: dict, num_parts: int = 4, raw_video_pat
 
     # Dynamic calculation for uncurated episodes:
     # Standard 23:40 anime episode (1420 seconds total)
-    # OP ends ~120s, ED starts ~1260s -> Clean story window = 120s to 1260s (1140 seconds)
+    # OP ends ~120s, ED starts ~1210-1230s -> Clean story window = 120s to 1205s (1085 seconds)
     story_start = 120.0
-    story_end = 1260.0
+    story_end = 1205.0
     act_duration = (story_end - story_start) / max(1, num_parts)
 
     acts = []
