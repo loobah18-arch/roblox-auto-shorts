@@ -421,9 +421,6 @@ def get_next_arc(series_id: str | None = None, history: dict | None = None) -> d
         k = arc["arc_key"]
         if k in completed_arcs:
             continue
-        all_eps_done = all(e in completed_eps for e in arc["episode_keys"])
-        if all_eps_done and k != active_key:
-            continue
         return arc
     return None
 

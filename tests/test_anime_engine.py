@@ -1359,7 +1359,7 @@ class TestAnimeArcEngine(unittest.TestCase):
 
         # Mock history where previous 4 arcs (episodes 1-14) are complete and Mount Natagumo is pending
         mock_hist = {
-            "completed_arcs": ["demon-slayer-final-selection", "demon-slayer-first-mission", "demon-slayer-asクサ-arc", "demon-slayer-tsuzumi-mansion"],
+            "completed_arcs": ["demon-slayer-final-selection", "demon-slayer-first-mission", "demon-slayer-asakusa", "demon-slayer-tsuzumi-mansion"],
             "completed_episodes": [f"demon-slayer-s01e{i:02d}" for i in range(1, 15)],
         }
         next_arc = get_next_arc("demon-slayer", history=mock_hist)
@@ -1371,7 +1371,7 @@ class TestAnimeArcEngine(unittest.TestCase):
             "completed_arcs": [
                 "demon-slayer-final-selection",
                 "demon-slayer-first-mission",
-                "demon-slayer-asクサ-arc",
+                "demon-slayer-asakusa",
                 "demon-slayer-tsuzumi-mansion",
                 "demon-slayer-mount-natagumo",
                 "demon-slayer-rehabilitation-training",
