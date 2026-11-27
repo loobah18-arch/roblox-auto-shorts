@@ -474,9 +474,19 @@
       "url": "https://youtu.be/sIT0OVV641k",
       "title": "Demon Slayer - Hashira Training Arc Full Story Recap & Explanation | Complete Arc",
       "uploaded_at": "2026-11-23T16:09:33Z"
+    },
+    {
+      "episode_key": "demon-slayer-s01e09",
+      "arc_key": null,
+      "part": null,
+      "is_full_video": true,
+      "video_id": "eAi2D1hRYXE",
+      "url": "https://youtu.be/eAi2D1hRYXE",
+      "title": "Demon Slayer S1 Ep 9 Full Recap & Explanation | Temari Demon and Arrow Demon",
+      "uploaded_at": "2026-11-27T12:20:55Z"
     }
   ],
-  "last_updated": "2026-11-23T16:09:33Z",
+  "last_updated": "2026-11-27T12:20:55Z",
   "active_episode": null,
   "completed_arcs": [
     "demon-slayer-mount-natagumo",
