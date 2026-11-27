@@ -592,25 +592,72 @@ def upload_episode_package(
     if not is_arc and upload_shorts and summary.get("parts"):
         upload_full = False
 
+    has_multi_parts = bool(summary.get("parts")) and upload_shorts
+    shorts_cadence_ok = True
+    next_allowed_shorts = None
+    remaining_sec_shorts = 0.0
+
     if live:
-        can_proceed, next_allowed, remaining_sec = ensure_upload_cadence(
-            history=history,
-            cadence_hours=cadence_hours,
-            allow_override=allow_cadence_override,
-        )
-        if not can_proceed:
-            next_iso = next_allowed.isoformat() if next_allowed else None
-            rem_h = remaining_sec / 3600.0
-            log(f"⏸️ [CadenceManager] Upload deferred: 24h cadence window not met ({rem_h:.2f}h remaining). Next allowed: {next_iso}")
-            res = {
-                "status": "deferred_cadence",
-                "message": f"Upload deferred: 24h cadence window not met ({rem_h:.2f}h remaining)",
-                "next_allowed": next_iso,
-                "remaining_seconds": remaining_sec,
-            }
-            with open(ep_dir / "upload_result.json", "w", encoding="utf-8") as f:
-                json.dump(res, f, indent=2)
-            return res
+        if has_multi_parts:
+            # Check Shorts cadence independently (24h for 1 short/day)
+            can_short, next_short, rem_short = ensure_upload_cadence(
+                history=history,
+                cadence_hours=cadence_hours,
+                allow_override=allow_cadence_override,
+                is_full=False,
+            )
+            shorts_cadence_ok = can_short
+            next_allowed_shorts = next_short
+            remaining_sec_shorts = rem_short
+
+            # Check Long Video cadence independently (52h for 3/week)
+            long_cadence_ok = True
+            if upload_full and is_arc:
+                can_full, next_full, rem_full = ensure_upload_cadence(
+                    history=history,
+                    cadence_hours=long_video_cadence_hours,
+                    allow_override=allow_cadence_override,
+                    is_full=True,
+                )
+                long_cadence_ok = can_full
+
+            # Only abort early if NEITHER Shorts nor Long Video can upload
+            if not shorts_cadence_ok and (not upload_full or not long_cadence_ok):
+                next_iso = next_allowed_shorts.isoformat() if next_allowed_shorts else None
+                rem_h = remaining_sec_shorts / 3600.0
+                log(f"⏸️ [CadenceManager] Upload deferred: 24h Shorts cadence window not met ({rem_h:.2f}h remaining). Next allowed: {next_iso}")
+                res = {
+                    "status": "deferred_cadence",
+                    "message": f"Upload deferred: 24h cadence window not met ({rem_h:.2f}h remaining)",
+                    "next_allowed": next_iso,
+                    "remaining_seconds": remaining_sec_shorts,
+                }
+                with open(ep_dir / "upload_result.json", "w", encoding="utf-8") as f:
+                    json.dump(res, f, indent=2)
+                return res
+        else:
+            action = summary.get("action", "normal_video" if summary.get("mode") in ("arc",) else "short")
+            is_full_action = (action == "normal_video")
+            eff_cadence = long_video_cadence_hours if is_full_action else cadence_hours
+            can_proceed, next_allowed, remaining_sec = ensure_upload_cadence(
+                history=history,
+                cadence_hours=eff_cadence,
+                allow_override=allow_cadence_override,
+                is_full=is_full_action,
+            )
+            if not can_proceed:
+                next_iso = next_allowed.isoformat() if next_allowed else None
+                rem_h = remaining_sec / 3600.0
+                log(f"⏸️ [CadenceManager] Upload deferred: cadence window not met ({rem_h:.2f}h remaining). Next allowed: {next_iso}")
+                res = {
+                    "status": "deferred_cadence",
+                    "message": f"Upload deferred: cadence window not met ({rem_h:.2f}h remaining)",
+                    "next_allowed": next_iso,
+                    "remaining_seconds": remaining_sec,
+                }
+                with open(ep_dir / "upload_result.json", "w", encoding="utf-8") as f:
+                    json.dump(res, f, indent=2)
+                return res
 
         # Velocity Gate check: protect well-performing videos (>= 2k-3k views/hr or >= 2k in first 12h)
         youtube = get_youtube_service()
@@ -910,6 +957,19 @@ def upload_episode_package(
             if already:
                 log(f"Part {p_num} already uploaded on YouTube: {already.get('url')} (skipping duplicate upload)")
                 results["shorts"].append(already)
+                continue
+
+            if not shorts_cadence_ok:
+                next_iso_s = next_allowed_shorts.isoformat() if next_allowed_shorts else None
+                rem_h_s = remaining_sec_shorts / 3600.0
+                log(f"⏸️ [CadenceManager] Short {p_num} deferred to maintain 1 short/day schedule ({rem_h_s:.1f}h remaining). Next allowed: {next_iso_s}")
+                results["shorts"].append({
+                    "part": p_num,
+                    "status": "deferred_cadence",
+                    "message": f"Daily Shorts cadence (1/day) requires 24h interval ({rem_h_s:.1f}h remaining)",
+                    "next_allowed": next_iso_s,
+                    "title": part.get("title", ""),
+                })
                 continue
 
             if quota_hit:
